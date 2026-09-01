@@ -1,0 +1,55 @@
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Gradle and Kotlin local caches
+.gradle/
+.gradle-user/
+.kotlin/
+
+# Local Android SDK path
+local.properties
+
+# Build outputs
+build/
+**/build/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Native build outputs
+.externalNativeBuild/
+**/.externalNativeBuild/
+.cxx/
+**/.cxx/
+
+# Profiling and crash files
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# Signing keys and local secrets
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+secrets.properties
+.env
+.env.*
+!.env.example
+
+# Firebase per-environment configuration
+app/google-services.json
+/app/libs/samsung-health-data-api*.aar
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Keep the Gradle wrapper committed.
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
