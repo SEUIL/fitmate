@@ -1,0 +1,71 @@
+# -----------------------------------------------------------------------------
+# Operating system / editor files
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.vscode/
+/.idea/
+*.iml
+
+# Temporary Hangul/Office lock files
+~$*
+*.tmp
+
+# -----------------------------------------------------------------------------
+# Logs and crash dumps
+# -----------------------------------------------------------------------------
+*.log
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# -----------------------------------------------------------------------------
+# Local environment and secrets
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets.properties
+keystore.properties
+signing.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# Firebase configuration can be restored per developer/environment.
+/android/app/google-services.json
+
+# -----------------------------------------------------------------------------
+# Android Studio / Gradle local files
+# -----------------------------------------------------------------------------
+/android/.gradle/
+/android/.kotlin/
+/android/.idea/
+/android/local.properties
+/android/**/local.properties
+/android/**/*.iml
+
+# Build outputs and native build caches
+/android/**/build/
+/android/captures/
+/android/**/.externalNativeBuild/
+/android/**/.cxx/
+/android/app/release/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Android Studio profiling output
+/android/*.hprof
+/android/captures/
+
+# Keep the Gradle wrapper committed.
+!/android/gradle/wrapper/gradle-wrapper.jar
+!/android/gradle/wrapper/gradle-wrapper.properties
+
