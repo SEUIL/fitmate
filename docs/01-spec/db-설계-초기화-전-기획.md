@@ -2,15 +2,15 @@
 
 - 작성일: 2026-09-03
 - 최종 수정일: 2026-09-03
-- 버전: v0.9
+- 버전: v1.1
 - 상태: 검토 중
 - 근거: `docs/프로젝트제출용/3주차/기능명세서_v1.2.pdf` (2026-09-02)
 
 ## 1. 목적과 범위
 
-이 문서는 기능명세서 v1.2를 구현 가능한 관계형 데이터 모델로 해석한 **DB 생성 전 설계 기준**이다. 실제 DDL, 마이그레이션 파일, 시드 데이터는 이 문서의 검토·확정 뒤에 만든다.
+이 문서는 기능명세서 v1.2를 구현 가능한 관계형 데이터 모델로 해석한 **DB 생성 전 설계 기준**이다. 확정된 P0 범위의 MySQL DDL과 시드 데이터는 `db/migration/`에 함께 둔다.
 
-논리 모델은 회원·동의·인바디·커뮤니티·DM·신고/차단·운동/러닝·Samsung Health Data·메이트 모집·평가·알림·관리자·광고를 다루되, **첫 MySQL 마이그레이션은 이메일/비밀번호 회원가입·로그인, P0 운동 기록·정적 루틴 추천만** 만든다. 이메일 인증·비밀번호 재설정 메일, Push, 서버 건강 원본, 커뮤니티·DM·관리자·광고는 후속 마이그레이션 범위다. 단체 채팅, 실시간 위치 공유, 워치 심박수 스트리밍, 직접 Bluetooth 통신은 기능명세서의 범위 제외 항목이므로 모델을 만들지 않는다.
+논리 모델은 회원·동의·인바디·커뮤니티·DM·신고/차단·운동/러닝·Samsung Health Data·메이트 모집·평가·알림·관리자·광고를 다루되, **첫 MySQL 마이그레이션은 계정/온보딩과 P0 운동 기록·정적 루틴 추천만** 만든다. 이메일 인증·비밀번호 재설정 메일, Push, 서버 건강 원본, 커뮤니티·DM·관리자·광고와 탈퇴/파기 작업은 후속 마이그레이션 범위다. 메이트 FK·러닝도 첫 DDL에서 제외한다. 단체 채팅, 실시간 위치 공유, 워치 심박수 스트리밍, 직접 Bluetooth 통신은 기능명세서의 범위 제외 항목이므로 모델을 만들지 않는다.
 
 ## 2. 확정 제안과 전제
 
@@ -29,7 +29,23 @@
 
 `created_at`, `updated_at`(UTC)은 변경되는 모든 업무 테이블에 둔다. MySQL의 `TIMESTAMP`는 서버 세션 time zone 영향을 받을 수 있으므로 업무 시각은 `DATETIME(3)`로 통일하고, Spring Boot의 JDBC/Hibernate time zone도 UTC로 고정한다. 상태 변경 시각이 필요한 테이블은 별도 `*_at` 컬럼을 둔다. 표준 문자열은 `varchar` 길이보다 업무 검증을 우선하고, 긴 본문·메모는 `text`를 사용한다.
 
-### 2.1 공통 컬럼 규칙
+### 2.1 P0 온보딩 입력 범위
+
+P0 루틴 추천과 계정 식별에 직접 필요한 값만 가입 완료 전에 받는다. 활동 지역·시설·운동 가능 시간은 메이트 기능 전에는 추천·운동 기록에 사용하지 않으므로 선택 입력으로 미룬다.
+
+| 구분 | 입력값 | 저장 위치 | 처리 기준 |
+|---|---|---|---|
+| 필수 | 이메일, 비밀번호 | `users` | 이메일 인증 없이 즉시 가입. 비밀번호는 BCrypt hash만 저장 |
+| 필수 | 닉네임 | `user_profiles` | `display_name`은 최초에는 닉네임과 같은 값으로 저장. 활성 닉네임 unique |
+| 필수 | 이용약관 v1, 개인정보 수집·이용 v1 동의 | `user_consents` | 두 `terms_documents.is_required=true` 문서에 각각 동의 행 생성 |
+| 필수 | 주 목표 1개 | `user_goals` | `is_primary=true` 행을 정확히 하나 생성 |
+| 필수 | 헬스 숙련도 1개 | `user_sports` | 활성 `HEALTH` 종목에 대해 정확히 하나 생성. P0 정적 루틴 추천의 입력값 |
+| 선택 | 활동 지역, 이용 시설, 운동 가능 시간 | `user_activity_regions`, `user_facilities`, `user_available_times` | 건너뛰기 허용. 메이트 기능을 시작할 때 입력을 요청 |
+| 선택 | 생년월일, 성별, 소개, 공개 범위 | `user_profiles` | 프로필 편집에서 나중에 입력 가능 |
+
+가입 완료 서비스는 `users`, `user_profiles`, 두 `user_consents`, `user_goals`, `user_sports`를 하나의 트랜잭션으로 생성한 뒤 `user_profiles.onboarding_completed_at`을 기록한다. 여러 테이블에 걸친 “필수 행 존재” 규칙은 MySQL `CHECK`만으로 표현할 수 없으므로, 로그인 후 P0 루틴 API는 이 완료 시각과 필수 행을 함께 검사한다.
+
+### 2.2 공통 컬럼 규칙
 
 | 구분 | 표준 |
 |---|---|
@@ -42,7 +58,7 @@
 | 삭제 | `deleted_at`, `deleted_by`가 있는 행은 일반 조회에서 제외. 사용자 식별값을 익명화할 때 감사용 원문은 남기지 않음 |
 | 낙관적 잠금 | 신청 수락, 모집 인원, 광고 노출 등 경쟁 갱신 테이블에는 `version bigint not null default 0` (`@Version`) |
 
-### 2.2 MySQL 구현 유의사항 및 인증 방식
+### 2.3 MySQL 구현 유의사항 및 인증 방식
 
 - MySQL에서 schema는 database와 동의어다. 서비스 데이터를 여러 database로 나누지 않고 물리 DB `fitmate` 1개로 시작하며, 표 이름에 `core_`, `social_`, `fitness_`, `health_`, `ops_` 접두사를 붙인다. 아래의 `users`, `posts` 같은 이름은 논리명이며 실제 이름은 각각 `core_users`, `social_posts`다.
 - MySQL 8.0.16 이상에서 `CHECK`가 동작하지만, 상태 전이·상호 차단·정원 계산 같은 다중 행 규칙은 Spring Boot 서비스 트랜잭션에서 보장한다.
@@ -55,7 +71,7 @@
 - refresh token 재발급은 기존 `auth_sessions` 행을 revoke하고 후속 행을 만드는 rotation이다. 이미 revoke된 token hash가 다시 제출되면 탈취 의심으로 기록하고, 해당 사용자의 모든 refresh session을 revoke한 뒤 `users.auth_version`을 증가시켜 모든 access token을 즉시 무효화한다. 사용자는 모든 기기에서 다시 로그인해야 한다.
 - `revoked_access_tokens`는 access JWT의 `jti`와 `expires_at`만 보관하는 단기 blacklist다. `expires_at` index와 시간별 삭제 job으로 만료 행을 제거한다.
 
-### 2.3 후속 민감 데이터 암호화와 키 관리
+### 2.4 후속 민감 데이터 암호화와 키 관리
 
 - P0에는 서버 건강 원본·정확 집결 위치·외부 provider credential을 저장하지 않으므로, KMS·DEK·키 회전 테이블도 첫 마이그레이션에서 제외한다.
 - 후속 기능에서 민감값을 서버에 저장할 때는 암·복호화를 Android가 아닌 Spring Boot의 `SensitiveDataEncryptionService`에서만 수행한다. MySQL에는 평문 키나 평문 토큰을 저장하지 않는다.
@@ -168,7 +184,7 @@ Room 테이블은 `local_` 접두사를 사용하며, 서버 MySQL 테이블을 
 | `local_workout_draft_sets` | `local_id`, `draft_exercise_id`, `set_no`, 중량/반복/RPE/메모, `is_completed` | 세트 기록의 유실 방지. 초안 업로드 완료 뒤 안전 시점에 정리 |
 | `local_running_drafts` / `local_running_laps` | 목표·랩·거리·페이스·일시정지 정보 | 러닝 중 지속 저장. 경로 원본은 장기 Room 저장 대상이 아님 |
 | `local_pending_operations` | `operation_id`, `type`, `payload_json`, `idempotency_key`, `attempt_count`, `next_retry_at`, `last_error` | WorkManager가 순서·재시도 관리. 성공한 요청만 삭제, 영구 실패는 사용자에게 재시도/폐기 선택 제공 |
-| `local_media_upload_queue` | `local_id`, `content_uri`, `sha256`, MIME/크기, `upload_state` | 실제 파일은 앱 전용 암호화 파일 영역에만 보관. 서버 업로드·검사 완료 후 로컬 파일과 행 삭제 |
+| `local_media_upload_queue` (후속) | `local_id`, `content_uri`, `sha256`, MIME/크기, `upload_state` | 실제 파일은 앱 전용 암호화 파일 영역에만 보관. 서버 업로드·검사 완료 후 로컬 파일과 행 삭제 |
 | `local_reference_cache` | `cache_key`, `version`, `payload_json`, `expires_at` | 종목·운동사전·약관 메타데이터 등 비민감 읽기 캐시 |
 | `local_feed_cache` / `local_notification_cache` | `server_id`, `payload_json`, `cached_at`, `expires_at` | 화면 성능용 캐시. 캐시는 서버 권한을 대신하지 않으며 재조회 때 다시 필터링 |
 | `local_dm_drafts` | `conversation_id`, `body`, `updated_at` | 작성 중인 메시지 초안만. 실제 대화 내용·첨부는 기본적으로 캐시하지 않음 |
@@ -202,7 +218,7 @@ Room에는 `password_hash`, 다른 사용자의 정확 위치, 전체 DM, 인바
 | `auth_sessions` | `id`, `user_id`, `token_family_id`, `refresh_token_hash`, `device_id`, `issued_at`, `expires_at`, `last_used_at`, `revoked_at`, `revoke_reason`, `replaced_by_session_id` | refresh token 단위의 서버 세션 | refresh token 평문 저장 금지, hash unique. `ROTATED`, `LOGOUT`, `REUSE_DETECTED` 등의 사유 기록. 재사용 탐지 시 전체 session revoke 및 `auth_version` 증가 |
 | `revoked_access_tokens` | `jti(PK)`, `user_id`, `session_id`, `expires_at`, `revoked_at` | 짧은 수명의 access JWT 즉시 무효화 목록 | `expires_at` index의 TTL cleanup 대상. access token에는 `jti`, `session_id`, `auth_version`을 포함하고 만료 전 서버가 blacklist·세션·version을 검사 |
 | `auth_events` | `id`, `user_id nullable`, `event_type`, `session_id nullable`, `ip_hash`, `user_agent_summary`, `occurred_at` | 로그인·로그아웃·토큰 재사용 보안 이력 | 토큰·원본 IP·비밀번호는 저장하지 않음 |
-| `user_profiles` | `user_id(PK/FK)`, `nickname`, `display_name`, `birth_date`, `gender`, `visibility`, `bio`, `weight_unit`, `timezone_id`, `version` | 사용자 1:1 공개 프로필 | 활성 사용자 간 닉네임 unique. `timezone_id`는 IANA 이름. 수정 API는 `version` 일치 필수 |
+| `user_profiles` | `user_id(PK/FK)`, `nickname`, `display_name`, `birth_date`, `gender`, `visibility`, `bio`, `weight_unit`, `timezone_id`, `onboarding_completed_at`, `version` | 사용자 1:1 공개 프로필 | 활성 사용자 간 닉네임 unique. `timezone_id`는 IANA 이름. 필수 온보딩 행이 모두 생성된 뒤 `onboarding_completed_at`을 기록. 수정 API는 `version` 일치 필수 |
 | `regions` | `id`, `parent_id`, `name`, `level`, `code`, `is_active` | 활동·광고·모집 지역의 표준 사전 | `(parent_id, name)` unique, 행정구역 코드 unique |
 | `user_activity_regions` | `user_id`, `region_id`, `is_primary` | 사용자 N:M 활동 지역 | `(user_id, region_id)` unique. MySQL generated column `primary_user_id`로 사용자별 주 활동지역 1개 unique |
 | `facilities` | `id`, `name`, `region_id`, `address_summary`, `is_active` | 이용 헬스장/운동시설 사전 | 초기 시설 시드는 하지 않는다. 사용자가 입력하면 지역별 정규화 이름으로 기존 시설을 찾고, 없으면 생성한다. `(region_id, normalized_name)` unique. 정확 좌표는 필요 확정 전 저장하지 않음 |
@@ -213,7 +229,7 @@ Room에는 `password_hash`, 다른 사용자의 정확 위치, 전체 DM, 인바
 | `user_available_times` | `id`, `user_id`, `weekday_local`, `start_local_time`, `end_local_time`, `timezone_id` | 운동 가능 시간 | UTC로 변환해 저장하지 않는 반복 로컬 시간. IANA `timezone_id` 기준 `weekday_local 0..6`, 시작 < 종료 |
 | `terms_documents` | `id`, `type`, `version`, `content_uri`, `effective_at`, `is_required` | 약관/동의 문서의 버전 원본 | `(type, version)` unique. 이미 동의받은 문서는 수정 금지, 새 버전으로 등록 |
 | `user_consents` | `id`, `user_id`, `terms_document_id`, `consented_at`, `withdrawn_at`, `evidence` | 사용자 동의 이력 | `(user_id, terms_document_id)` unique. 철회는 행 삭제가 아닌 `withdrawn_at` 기록 |
-| `notification_settings` | `user_id(PK/FK)`, `in_app_enabled`, `dm_enabled`, `mate_enabled`, `community_enabled`, `version` | 앱 내 알림 범주별 설정 | Push device token·외부 Push 발송은 이번 구현에서 제외. 수정 API는 `version` 일치 필수 |
+| `notification_settings` (후속) | `user_id(PK/FK)`, `in_app_enabled`, `dm_enabled`, `mate_enabled`, `community_enabled`, `version` | 앱 내 알림 범주별 설정 | 알림 기능 자체와 함께 추가한다. Push device token·외부 Push 발송은 이번 구현에서 제외. 수정 API는 `version` 일치 필수 |
 
 ### 6.2 파일과 인바디 (`core_`, `health_`)
 
@@ -259,11 +275,11 @@ DM의 읽음 여부는 메시지별 boolean을 중복 저장하지 않고 `dm_co
 
 | 테이블 | 핵심 컬럼 | 관계·역할 | 핵심 제약 |
 |---|---|---|---|
-| `exercise_catalog` | `id`, `sport_id`, `name`, `body_part`, `equipment_type`, `instruction_asset_id nullable`, `reference_url`, `is_active` | 표준 운동 사전 | `(sport_id, normalized_name)` unique. P0에는 `instruction_asset_id` FK를 만들지 않고 검증된 YouTube `reference_url`만 사용한다. `media_assets` 도입 마이그레이션에서 FK를 추가 |
+| `exercise_catalog` | `id`, `sport_id`, `name`, `body_part`, `equipment_type`, `instruction_asset_id nullable`, `reference_url`, `is_active` | 표준 운동 사전 | `(sport_id, normalized_name)` unique. P0에는 `instruction_asset_id` FK를 만들지 않고 nullable `reference_url`만 둔다. 검증된 YouTube URL은 운영 검수 뒤 채우며, `media_assets` 도입 마이그레이션에서 FK를 추가 |
 | `exercise_substitutions` | `base_exercise_id`, `substitute_exercise_id`, `display_order` | 대표 운동의 대체 운동 목록 | 두 FK는 같은 `sport_id`의 `exercise_catalog`만 허용. `(base_exercise_id, substitute_exercise_id)` unique, 자기 참조 금지 |
 | `routines` | `id`, `owner_user_id nullable`, `sport_id`, `name`, `source_type`, `target_goal_code nullable`, `target_level nullable`, `difficulty`, `is_template`, `is_active`, `version` | 시스템 템플릿/사용자 저장 루틴 | `sport_id`로 템플릿 종목을 명시한다. `source_type`은 `SYSTEM_TEMPLATE`/`USER_COPY`/`MANUAL`만 허용. 시스템 템플릿은 `owner_user_id null`, 사용자 루틴은 소유자 필수. 수정 API는 `version` 일치 필수 |
 | `routine_items` | `id`, `routine_id`, `exercise_id`, `sequence_no`, `target_sets`, `target_reps_min/max`, `target_weight_kg`, `target_rpe`, `rest_seconds`, `version` | 루틴 속 운동 순서 | `(routine_id, sequence_no)` unique. 목표 수치 음수 금지. 수정 API는 `version` 일치 필수 |
-| `workout_sessions` | `id`, `user_id`, `entry_type`, `routine_id`, `mate_participation_id`, `status`, `started_at`, `ended_at`, `report_status`, `cancel_reason`, `client_updated_at`, `version` | 공통 운동 모듈의 개인 단위 세션 | `entry_type=SOLO`이면 `mate_participation_id null`, `MATE`이면 필수. 상태 전이와 시간 순서, 수정 API의 `version` 일치 검증 |
+| `workout_sessions` (P0) | `id`, `user_id`, `routine_id`, `status`, `started_at`, `ended_at`, `cancel_reason`, `client_updated_at`, `version` | 개인 단위 운동 세션 | P0는 개인 운동만 기록한다. 상태 전이와 시간 순서, 수정 API의 `version` 일치 검증. 메이트 도입 마이그레이션에서 `entry_type`, `mate_participation_id`, 필요 시 `report_status`를 추가 |
 | `workout_session_exercises` | `id`, `workout_session_id`, `exercise_id`, `display_name_snapshot`, `body_part_snapshot`, `sequence_no`, `completed_at`, `client_updated_at`, `version` | 세션 중 추가·변경된 운동의 스냅샷 | `(workout_session_id, sequence_no)` unique. 카탈로그 변경 후에도 당시 기록 보존. 오프라인 수정은 `version` 일치 필수 |
 | `workout_sets` | `id`, `session_exercise_id`, `set_no`, `weight_kg`, `repetitions`, `duration_seconds`, `rest_seconds`, `rpe`, `is_completed`, `memo`, `client_updated_at`, `version` | 세트별 기록 | `(session_exercise_id, set_no)` unique. 중량/반복/시간/휴식 음수 금지, `rpe 1..10 or null`. 수정/upsert는 `version` 일치 필수 |
 | `running_records` (P1) | `workout_session_id(PK/FK)`, `run_type`, 목표값, `route_visibility`, `auto_pause_enabled`, `total_distance_meters`, `avg_pace_sec_per_km`, `best_pace_sec_per_km`, `condition_score`, `memo` | 러닝 세션의 선택 상세 | 러닝 세션만 참조하도록 Spring 서비스 검증. 조건점수 범위와 목표 유형별 필수값 체크 |
@@ -454,7 +470,7 @@ FAILED -> QUEUED (재시도) | CANCELED
 | P0 | 정확 위치 공개 시점 | `ACCEPTED` 참가자만, 모임 취소/철회 시 즉시 회수 | 암호화·복호화 권한 정책에 영향 |
 | P0 | 관리자 역할/제재 수준 | 역할 3단계, 제재는 경고/기간/영구 | 역할-권한 매트릭스와 감사 요건 확정 필요 |
 | 확정 | 프로필 이미지 | P0에서는 기본 아바타만 제공하고 `media_assets`·프로필 업로드는 후속 기능으로 추가 | 첫 마이그레이션에 객체 저장소·파일 검사·미디어 FK를 넣지 않음 |
-| 확정 | 활동 지역·이용 시설 | `regions`는 시·도와 시까지만 시드하고 구/동은 저장하지 않음. 시설은 시드하지 않고 사용자 입력으로 생성/연결 | 시연 범위 밖의 상세 행정구역·공용 시설 목록은 후속 관리 기능에서 확장 |
+| 확정 | 활동 지역·이용 시설 | 스키마는 시·도(level 1)와 시(level 2)까지만 허용하고 구/동은 저장하지 않음. 초기 시드는 전국 17개 광역 시·도이며, 특정 시 단위 매칭이 필요해질 때 level 2 시드를 추가한다. 시설은 시드하지 않고 사용자 입력으로 생성/연결 | 시연 범위 밖의 상세 행정구역·공용 시설 목록은 후속 관리 기능에서 확장 |
 | P1 | 종목별 모집 상세 | 공통 필터는 컬럼, 나머지는 JSON Schema | 종목별 검색 요구가 커지면 상세 테이블 분리 필요 |
 | P1 | 광고 운영 | 직접 등록 제휴광고만, 지역·관심 종목만 사용 | 광고주 식별·쿠폰·성과 보관기간 확정 필요 |
 | 확정 | P0 루틴 추천 | 주 목표·`HEALTH` 숙련도 기반 정적 `SYSTEM_TEMPLATE` 선택. 시작/수정 시 `USER_COPY` 스냅샷 생성, 미일치 시 헬스 초급 전신 루틴 반환 | 초급 전신/2분할, 근육 증가 3분할, 다이어트 전신, 습관용 전신 5개를 시드. AI·인바디/건강 데이터 기반 추천·추천 이력은 만들지 않음 |
@@ -463,15 +479,15 @@ FAILED -> QUEUED (재시도) | CANCELED
 
 ## 12. 초기 DB 생성 순서 (DDL 작성 전 체크리스트)
 
-1. 이메일/비밀번호 회원가입·로그인과 JWT/refresh token session을 구현한다. 이메일 인증, 인증 메일 발송, 비밀번호 재설정 메일·재설정 token, Push는 DDL·API에서 제외한다.
+1. 초기 DDL은 이메일/비밀번호 계정과 JWT/refresh session을 저장할 구조만 만든다. 실제 Spring Security/API 구현은 별도 작업으로 둔다. 이메일 인증, 인증 메일 발송, 비밀번호 재설정 메일·재설정 token, Push는 DDL·API에서 제외한다.
 2. MySQL 8.4 LTS(최소 8.0.16), InnoDB/`utf8mb4`, 애플리케이션·읽기 전용·Flyway 마이그레이션 계정, 백업 암호화, 로그 보관기간을 확정한다.
 3. `core_`, `social_`, `fitness_`, `health_`, `ops_` 접두사와 `BINARY(16)` UUID 변환 방식, UTC/timezone 규칙을 확정한다.
-4. 회원가입/온보딩에서 활동 지역, 이용 시설, 운동 가능 시간, 목표(주 목표 1개), 운동 종목·숙련도와 필수 약관 동의를 받아 각 테이블에 저장한다. 이어서 P0의 정적 루틴 템플릿(주 목표·헬스 숙련도별)과 fallback 템플릿을 시드한다. AI 추천과 건강 데이터 기반 추천은 만들지 않는다.
+4. 회원가입/온보딩에서 이메일·비밀번호·닉네임, 필수 약관 동의, 목표(주 목표 1개), `HEALTH` 숙련도를 하나의 트랜잭션으로 저장하고 `onboarding_completed_at`을 기록한다. 활동 지역·이용 시설·운동 가능 시간과 프로필 상세는 선택 입력으로 둔다. 이어서 P0의 정적 루틴 템플릿(주 목표·헬스 숙련도별)과 fallback 템플릿을 시드한다. AI 추천과 건강 데이터 기반 추천은 만들지 않는다.
 5. 상태값을 API 공용 enum으로 정의하고, 이 문서의 전이표를 상태 머신 테스트 케이스로 변환한다.
-6. 공통 사전을 Flyway seed로 관리한다. `regions`에는 시·도와 시까지만, `sports`에는 전체 종목 코드(`HEALTH`만 활성), `exercise_catalog`에는 P0 헬스 운동 20~30개와 YouTube `reference_url`, `exercise_substitutions`, 루틴 5개와 항목, 이용약관 v1·개인정보 수집·이용 동의 v1을 넣는다. 시설·사용자·운영 데이터는 초기 시드하지 않는다.
-7. P0에는 객체 저장소 업로드를 만들지 않는다. 운동 사전의 YouTube `reference_url`만 HTTPS allowlist로 검증한다. 이미지·동영상 업로드와 100MB 제한, signed URL, 악성 파일 검사는 `media_assets` 도입 마이그레이션에서 추가한다.
+6. 공통 사전을 Flyway seed로 관리한다. `regions`에는 전국 17개 광역 시·도를 우선 넣고, `sports`에는 전체 종목 코드(`HEALTH`만 활성), `exercise_catalog`에는 P0 헬스 운동 24개와 nullable `reference_url`, `exercise_substitutions`, 루틴 5개와 항목, 이용약관 v1·개인정보 수집·이용 동의 v1을 넣는다. 검수되지 않은 YouTube URL은 시드하지 않는다. 시설·사용자·운영 데이터와 level 2 시 지역은 초기 시드하지 않는다.
+7. P0에는 객체 저장소 업로드를 만들지 않는다. 운동 사전의 YouTube `reference_url`은 값이 등록될 때만 HTTPS allowlist로 검증한다. 이미지·동영상 업로드와 100MB 제한, signed URL, 악성 파일 검사는 `media_assets` 도입 마이그레이션에서 추가한다.
 8. 권한 매트릭스와 API별 데이터 공개 테스트를 작성한다. 특히 비공개 글, 차단, DM 요청, 정확 위치, 건강 데이터, 관리자 DM 열람을 우선 검증한다.
-9. 첫 Flyway 마이그레이션은 `users/auth_sessions/revoked_access_tokens/auth_events → terms_documents → regions/facilities → user_profiles/user_consents/user_activity_regions/user_facilities/user_available_times/notification_settings → sports/exercise_catalog/exercise_substitutions → user_sports/user_goals → routines/routine_items → workout_sessions/workout_session_exercises/workout_sets → ops_idempotency_keys`와 정적 템플릿·사전 seed까지만 만든다. P0 운동 사전은 `reference_url`만 사용하며 `instruction_asset_id` FK, `media_assets`, 러닝·메이트·소셜/DM·건강·운영은 기능 개발 순서에 맞춰 별도 마이그레이션으로 추가한다.
+9. 첫 Flyway 마이그레이션은 `users/auth_sessions/revoked_access_tokens/auth_events → terms_documents → regions/facilities → user_profiles/user_consents/user_activity_regions/user_facilities/user_available_times → sports/exercise_catalog/exercise_substitutions → user_sports/user_goals → routines/routine_items → workout_sessions/workout_session_exercises/workout_sets → ops_idempotency_keys`와 정적 템플릿·사전 seed까지만 만든다. 파일은 `db/migration/V1__create_p0_schema.sql`, `db/migration/V2__seed_p0_reference_data.sql`이다. P0 운동 사전은 nullable `reference_url`만 사용하며 `instruction_asset_id` FK, `media_assets`, 알림 설정, 러닝·메이트·소셜/DM·건강·탈퇴/파기·운영은 기능 개발 순서에 맞춰 별도 마이그레이션으로 추가한다.
 10. 빈 MySQL과 업그레이드 대상 MySQL에서 Flyway migrate, unique/check/FK 위반, 회원가입·로그인, 세션 회전/재사용 탐지, 주 목표·헬스 숙련도별 정적 템플릿 및 fallback, 대체 운동, 동시 세트 업로드·`version` 충돌·idempotency를 자동 테스트한다. Room은 별도 in-memory SQLite 마이그레이션과 로그아웃 시 캐시 삭제를 테스트한다.
 
 ## 13. 검증 시나리오
@@ -479,6 +495,7 @@ FAILED -> QUEUED (재시도) | CANCELED
 | 영역 | 반드시 통과할 시나리오 |
 |---|---|
 | 회원가입·로그인 | 중복 이메일은 가입할 수 없고, BCrypt hash 비교가 성공한 경우에만 로그인한다. 이메일 인증 및 비밀번호 재설정 메일 없이 즉시 로그인 가능 |
+| 온보딩 완료 | 닉네임, 필수 약관 2건, 주 목표 1개, `HEALTH` 숙련도가 모두 생성된 경우에만 `onboarding_completed_at`을 기록하고 P0 루틴 API를 허용함 |
 | 루틴 추천 | 회원가입/온보딩에서 저장한 주 목표와 `HEALTH`의 `user_sports.skill_level`로 정적 템플릿을 선택하고, 일치 항목이 없으면 헬스 초급 전신 fallback을 반환함 |
 | 인증 | 현재 기기 로그아웃은 해당 refresh session·access `jti`만 폐기하고, 전체 기기 로그아웃은 `auth_version` 불일치로 모든 access token을 즉시 거절함 |
 | refresh token 재사용 | revoke된 refresh token 재제출은 `REUSE_DETECTED` 감사 이벤트, 모든 session revoke, `auth_version` 증가, 모든 기기 재로그인으로 처리됨 |
@@ -494,7 +511,7 @@ FAILED -> QUEUED (재시도) | CANCELED
 
 ## 14. 이번 설계에서 의도적으로 제외한 것
 
-- 실제 SQL, ORM 모델, API 엔드포인트, 서버 선택 및 인프라 배포 구성
+- ORM 모델, API 엔드포인트, Spring Boot 서버 생성 및 인프라 배포 구성
 - 게시물 연동 단체 채팅과 초대형 비공개 단체 채팅
 - 실시간 위치 공유, 워치 심박수 실시간 스트리밍, 기기 직접 Bluetooth 통신
 - 의료 판단·진단·처방을 위한 데이터 모델
