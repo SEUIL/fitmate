@@ -11,26 +11,38 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.lifecycle.lifecycleScope
 import com.fitmate.app.samsunghealth.SamsungHealthManager
 import com.fitmate.app.samsunghealth.SamsungHealthStatus
 import com.fitmate.app.samsunghealth.SamsungHealthUiState
 import com.fitmate.app.ui.SamsungHealthTestScreen
+import com.fitmate.app.ui.FitMatePrototypeApp
 import com.fitmate.app.ui.theme.FitmateTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var manager: SamsungHealthManager
     private var uiState by mutableStateOf(SamsungHealthUiState())
+    private var showSamsungHealthTest by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         manager = SamsungHealthManager(applicationContext)
         enableEdgeToEdge()
         setContent {
-            FitmateTheme {
+            FitmateTheme(darkTheme = false) {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    SamsungHealthTestScreen(uiState, ::requestPermissions, ::loadData, ::loadData, ::loadData, { manager.resolve(this@MainActivity) }, Modifier.padding(innerPadding))
+                    if (showSamsungHealthTest) {
+                        Column(Modifier.padding(innerPadding)) {
+                            Button(onClick = { showSamsungHealthTest = false }) { Text("FitMate 프로토타입으로 돌아가기") }
+                            SamsungHealthTestScreen(uiState, ::requestPermissions, ::loadData, ::loadData, ::loadData, { manager.resolve(this@MainActivity) }, Modifier)
+                        }
+                    } else {
+                        FitMatePrototypeApp(onOpenSamsungTest = { showSamsungHealthTest = true })
+                    }
                 }
             }
         }
