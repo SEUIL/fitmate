@@ -69,3 +69,12 @@ signing.properties
 !/android/gradle/wrapper/gradle-wrapper.jar
 !/android/gradle/wrapper/gradle-wrapper.properties
 
+# -----------------------------------------------------------------------------
+# Backend local files
+# -----------------------------------------------------------------------------
+/backend/.gradle/
+/backend/build/
+/backend/out/
+/backend/.idea/
+/backend/src/main/resources/application-local.yml
+
