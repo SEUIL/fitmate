@@ -29,4 +29,14 @@ class UuidBinaryConverterTest {
 
         assertEquals("66774455001122338899aabbccddeeff", hex)
     }
+
+    @Test
+    fun `logical UUID can be converted to and from the raw JPA binary UUID representation`() {
+        val logical = UUID.fromString("10000000-0000-0000-0000-000000000001")
+
+        val rawJpaUuid = UuidBinaryConverter.toMysqlOrderedUuid(logical)
+
+        assertEquals(UUID.fromString("00000000-1000-0000-0000-000000000001"), rawJpaUuid)
+        assertEquals(logical, UuidBinaryConverter.fromMysqlOrderedUuid(rawJpaUuid))
+    }
 }
