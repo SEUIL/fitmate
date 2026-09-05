@@ -21,6 +21,8 @@ import com.fitmate.backend.member.api.ChangePasswordRequest
 import com.fitmate.backend.member.api.ConsentResponse
 import com.fitmate.backend.member.api.FacilityResponse
 import com.fitmate.backend.member.api.MeResponse
+import com.fitmate.backend.member.api.NotificationSettingsResponse
+import com.fitmate.backend.member.api.NotificationSettingsUpdateRequest
 import com.fitmate.backend.member.api.ProfileResponse
 import com.fitmate.backend.member.api.ProfileUpdateRequest
 import com.fitmate.backend.member.api.RegionResponse
@@ -40,6 +42,7 @@ import com.fitmate.backend.member.domain.UserRegionId
 import com.fitmate.backend.member.domain.UserSport
 import com.fitmate.backend.member.domain.UserSportId
 import com.fitmate.backend.member.repository.FacilityRepository
+import com.fitmate.backend.member.repository.NotificationSettingRepository
 import com.fitmate.backend.member.repository.RegionRepository
 import com.fitmate.backend.member.repository.UserActivityRegionRepository
 import com.fitmate.backend.member.repository.UserAvailableTimeRepository
@@ -70,6 +73,7 @@ class MemberService(
     private val userAvailableTimeRepository: UserAvailableTimeRepository,
     private val userSportRepository: UserSportRepository,
     private val userGoalRepository: UserGoalRepository,
+    private val notificationSettingRepository: NotificationSettingRepository,
     private val termsDocumentRepository: TermsDocumentRepository,
     private val userConsentRepository: UserConsentRepository,
     private val sportRepository: SportRepository,
@@ -183,6 +187,24 @@ class MemberService(
         userProfileRepository.findById(currentUser.userId).ifPresent { it.deletedAt = now }
         invalidateAllSessions(user, "WITHDRAWAL")
         authEventRepository.save(AuthEvent(UUID.randomUUID(), currentUser.userId, currentUser.sessionId, AuthEventType.WITHDRAWAL, null, now))
+    }
+
+    @Transactional(readOnly = true)
+    fun notificationSettings(currentUser: AuthenticatedUser): NotificationSettingsResponse {
+        val setting = notificationSettingRepository.findById(currentUser.userId).orElseThrow { ApiException(ApiErrorCode.RESOURCE_NOT_FOUND) }
+        return NotificationSettingsResponse(setting.inAppEnabled, setting.dmEnabled, setting.mateEnabled, setting.communityEnabled, setting.version)
+    }
+
+    @Transactional
+    fun updateNotificationSettings(currentUser: AuthenticatedUser, request: NotificationSettingsUpdateRequest): NotificationSettingsResponse {
+        val setting = notificationSettingRepository.findById(currentUser.userId).orElseThrow { ApiException(ApiErrorCode.RESOURCE_NOT_FOUND) }
+        if (setting.version != request.version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
+        setting.inAppEnabled = request.inAppEnabled
+        setting.dmEnabled = request.dmEnabled
+        setting.mateEnabled = request.mateEnabled
+        setting.communityEnabled = request.communityEnabled
+        val updated = notificationSettingRepository.saveAndFlush(setting)
+        return NotificationSettingsResponse(updated.inAppEnabled, updated.dmEnabled, updated.mateEnabled, updated.communityEnabled, updated.version)
     }
 
     private fun replaceRegionsAndFacilities(userId: UUID, regionIds: List<UUID>?, facilityNames: List<String>?) {

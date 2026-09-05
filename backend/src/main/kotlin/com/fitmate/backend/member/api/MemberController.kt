@@ -66,4 +66,9 @@ class MemberController(private val memberService: MemberService) {
         memberService.withdraw(currentUser, request)
     }
 
+    @GetMapping("/users/me/notification-settings")
+    fun notificationSettings(@AuthenticationPrincipal currentUser: AuthenticatedUser): ApiResponse<NotificationSettingsResponse> = ApiResponse.success(memberService.notificationSettings(currentUser))
+
+    @PatchMapping("/users/me/notification-settings")
+    fun updateNotificationSettings(@AuthenticationPrincipal currentUser: AuthenticatedUser, @Valid @RequestBody request: NotificationSettingsUpdateRequest): ApiResponse<NotificationSettingsResponse> = ApiResponse.success(memberService.updateNotificationSettings(currentUser, request))
 }
