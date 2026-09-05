@@ -4,8 +4,10 @@ import com.fitmate.backend.common.api.ApiErrorBody
 import com.fitmate.backend.common.api.ApiErrorField
 import com.fitmate.backend.common.api.ErrorResponse
 import jakarta.validation.ConstraintViolationException
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.slf4j.LoggerFactory
 import org.springframework.validation.FieldError
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -14,6 +16,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     @ExceptionHandler(ApiException::class)
     fun handleApiException(exception: ApiException): ResponseEntity<ErrorResponse> {
@@ -83,8 +86,22 @@ class GlobalExceptionHandler {
         )
     }
 
+    @ExceptionHandler(DataIntegrityViolationException::class)
+    fun handleDataIntegrityViolation(exception: DataIntegrityViolationException): ResponseEntity<ErrorResponse> {
+        logger.warn("Data integrity violation", exception)
+        return ResponseEntity.badRequest().body(
+            ErrorResponse(
+                error = ApiErrorBody(
+                    code = ApiErrorCode.VALIDATION_ERROR.name,
+                    message = ApiErrorCode.VALIDATION_ERROR.message,
+                ),
+            ),
+        )
+    }
+
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(exception: Exception): ResponseEntity<ErrorResponse> {
+        logger.error("Unhandled API exception", exception)
         return ResponseEntity.internalServerError().body(
             ErrorResponse(
                 error = ApiErrorBody(
