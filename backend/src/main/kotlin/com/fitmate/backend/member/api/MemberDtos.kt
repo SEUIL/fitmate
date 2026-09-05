@@ -47,3 +47,5 @@ data class ProfileUpdateRequest(
 
 data class ChangePasswordRequest(@field:NotBlank val currentPassword: String, @field:NotBlank val newPassword: String)
 data class WithdrawRequest(@field:NotBlank val password: String)
+data class NotificationSettingsResponse(val inAppEnabled: Boolean, val dmEnabled: Boolean, val mateEnabled: Boolean, val communityEnabled: Boolean, val version: Long)
+data class NotificationSettingsUpdateRequest(@field:NotNull val inAppEnabled: Boolean, @field:NotNull val dmEnabled: Boolean, @field:NotNull val mateEnabled: Boolean, @field:NotNull val communityEnabled: Boolean, @field:NotNull val version: Long)
