@@ -1,8 +1,8 @@
 # FitMate P0 API 명세
 
 - 작성일: 2026-09-03
-- 최종 수정일: 2026-09-03
-- 버전: v0.1
+- 최종 수정일: 2026-09-05
+- 버전: v0.2
 - 상태: 검토 중
 - 대상: Kotlin Spring Boot Backend, Android Client
 - 기준 문서:
@@ -73,8 +73,8 @@ API 구현 전에 Flyway로 아래 순서의 테이블과 시드를 생성한다
 | 10 | `core_user_activity_regions` | 사용자 활동 지역 |
 | 11 | `core_user_facilities` | 사용자 이용 시설 |
 | 12 | `core_user_available_times` | 운동 가능 시간 |
-| 13 | `core_notification_settings` | 앱 내 알림 범주 설정 |
-| 14 | `core_sports` | 운동 종목 사전 |
+| 13 | `core_notification_settings` | 앱 내 알림 범주 설정. Backend A가 V3 migration으로 추가 |
+| 14 | `fitness_sports` | 운동 종목 사전 |
 | 15 | `fitness_exercise_catalog` | 헬스 운동 사전 |
 | 16 | `fitness_exercise_substitutions` | 대체 운동 관계 |
 | 17 | `core_user_sports` | 관심 종목과 숙련도 |
@@ -116,7 +116,7 @@ API 구현 전에 Flyway로 아래 순서의 테이블과 시드를 생성한다
 | 업무 ID | UUID 문자열 |
 | 시각 | ISO 8601 UTC, 예: `2026-09-03T10:30:00.123Z` |
 | 인증 | `Authorization: Bearer {accessToken}` |
-| 생성 중복 방지 | `Idempotency-Key: {clientGeneratedUuid}` |
+| 생성 중복 방지 | 인증된 생성 요청은 `Idempotency-Key: {clientGeneratedUuid}` 사용. 회원가입은 활성 이메일 unique와 단일 트랜잭션으로 중복 생성 방지 |
 | 수정 충돌 방지 | 요청의 `version`과 서버의 현재 version 비교 |
 
 ### 4.2 성공 응답
@@ -241,11 +241,7 @@ API 구현 전에 Flyway로 아래 순서의 테이블과 시드를 생성한다
 
 `POST /api/v1/auth/signup`
 
-Header:
-
-```text
-Idempotency-Key: 0be3373d-6f86-4619-bec8-710d92d36021
-```
+회원가입에는 `Idempotency-Key`를 사용하지 않는다. 가입 전에는 `ops_idempotency_keys.user_id`를 결정할 수 없고 token 응답 원문도 저장하지 않기 때문이다. 재요청에 따른 중복 계정은 정규화 이메일 unique 제약과 가입 트랜잭션으로 차단한다.
 
 Request:
 
@@ -262,7 +258,7 @@ Request:
   "weightUnit": "KG",
   "timezoneId": "Asia/Seoul",
   "activityRegionIds": [
-    "618b23ac-0b7c-4c40-a85a-a6bf1e7689d1"
+    "10000000-0000-0000-0000-000000000001"
   ],
   "facilityNames": [
     "FitMate 헬스장"
@@ -288,8 +284,8 @@ Request:
     }
   ],
   "consentDocumentIds": [
-    "f66d46db-13da-4bd1-8b3f-e2463ac2ba19",
-    "6254433e-ad24-4e64-b14e-8379da3ef76c"
+    "20000000-0000-0000-0000-000000000001",
+    "20000000-0000-0000-0000-000000000002"
   ],
   "deviceId": "android-installation-id"
 }
@@ -325,9 +321,11 @@ Response `201 Created`:
 검증 규칙:
 
 - 활성 계정의 이메일과 닉네임은 중복될 수 없다.
-- 비밀번호 최소 길이와 조합 규칙을 적용한다.
+- P0 필수 입력은 이메일, 비밀번호, 닉네임, 필수 약관 2건, 주 목표 1개와 `HEALTH` 숙련도다. `displayName`을 생략하면 닉네임과 같은 값으로 저장하고 나머지 프로필 입력은 선택 사항으로 처리한다.
+- 비밀번호는 8~64자이며 문자와 숫자를 각각 하나 이상 포함하고, BCrypt 입력은 UTF-8 기준 72바이트를 넘을 수 없다.
 - 비밀번호는 BCrypt hash만 DB에 저장한다.
 - 활동 지역은 등록된 `regionId`만 허용한다.
+- `facilityNames`가 있으면 `activityRegionIds`는 정확히 1개여야 하며, 해당 지역을 주 활동 지역으로 사용해 시설을 조회하거나 생성한다.
 - 관심 종목은 복수 선택할 수 있다.
 - 운동 목표는 복수 선택할 수 있고 주 목표는 하나다.
 - 운동 가능 시간은 `weekdayLocal 0..6`이고 시작 시간이 종료 시간보다 앞서야 한다.
@@ -365,6 +363,7 @@ Response `200 OK`:
 - `ACTIVE` 계정만 정상 로그인할 수 있다.
 - 성공 시 `last_login_at`과 인증 이벤트를 기록한다.
 - refresh token 원문은 응답으로 한 번 전달하고 DB에는 hash만 저장한다.
+- access token 만료는 15분, refresh token 만료는 30일로 한다.
 
 ### 5.6 Token 갱신
 
@@ -476,7 +475,7 @@ Response `200 OK`:
   "weightUnit": "KG",
   "timezoneId": "Asia/Seoul",
   "activityRegionIds": [
-    "618b23ac-0b7c-4c40-a85a-a6bf1e7689d1"
+    "10000000-0000-0000-0000-000000000001"
   ],
   "facilityNames": [
     "FitMate 헬스장"
@@ -499,6 +498,7 @@ Response `200 OK`:
 ```
 
 Response는 갱신된 프로필과 증가한 `version`을 반환한다. 현재 version과 다르면 `VERSION_CONFLICT`를 반환한다.
+프로필 수정에서도 `facilityNames`가 있으면 `activityRegionIds`는 정확히 1개여야 하며 모든 시설을 해당 지역에 연결한다.
 
 ### 6.4 비밀번호 변경
 
@@ -544,6 +544,7 @@ Response는 갱신된 프로필과 증가한 `version`을 반환한다. 현재 v
 ```
 
 P0에서는 설정값만 저장하며 Push device token과 외부 Push 발송은 구현하지 않는다.
+`core_notification_settings`는 기존 V1/V2를 수정하지 않고 Backend A의 V3 migration에서 추가한다.
 
 ### 6.6 회원 탈퇴
 
@@ -556,9 +557,9 @@ P0에서는 설정값만 저장하며 Push device token과 외부 Push 발송은
 ```
 
 - 탈퇴 전 삭제 또는 보관되는 데이터 범위를 화면에서 안내한다.
-- 계정 상태를 `WITHDRAWN`으로 변경한다.
-- 개인정보와 운동 기록은 확정된 삭제·익명화 정책을 적용한다.
-- 모든 인증 세션을 무효화한다.
+- P0에서는 계정 상태를 `WITHDRAWN`으로 변경하고 `withdrawn_at`, 프로필 `deleted_at`을 기록한다.
+- 모든 인증 세션을 폐기하고 `auth_version`을 증가시킨다.
+- 운동 기록과 동의 이력의 실제 삭제·익명화는 후속 개인정보 파기 정책과 migration에서 처리한다.
 
 ## 7. 약관 API
 
@@ -587,10 +588,10 @@ Response:
   "data": {
     "items": [
       {
-        "id": "f66d46db-13da-4bd1-8b3f-e2463ac2ba19",
-        "type": "TERMS_OF_SERVICE",
-        "version": "1.0",
-        "contentUri": "/terms/service/v1",
+        "id": "20000000-0000-0000-0000-000000000001",
+        "type": "SERVICE_TERMS",
+        "version": "v1",
+        "contentUri": "/legal/service-terms/v1",
         "effectiveAt": "2026-09-03T00:00:00.000Z",
         "required": true
       }
@@ -600,7 +601,7 @@ Response:
 ```
 
 - 철회는 동의 행을 삭제하지 않고 `withdrawn_at`을 기록한다.
-- 필수 약관 철회가 서비스 이용에 미치는 처리는 정책 확정 후 반영한다.
+- P0에서는 활성 계정의 필수 약관 철회를 허용하지 않는다. 선택 약관만 `withdrawn_at`을 기록해 철회한다.
 
 ## 8. 공통 사전 API
 
@@ -624,11 +625,11 @@ Response:
   "data": {
     "items": [
       {
-        "id": "618b23ac-0b7c-4c40-a85a-a6bf1e7689d1",
+        "id": "10000000-0000-0000-0000-000000000001",
         "parentId": null,
         "name": "서울특별시",
         "level": "PROVINCE",
-        "code": "11"
+        "code": "KR-SEOUL"
       }
     ]
   }

@@ -20,6 +20,13 @@ spring:
     enabled: true
     locations:
       - filesystem:../db/migration
-      - filesystem:db/migration
 server:
   port: 8080
+
+fitmate:
+  security:
+    jwt:
+      issuer: fitmate-backend
+      secret: ${FITMATE_JWT_SECRET:}
+      access-token-ttl: PT15M
+      refresh-token-ttl: P30D

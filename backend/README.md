@@ -36,7 +36,7 @@
 
 ## 실행 전 준비
 
-1. JDK 22와 Docker Desktop이 설치되어 있어야 한다.
+1. JDK 17과 Docker Desktop이 설치되어 있어야 한다.
 2. `backend/compose.yaml`로 MySQL을 띄운다.
 
 ```cmd

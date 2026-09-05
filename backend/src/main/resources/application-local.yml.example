@@ -3,3 +3,9 @@ spring:
     url: jdbc:mysql://localhost:3306/fitmate?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: fitmate
     password: fitmate
+
+fitmate:
+  security:
+    jwt:
+      # 32바이트 이상의 개발용 값을 환경변수로만 설정한다. 실제 값을 저장소에 기록하지 않는다.
+      secret: ${FITMATE_JWT_SECRET}

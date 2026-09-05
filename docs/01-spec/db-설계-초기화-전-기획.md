@@ -1,8 +1,8 @@
 # Fitmate DB 설계 및 초기화 전 기획
 
 - 작성일: 2026-09-03
-- 최종 수정일: 2026-09-03
-- 버전: v1.1
+- 최종 수정일: 2026-09-05
+- 버전: v1.2
 - 상태: 검토 중
 - 근거: `docs/프로젝트제출용/3주차/기능명세서_v1.2.pdf` (2026-09-02)
 
@@ -66,8 +66,8 @@ P0 루틴 추천과 계정 식별에 직접 필요한 값만 가입 완료 전�
 - 대소문자/공백 정규화가 필요한 이메일·닉네임은 `email_normalized`, `nickname_normalized`를 별도 저장해 unique index를 건다. collation에만 의존하지 않는다.
 - UUID는 `UUID_TO_BIN(?, 1)`/`BIN_TO_UUID(id, 1)` 또는 JPA `AttributeConverter`로 변환한다. 모든 FK의 타입·byte order는 PK와 동일해야 한다.
 - DB trigger는 사용하지 않는다. 상태 전이, 차단 교차 검사, DM 요청 1회 제한, 정원 수락은 Spring 서비스의 명시적 트랜잭션과 행 잠금으로 구현해 Flyway·테스트·장애 분석 경로를 단일화한다.
-- 이메일/비밀번호 회원가입과 로그인을 구현한다. 이메일 인증, 인증 메일 발송, 비밀번호 재설정 메일·재설정 token은 이번 구현에서 만들지 않는다. 비밀번호 평문은 저장하지 않고 Spring Security의 BCrypt hash만 `users.password_hash`에 저장한다.
-- access JWT는 15분, refresh token은 서버 세션 기반 rotation으로 운영한다. refresh token 평문은 DB에 저장하지 않고 hash만 `auth_sessions`에 둔다. Android는 refresh token을 Android Keystore로 보호한 `EncryptedSharedPreferences`에 보관한다.
+- 이메일/비밀번호 회원가입과 로그인을 구현한다. 이메일 인증, 인증 메일 발송, 비밀번호 재설정 메일·재설정 token은 이번 구현에서 만들지 않는다. 비밀번호는 8~64자, 문자·숫자 각각 1개 이상, UTF-8 72바이트 이하로 검증하며 평문은 저장하지 않고 Spring Security의 BCrypt hash만 `users.password_hash`에 저장한다.
+- access JWT는 15분, refresh token은 30일로 하고 서버 세션 기반 rotation으로 운영한다. refresh token 평문은 DB에 저장하지 않고 hash만 `auth_sessions`에 둔다. Android는 refresh token을 Android Keystore로 보호한 `EncryptedSharedPreferences`에 보관한다.
 - refresh token 재발급은 기존 `auth_sessions` 행을 revoke하고 후속 행을 만드는 rotation이다. 이미 revoke된 token hash가 다시 제출되면 탈취 의심으로 기록하고, 해당 사용자의 모든 refresh session을 revoke한 뒤 `users.auth_version`을 증가시켜 모든 access token을 즉시 무효화한다. 사용자는 모든 기기에서 다시 로그인해야 한다.
 - `revoked_access_tokens`는 access JWT의 `jti`와 `expires_at`만 보관하는 단기 blacklist다. `expires_at` index와 시간별 삭제 job으로 만료 행을 제거한다.
 
@@ -194,7 +194,7 @@ Room에는 `password_hash`, 다른 사용자의 정확 위치, 전체 DM, 인바
 ### 5.3 오프라인 동기화 계약
 
 1. Android는 MySQL에 직접 쓰지 않고 Spring Boot API만 호출한다. 네트워크 실패는 `local_pending_operations`에 적재하고 WorkManager가 지수 백오프로 재시도한다.
-2. 생성 요청에는 클라이언트가 만든 UUID `Idempotency-Key`를 포함한다. 서버의 `ops_idempotency_keys`는 `(user_id, idempotency_key)`를 unique로 보장하고, 같은 요청을 다시 받아도 최초 결과를 반환한다.
+2. 인증된 생성 요청에는 클라이언트가 만든 UUID `Idempotency-Key`를 포함한다. 서버의 `ops_idempotency_keys`는 `(user_id, idempotency_key)`를 unique로 보장하고, 같은 요청을 다시 받아도 최초 결과를 반환한다. 회원가입은 가입 전 `user_id`가 없고 token 응답 원문을 저장하지 않으므로 예외로 하며, 정규화 이메일 unique와 단일 트랜잭션으로 중복 계정을 방지한다.
 3. 운동 세트·랩은 append/upsert 가능한 이벤트로 서버에 전달한다. `workout_sessions`, `workout_session_exercises`, `workout_sets`는 `client_updated_at`과 행 `version`을 함께 검사해 중복·동시 수정 충돌을 막는다. 서버가 확정한 `workout_session_id`를 이후 로컬 초안에 기록한다.
 4. 프로필·루틴·게시물처럼 같은 필드를 여러 기기에서 수정할 수 있는 리소스는 `If-Match`/`version`을 사용한다. 충돌하면 서버가 자동 덮어쓰지 않고 최신 서버 값과 로컬 초안을 보여 준다.
 5. 팔로우, 차단, 메이트 신청/수락, 신고, 광고 노출은 서버 검증이 필수다. 오프라인 요청은 "전송 대기"일 뿐 성공 상태로 표시하지 않는다. 특히 메이트 정원은 서버 트랜잭션만 최종 결정한다.
@@ -229,7 +229,7 @@ Room에는 `password_hash`, 다른 사용자의 정확 위치, 전체 DM, 인바
 | `user_available_times` | `id`, `user_id`, `weekday_local`, `start_local_time`, `end_local_time`, `timezone_id` | 운동 가능 시간 | UTC로 변환해 저장하지 않는 반복 로컬 시간. IANA `timezone_id` 기준 `weekday_local 0..6`, 시작 < 종료 |
 | `terms_documents` | `id`, `type`, `version`, `content_uri`, `effective_at`, `is_required` | 약관/동의 문서의 버전 원본 | `(type, version)` unique. 이미 동의받은 문서는 수정 금지, 새 버전으로 등록 |
 | `user_consents` | `id`, `user_id`, `terms_document_id`, `consented_at`, `withdrawn_at`, `evidence` | 사용자 동의 이력 | `(user_id, terms_document_id)` unique. 철회는 행 삭제가 아닌 `withdrawn_at` 기록 |
-| `notification_settings` (후속) | `user_id(PK/FK)`, `in_app_enabled`, `dm_enabled`, `mate_enabled`, `community_enabled`, `version` | 앱 내 알림 범주별 설정 | 알림 기능 자체와 함께 추가한다. Push device token·외부 Push 발송은 이번 구현에서 제외. 수정 API는 `version` 일치 필수 |
+| `notification_settings` (P0 V3) | `user_id(PK/FK)`, `in_app_enabled`, `dm_enabled`, `mate_enabled`, `community_enabled`, `version` | 앱 내 알림 범주별 설정 | Backend A가 별도 V3 migration으로 추가한다. Push device token·외부 Push 발송은 이번 구현에서 제외. 수정 API는 `version` 일치 필수 |
 
 ### 6.2 파일과 인바디 (`core_`, `health_`)
 
@@ -329,7 +329,7 @@ P0 기본 리포트는 별도 `workout_reports` 테이블을 만들지 않고 `w
 
 | 부모 → 자식 | 관계 | 부모 삭제/탈퇴 시 정책 |
 |---|---|---|
-| `users → user_profiles` | 1:1 | 탈퇴 확정 시 프로필 익명화 또는 hard delete |
+| `users → user_profiles` | 1:1 | P0 탈퇴 시 사용자를 `WITHDRAWN`으로 바꾸고 프로필 `deleted_at`을 기록. 실제 익명화 또는 hard delete는 후속 파기 정책에서 처리 |
 | `users → posts/comments/messages` | 1:N | 작성자 FK는 보존하되 화면에는 "탈퇴한 사용자"로 표시. 콘텐츠의 삭제/보존 기준은 개인정보 정책 확정 필요 |
 | `posts → media/likes/comments` | 1:N | 글 삭제 시 일반 노출은 차단, 신고·감사 근거는 보존기간까지 접근 제한 |
 | `users ↔ users` (follow/block) | N:M | 탈퇴 계정과의 활성 관계는 해제·익명화 |
@@ -487,7 +487,7 @@ FAILED -> QUEUED (재시도) | CANCELED
 6. 공통 사전을 Flyway seed로 관리한다. `regions`에는 전국 17개 광역 시·도를 우선 넣고, `sports`에는 전체 종목 코드(`HEALTH`만 활성), `exercise_catalog`에는 P0 헬스 운동 24개와 nullable `reference_url`, `exercise_substitutions`, 루틴 5개와 항목, 이용약관 v1·개인정보 수집·이용 동의 v1을 넣는다. 검수되지 않은 YouTube URL은 시드하지 않는다. 시설·사용자·운영 데이터와 level 2 시 지역은 초기 시드하지 않는다.
 7. P0에는 객체 저장소 업로드를 만들지 않는다. 운동 사전의 YouTube `reference_url`은 값이 등록될 때만 HTTPS allowlist로 검증한다. 이미지·동영상 업로드와 100MB 제한, signed URL, 악성 파일 검사는 `media_assets` 도입 마이그레이션에서 추가한다.
 8. 권한 매트릭스와 API별 데이터 공개 테스트를 작성한다. 특히 비공개 글, 차단, DM 요청, 정확 위치, 건강 데이터, 관리자 DM 열람을 우선 검증한다.
-9. 첫 Flyway 마이그레이션은 `users/auth_sessions/revoked_access_tokens/auth_events → terms_documents → regions/facilities → user_profiles/user_consents/user_activity_regions/user_facilities/user_available_times → sports/exercise_catalog/exercise_substitutions → user_sports/user_goals → routines/routine_items → workout_sessions/workout_session_exercises/workout_sets → ops_idempotency_keys`와 정적 템플릿·사전 seed까지만 만든다. 파일은 `db/migration/V1__create_p0_schema.sql`, `db/migration/V2__seed_p0_reference_data.sql`이다. P0 운동 사전은 nullable `reference_url`만 사용하며 `instruction_asset_id` FK, `media_assets`, 알림 설정, 러닝·메이트·소셜/DM·건강·탈퇴/파기·운영은 기능 개발 순서에 맞춰 별도 마이그레이션으로 추가한다.
+9. 첫 Flyway 마이그레이션은 `users/auth_sessions/revoked_access_tokens/auth_events → terms_documents → regions/facilities → user_profiles/user_consents/user_activity_regions/user_facilities/user_available_times → sports/exercise_catalog/exercise_substitutions → user_sports/user_goals → routines/routine_items → workout_sessions/workout_session_exercises/workout_sets → ops_idempotency_keys`와 정적 템플릿·사전 seed까지만 만든다. 파일은 `db/migration/V1__create_p0_schema.sql`, `db/migration/V2__seed_p0_reference_data.sql`이다. 기존 V1/V2는 수정하지 않으며 Backend A의 알림 설정은 P0 V3 migration으로 추가한다. P0 운동 사전은 nullable `reference_url`만 사용하며 `instruction_asset_id` FK, `media_assets`, 러닝·메이트·소셜/DM·건강·탈퇴/파기·운영은 기능 개발 순서에 맞춰 별도 마이그레이션으로 추가한다.
 10. 빈 MySQL과 업그레이드 대상 MySQL에서 Flyway migrate, unique/check/FK 위반, 회원가입·로그인, 세션 회전/재사용 탐지, 주 목표·헬스 숙련도별 정적 템플릿 및 fallback, 대체 운동, 동시 세트 업로드·`version` 충돌·idempotency를 자동 테스트한다. Room은 별도 in-memory SQLite 마이그레이션과 로그아웃 시 캐시 삭제를 테스트한다.
 
 ## 13. 검증 시나리오
