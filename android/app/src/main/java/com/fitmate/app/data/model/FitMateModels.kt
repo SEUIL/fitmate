@@ -9,7 +9,18 @@ data class UserProfile(
     val region: String,
     val interests: Set<Sport>,
     val isProfileComplete: Boolean = false,
-    val isPrivate: Boolean = false
+    val isPrivate: Boolean = false,
+    val displayName: String = "",
+    val email: String = "",
+    val birthDate: String = "",
+    val gender: String = "",
+    val facilityName: String = "",
+    val experience: String = "입문",
+    val customInterests: Set<String> = emptySet(),
+    val goals: Set<String> = emptySet(),
+    val availableTime: String = "",
+    val bio: String = "",
+    val isAdultVerified: Boolean = false
 )
 
 data class MatePost(
@@ -24,19 +35,44 @@ data class MatePost(
     val difficulty: String,
     val description: String,
     val authorName: String,
-    val isBeginnerWelcome: Boolean
+    val isBeginnerWelcome: Boolean,
+    val details: MateDetails = MateDetails()
+)
+
+data class RecruitmentDraft(
+    val title: String,
+    val sport: Sport,
+    val dateTime: String,
+    val duration: String,
+    val capacity: Int,
+    val difficulty: String,
+    val description: String,
+    val isBeginnerWelcome: Boolean,
+    val details: MateDetails = MateDetails()
+)
+
+data class MateDetails(
+    val location: String = "",
+    val meetingPoint: String = "",
+    val cost: String = "0",
+    val visibility: String = "전체 공개",
+    val sportFields: Map<String, String> = emptyMap()
 )
 
 data class WorkoutSet(
     val exerciseName: String,
     val weightKg: Double,
-    val repetitions: Int
+    val repetitions: Int,
+    val rpe: Int? = null,
+    val memo: String = ""
 )
 
 data class WorkoutSummary(
     val durationMinutes: Int,
     val sets: List<WorkoutSet>,
-    val usedSamsungHealth: Boolean
+    val usedSamsungHealth: Boolean,
+    val targetSetCount: Int = 0,
+    val completedAt: Long? = null
 ) {
     val totalVolumeKg: Double get() = sets.sumOf { it.weightKg * it.repetitions }
 }
