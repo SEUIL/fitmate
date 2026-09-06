@@ -1,8 +1,8 @@
 # FitMate P0 API 명세
 
 - 작성일: 2026-09-03
-- 최종 수정일: 2026-09-05
-- 버전: v0.2
+- 최종 수정일: 2026-09-06
+- 버전: v0.3
 - 상태: 검토 중
 - 대상: Kotlin Spring Boot Backend, Android Client
 - 기준 문서:
@@ -85,6 +85,9 @@ API 구현 전에 Flyway로 아래 순서의 테이블과 시드를 생성한다
 | 22 | `fitness_workout_session_exercises` | 운동 당시 종목 스냅샷 |
 | 23 | `fitness_workout_sets` | 세트별 기록 |
 | 24 | `ops_idempotency_keys` | 생성 요청 중복 처리 방지 |
+| 25 | `core_user_custom_sports` | 사용자 프로필 전용 커스텀 관심 운동. V4 migration으로 추가 |
+
+`core_user_custom_sports`는 `user_id`, `name`, `normalized_name`, `created_at`을 저장한다. 기본 키는 `(user_id, normalized_name)`이며 같은 이름을 다른 사용자가 등록하는 것은 허용한다. 운영 종목 사전인 `fitness_sports`와 숙련도를 저장하는 `core_user_sports`는 기존 루틴 추천 계약을 유지한다. 커스텀 관심 운동에는 `sportCode`, `sportId`, `skillLevel`을 부여하지 않는다.
 
 ### 3.2 초기 시드
 
@@ -277,6 +280,10 @@ Request:
       "skillLevel": "BEGINNER"
     }
   ],
+  "customSports": [
+    { "name": "필라테스" },
+    { "name": "크로스핏" }
+  ],
   "goals": [
     {
       "goalCode": "HABIT",
@@ -307,7 +314,11 @@ Response `201 Created`:
         "weightUnit": "KG",
         "timezoneId": "Asia/Seoul",
         "version": 0
-      }
+      },
+      "customSports": [
+        { "name": "크로스핏" },
+        { "name": "필라테스" }
+      ]
     },
     "tokens": {
       "accessToken": "access-token",
@@ -327,6 +338,9 @@ Response `201 Created`:
 - 활동 지역은 등록된 `regionId`만 허용한다.
 - `facilityNames`가 있으면 `activityRegionIds`는 정확히 1개여야 하며, 해당 지역을 주 활동 지역으로 사용해 시설을 조회하거나 생성한다.
 - 관심 종목은 복수 선택할 수 있다.
+- `customSports`는 사용자 프로필 전용 관심 운동 이름 목록이다. 회원가입에서 생략하면 `[]`로 저장하고 응답의 `data.user.customSports`에 반환한다.
+- 커스텀 관심 운동은 최대 20개다. 각 이름은 입력 및 정규화 후 1~50자이며, NFKC 유니코드 정규화·앞뒤 공백 제거·연속 공백 축약 후 표시 이름을 저장한다. 비교 키인 `normalized_name`에는 소문자 변환도 적용한다. 제어 문자, 공백뿐인 이름, 정규화 후 중복은 `400 VALIDATION_ERROR`로 거절한다. 응답 순서는 비교 키의 오름차순이며 입력 순서를 보장하지 않는다.
+- `customSports`는 운영 종목이나 루틴 추천 대상을 추가하지 않으며, 필수 `HEALTH` 숙련도를 대체하지 않는다.
 - 운동 목표는 복수 선택할 수 있고 주 목표는 하나다.
 - 운동 가능 시간은 `weekdayLocal 0..6`이고 시작 시간이 종료 시간보다 앞서야 한다.
 - 필수 약관에 모두 동의해야 한다.
@@ -452,6 +466,9 @@ Response `200 OK`:
     "facilities": [],
     "availableTimes": [],
     "sports": [],
+    "customSports": [
+      { "name": "필라테스" }
+    ],
     "goals": [],
     "consents": []
   }
@@ -487,6 +504,10 @@ Response `200 OK`:
       "skillLevel": "UNDER_6_MONTHS"
     }
   ],
+  "customSports": [
+    { "name": "필라테스" },
+    { "name": "크로스핏" }
+  ],
   "goals": [
     {
       "goalCode": "MUSCLE_GAIN",
@@ -497,8 +518,14 @@ Response `200 OK`:
 }
 ```
 
-Response는 갱신된 프로필과 증가한 `version`을 반환한다. 현재 version과 다르면 `VERSION_CONFLICT`를 반환한다.
+Response는 내 프로필 조회와 같은 `data` 구조이며, 갱신된 `data.profile.version`, `data.sports`, `data.customSports`를 포함한다. `version`은 필수이고 0 이상의 정수다. 현재 version과 다르면 `409 VERSION_CONFLICT`를 반환한다. 커스텀 관심 운동만 변경해도 프로필 version이 증가한다.
 프로필 수정에서도 `facilityNames`가 있으면 `activityRegionIds`는 정확히 1개여야 하며 모든 시설을 해당 지역에 연결한다.
+
+- 수정에서 생략하거나 `null`로 보낸 선택 필드는 기존 값을 유지한다. `bio: ""`는 소개를 지운다.
+- 목록 필드는 전달한 목록으로 교체한다. `customSports: []`는 커스텀 관심 운동만 모두 삭제한다. `sports`를 전달하면 기존과 동일하게 활성 종목과 필수 `HEALTH` 숙련도를 검증한다.
+- 커스텀 관심 운동의 입력 검증은 회원가입과 동일하다. 프로필과 운동 정보는 하나의 트랜잭션에서 저장되며, 일부 필드 검증이 실패하면 전체 변경을 취소한다.
+- 사용자 ID는 인증 토큰에서 얻는다. 다른 사용자의 커스텀 관심 운동은 조회하거나 수정할 수 없다.
+- 활동 지역 변경 시 기존 시설이 새 지역에 속하지 않으면 시설 목록도 함께 수정해야 한다.
 
 ### 6.4 비밀번호 변경
 
@@ -649,6 +676,8 @@ Response:
 `GET /api/v1/sports`
 
 P0 응답에는 활성 상태인 `HEALTH`를 제공한다.
+
+사용자가 직접 입력한 `customSports`는 이 목록에 포함하지 않는다. 사용자용 `POST /sports`는 추가하지 않는다.
 
 ### 8.5 운동 목록
 

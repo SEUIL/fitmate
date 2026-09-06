@@ -13,12 +13,24 @@ import com.fitmate.backend.member.domain.UserProfile
 import com.fitmate.backend.member.domain.UserRegionId
 import com.fitmate.backend.member.domain.UserSport
 import com.fitmate.backend.member.domain.UserSportId
+import com.fitmate.backend.member.domain.UserCustomSport
+import com.fitmate.backend.member.domain.UserCustomSportId
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 import java.util.UUID
 
 interface UserProfileRepository : JpaRepository<UserProfile, UUID> {
     fun existsByNicknameNormalizedAndDeletedAtIsNull(nicknameNormalized: String): Boolean
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select profile from UserProfile profile where profile.userId = :userId and profile.deletedAt is null")
+    fun findForUpdateByUserId(userId: UUID): UserProfile?
+}
+
+interface UserCustomSportRepository : JpaRepository<UserCustomSport, UserCustomSportId> {
+    fun findAllByIdUserIdOrderByIdNormalizedNameAsc(userId: UUID): List<UserCustomSport>
 }
 
 interface RegionRepository : JpaRepository<Region, UUID> {

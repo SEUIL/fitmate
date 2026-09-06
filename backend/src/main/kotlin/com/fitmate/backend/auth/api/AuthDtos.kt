@@ -6,6 +6,7 @@ import com.fitmate.backend.member.domain.GoalCode
 import com.fitmate.backend.member.domain.ProfileVisibility
 import com.fitmate.backend.member.domain.SkillLevel
 import com.fitmate.backend.member.domain.WeightUnit
+import com.fitmate.backend.member.api.CustomSportDto
 import com.fitmate.backend.fitness.domain.SportCode
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
@@ -36,6 +37,7 @@ data class SignUpRequest(
     @field:NotEmpty val goals: List<@Valid GoalSelectionRequest>,
     @field:NotEmpty val consentDocumentIds: List<UUID>,
     @field:Size(max = 128) val deviceId: String? = null,
+    @field:Valid @field:Size(max = 20) val customSports: List<CustomSportDto> = emptyList(),
 )
 
 data class AvailableTimeRequest(
@@ -54,6 +56,6 @@ data class LogoutRequest(@field:NotBlank val refreshToken: String)
 
 data class TokenResponse(val accessToken: String, val accessTokenExpiresInSeconds: Long, val refreshToken: String)
 data class SignUpProfileResponse(val nickname: String, val displayName: String, val visibility: ProfileVisibility, val weightUnit: WeightUnit, val timezoneId: String, val version: Long)
-data class SignUpUserResponse(val id: UUID, val email: String, val accountStatus: AccountStatus, val profile: SignUpProfileResponse)
+data class SignUpUserResponse(val id: UUID, val email: String, val accountStatus: AccountStatus, val profile: SignUpProfileResponse, val customSports: List<CustomSportDto> = emptyList())
 data class SignUpResponse(val user: SignUpUserResponse, val tokens: TokenResponse)
 data class LoginResponse(val userId: UUID, val accountStatus: AccountStatus, val tokens: TokenResponse)

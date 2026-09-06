@@ -28,6 +28,7 @@ import com.fitmate.backend.common.persistence.UuidBinaryConverter
 import com.fitmate.backend.fitness.domain.SportCode
 import com.fitmate.backend.fitness.repository.SportRepository
 import com.fitmate.backend.member.domain.Facility
+import com.fitmate.backend.member.application.CustomSportService
 import com.fitmate.backend.member.domain.NotificationSetting
 import com.fitmate.backend.member.domain.UserActivityRegion
 import com.fitmate.backend.member.domain.UserAvailableTime
@@ -85,6 +86,7 @@ class AuthService(
     private val jwtService: JwtService,
     private val jwtProperties: JwtProperties,
     private val clock: Clock,
+    private val customSportService: CustomSportService,
 ) {
     @Transactional
     fun signUp(request: SignUpRequest, userAgent: String?): SignUpResponse {
@@ -104,6 +106,7 @@ class AuthService(
             throw ApiException(ApiErrorCode.NICKNAME_ALREADY_EXISTS)
         }
         validateRequestCollections(storedRequest)
+        customSportService.validate(storedRequest.customSports)
         val now = clock.instant()
         // Child entities carry scalar UUID foreign keys instead of JPA associations.
         // Flush the parent first so MySQL can enforce those foreign keys safely.
@@ -125,11 +128,12 @@ class AuthService(
             ),
         )
         createSelections(userId, storedRequest, now)
+        val customSports = customSportService.replace(userId, storedRequest.customSports)
         notificationSettingRepository.save(NotificationSetting(userId = userId))
         val tokens = createSessionAndTokens(user, storedRequest.deviceId, null, now)
         recordEvent(userId, tokens.sessionId, AuthEventType.SIGNUP, userAgent, now)
         return SignUpResponse(
-            SignUpUserResponse(userId, user.email, user.accountStatus, SignUpProfileResponse(profile.nickname, profile.displayName, profile.visibility, profile.weightUnit, profile.timezoneId, profile.version)),
+            SignUpUserResponse(userId, user.email, user.accountStatus, SignUpProfileResponse(profile.nickname, profile.displayName, profile.visibility, profile.weightUnit, profile.timezoneId, profile.version), customSports),
             tokens.response,
         )
     }
