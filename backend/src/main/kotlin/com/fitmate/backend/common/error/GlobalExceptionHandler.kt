@@ -5,6 +5,7 @@ import com.fitmate.backend.common.api.ApiErrorField
 import com.fitmate.backend.common.api.ErrorResponse
 import jakarta.validation.ConstraintViolationException
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.slf4j.LoggerFactory
@@ -98,6 +99,10 @@ class GlobalExceptionHandler {
             ),
         )
     }
+
+    @ExceptionHandler(OptimisticLockingFailureException::class)
+    fun handleVersionConflict(exception: OptimisticLockingFailureException): ResponseEntity<ErrorResponse> =
+        handleApiException(ApiException(ApiErrorCode.VERSION_CONFLICT))
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(exception: Exception): ResponseEntity<ErrorResponse> {

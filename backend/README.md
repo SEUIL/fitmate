@@ -20,13 +20,15 @@
   - `GET /api/v1/exercises`
   - `GET /api/v1/exercises/{exerciseId}`
   - `GET /api/v1/exercises/{exerciseId}/substitutions`
+- 회원가입·로그인·JWT 세션 인증
+- 내 프로필 조회 `GET /api/v1/users/me`와 수정 `PATCH /api/v1/users/me/profile`
+- 회원가입·프로필 API의 `customSports: [{ "name": "필라테스" }]` 저장·조회. V4 migration의 사용자 전용 테이블을 사용하며 운영 종목·숙련도는 `sports`로 유지한다.
 
 `GET /api/v1/exercises`의 `cursor`는 현재 토대 단계에서는 페이지 인덱스 문자열로 동작한다. 실제 운영용 keyset cursor는 운동 세션 구현 단계에서 함께 고도화하면 된다.
 
 ## 아직 안 넣은 것
 
-- JWT 인증/인가
-- 회원/프로필/약관/지역/시설
+- 비밀번호 변경·회원 탈퇴와 약관/지역/시설 전용 API
 - 루틴 생성/수정/삭제
 - 운동 세션/세트 생성과 상태 전이
 - 리포트 계산
@@ -65,6 +67,12 @@ Flyway는 아래 두 경로를 모두 본다.
 - `db/migration`
 
 즉, `backend/`에서 실행하든 저장소 루트에서 실행하든 기존 SQL을 재사용할 수 있게 맞춰 두었다.
+
+## 커스텀 관심 운동 검증
+
+`gradlew.bat test`는 단위 테스트를 실행한다. 실제 MySQL 마이그레이션과 회원가입·프로필 HTTP 통합 테스트는 별도 임시 DB를 준비한 뒤 `FITMATE_TEST_DB_URL`을 해당 JDBC URL로 설정하고 `gradlew.bat test --rerun-tasks`로 실행한다. 통합 테스트는 임시 DB의 로컬 `root` 계정과 빈 비밀번호를 사용하며 테스트 사용자를 생성하므로 개발 공용·운영 DB를 지정하지 않는다. 해당 환경변수가 없으면 MySQL 통합 테스트는 건너뛴다.
+
+검증 범위는 가입 후 재조회, 기존 클라이언트의 필드 생략, 수정 시 유지·교체·삭제, 이름 정규화와 중복 거절, 사용자별 분리, 실패 시 트랜잭션 롤백, 동시 수정의 version 충돌이다. Android의 Mock 관심 운동을 이 API에 연결하는 작업은 별도다.
 
 ## 다음 추천 작업 순서
 
