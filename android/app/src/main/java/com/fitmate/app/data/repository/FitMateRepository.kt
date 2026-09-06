@@ -1,6 +1,7 @@
 package com.fitmate.app.data.repository
 
 import com.fitmate.app.data.model.MatePost
+import com.fitmate.app.data.model.MateDetails
 import com.fitmate.app.data.model.CommunityPost
 import com.fitmate.app.data.model.DirectMessage
 import com.fitmate.app.data.model.DmConversation
@@ -23,8 +24,10 @@ object MockFitMateRepository : FitMateRepository {
     )
 
     override fun matePosts() = listOf(
-        MatePost(1, "오늘 저녁 헬스 같이 해요", Sport.FITNESS, "성수동", "오늘 19:30", "1.5시간", 2, 1, "초중급", "웨이트와 유산소를 함께 진행해요. 각자 루틴도 환영합니다.", "민준", true),
-        MatePost(2, "한강 5 km 러닝 메이트", Sport.RUNNING, "뚝섬", "오늘 20:00", "약 40분", 4, 2, "초보", "5 km 완주가 목표예요. 천천히 같이 달려요.", "지현", true),
+        MatePost(1, "오늘 저녁 헬스 같이 해요", Sport.FITNESS, "성수동", "오늘 19:30", "1.5시간", 2, 1, "초중급", "웨이트와 유산소를 함께 진행해요. 각자 루틴도 환영합니다.", "민준", true,
+            MateDetails("성수역 인근", "예시 헬스장 1층 안내 데스크", "10000")),
+        MatePost(2, "한강 5 km 러닝 메이트", Sport.RUNNING, "뚝섬", "오늘 20:00", "약 40분", 4, 2, "초보", "5 km 완주가 목표예요. 천천히 같이 달려요.", "지현", true,
+            MateDetails("뚝섬 한강공원", "예시 집결 위치: 공원 입구 안내판 앞", "0")),
         MatePost(3, "주말 클라이밍 파트너", Sport.CLIMBING, "건대입구", "토요일 14:00", "2시간", 2, 1, "중급", "볼더링 위주로 함께 운동할 분을 찾아요.", "도윤", false)
     )
 

@@ -3,19 +3,22 @@ package com.fitmate.app.ui.theme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 
 object FitMateColors {
-    val Primary = Color(0xFF0C9277)
-    val PrimaryContainer = Color(0xFFD9F3EB)
-    val Background = Color(0xFFF7F8F7)
-    val Surface = Color(0xFFFFFFFF)
-    val TextPrimary = Color(0xFF18221F)
-    val TextSecondary = Color(0xFF66736E)
-    val Outline = Color(0xFFE4E9E6)
-    val DarkSurface = Color(0xFF17231F)
+    val Primary: Color @Composable get() = MaterialTheme.colorScheme.primary
+    val WorkoutAction = Color(0xFF49766C)
+    val PrimaryContainer: Color @Composable get() = MaterialTheme.colorScheme.primaryContainer
+    val Background: Color @Composable get() = MaterialTheme.colorScheme.background
+    val Surface: Color @Composable get() = MaterialTheme.colorScheme.surface
+    val TextPrimary: Color @Composable get() = MaterialTheme.colorScheme.onSurface
+    val TextSecondary: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+    val Outline: Color @Composable get() = MaterialTheme.colorScheme.outlineVariant
+    val DarkSurface = Color(0xFF171717)
     val OnDarkSurface = Color(0xFFF4FBF8)
     val OnDarkSurfaceMuted = Color(0xFFBFD1CA)
-    val NeutralIcon = Color(0xFF7A8580)
+    val NeutralIcon: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 }
 
 object FitMateSpacing {
@@ -29,6 +32,6 @@ object FitMateSpacing {
 object FitMateShapes {
     val MainCard = RoundedCornerShape(18.dp)
     val Card = RoundedCornerShape(16.dp)
-    val Button = RoundedCornerShape(12.dp)
+    val Button = RoundedCornerShape(10.dp)
     val Chip = RoundedCornerShape(10.dp)
 }

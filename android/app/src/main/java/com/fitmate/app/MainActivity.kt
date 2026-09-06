@@ -21,6 +21,12 @@ import com.fitmate.app.samsunghealth.SamsungHealthUiState
 import com.fitmate.app.ui.SamsungHealthTestScreen
 import com.fitmate.app.ui.FitMatePrototypeApp
 import com.fitmate.app.ui.theme.FitmateTheme
+import com.fitmate.app.ui.theme.AppearanceMode
+import com.fitmate.app.ui.theme.AppearancePreference
+import com.fitmate.app.ui.theme.LocalAppearancePreference
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.isSystemInDarkTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -33,7 +39,18 @@ class MainActivity : ComponentActivity() {
         manager = SamsungHealthManager(applicationContext)
         enableEdgeToEdge()
         setContent {
-            FitmateTheme(darkTheme = false) {
+            val preferences = remember { getSharedPreferences("fitmate_appearance", MODE_PRIVATE) }
+            var appearance by remember { mutableStateOf(AppearanceMode.fromStored(preferences.getString("mode", null))) }
+            val dark = when (appearance) {
+                AppearanceMode.SYSTEM -> isSystemInDarkTheme()
+                AppearanceMode.LIGHT -> false
+                AppearanceMode.DARK -> true
+            }
+            CompositionLocalProvider(LocalAppearancePreference provides AppearancePreference(appearance) { selected ->
+                preferences.edit().putString("mode", selected.name).apply()
+                appearance = selected
+            }) {
+            FitmateTheme(darkTheme = dark) {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     if (showSamsungHealthTest) {
                         Column(Modifier.padding(innerPadding)) {
@@ -41,10 +58,15 @@ class MainActivity : ComponentActivity() {
                             SamsungHealthTestScreen(uiState, ::requestPermissions, ::loadData, ::loadData, ::loadData, { manager.resolve(this@MainActivity) }, Modifier)
                         }
                     } else {
-                        FitMatePrototypeApp(onOpenSamsungTest = { showSamsungHealthTest = true })
+                        FitMatePrototypeApp(
+                            onOpenSamsungTest = { showSamsungHealthTest = true },
+                            samsungHealthState = uiState,
+                            onRefreshSamsungHealth = ::loadData
+                        )
                     }
                 }
             }
+        }
         }
         refreshState()
     }
