@@ -11,6 +11,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.math.BigDecimal
 import java.util.UUID
 
@@ -41,6 +42,7 @@ class RoutineItem(
     var targetRpe: Int? = null,
     @Column(name = "rest_seconds")
     var restSeconds: Int? = null,
+    @Version
     @Column(name = "version", nullable = false)
     var version: Long = 0,
 ) : BaseTimeEntity()

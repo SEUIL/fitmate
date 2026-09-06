@@ -20,11 +20,17 @@
   - `GET /api/v1/exercises`
   - `GET /api/v1/exercises/{exerciseId}`
   - `GET /api/v1/exercises/{exerciseId}/substitutions`
+  - `GET /api/v1/routines/recommended`
+  - `GET /api/v1/routines/templates`
+  - `GET /api/v1/routines`
+  - `GET /api/v1/routines/{routineId}`
 - 회원가입·로그인·JWT 세션 인증
 - 내 프로필 조회 `GET /api/v1/users/me`와 수정 `PATCH /api/v1/users/me/profile`
 - 회원가입·프로필 API의 `customSports: [{ "name": "필라테스" }]` 저장·조회. V4 migration의 사용자 전용 테이블을 사용하며 운영 종목·숙련도는 `sports`로 유지한다.
 
-`GET /api/v1/exercises`의 `cursor`는 현재 토대 단계에서는 페이지 인덱스 문자열로 동작한다. 실제 운영용 keyset cursor는 운동 세션 구현 단계에서 함께 고도화하면 된다.
+루틴 추천은 로그인 사용자의 주 목표와 해당 운영 종목 숙련도를 사용한다. 정확히 일치하는 템플릿, 같은 목표의 숙련도 공통 템플릿, 헬스 초급 전신 fallback 순서로 선택한다. 시스템 템플릿은 모든 로그인 사용자가 조회할 수 있고 사용자 루틴은 소유자만 조회할 수 있다.
+
+`GET /api/v1/exercises`의 `cursor`는 현재 토대 단계에서는 페이지 인덱스 문자열로 동작한다. 실제 운영용 keyset cursor는 운동 세션 구현 단계에서 함께 고도화하면 된다. Flyway reference seed ID는 MySQL ordered UUID이므로 운동 사전과 루틴 API 경계에서 논리 UUID로 변환한다.
 
 ## 아직 안 넣은 것
 
@@ -76,7 +82,7 @@ Flyway는 아래 두 경로를 모두 본다.
 
 ## 다음 추천 작업 순서
 
-1. `routine` 조회 API 구현
+1. 사용자 루틴 생성/수정/삭제 API 구현
 2. `workout` 세션 생성 API 구현
 3. 세트 upsert와 version 충돌 처리
 4. report 계산 서비스 구현

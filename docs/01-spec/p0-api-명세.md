@@ -1,8 +1,8 @@
 # FitMate P0 API 명세
 
 - 작성일: 2026-09-03
-- 최종 수정일: 2026-09-06
-- 버전: v0.3
+- 최종 수정일: 2026-09-07
+- 버전: v0.4
 - 상태: 검토 중
 - 대상: Kotlin Spring Boot Backend, Android Client
 - 기준 문서:
@@ -723,8 +723,34 @@ P0 응답에는 활성 상태인 `HEALTH`를 제공한다.
 `GET /api/v1/routines/recommended?sportCode=HEALTH`
 
 - 사용자의 주 목표와 `HEALTH` 숙련도에 맞는 `SYSTEM_TEMPLATE` 하나를 반환한다.
+- 선택 순서는 주 목표와 숙련도 정확 일치, 같은 목표의 `targetLevel=null` 공통 템플릿, `FITNESS+BEGINNER` 초급 전신 fallback이다.
 - 일치하는 템플릿이 없으면 헬스 초급 전신 루틴을 반환한다.
 - P0에서는 AI, 인바디와 건강 데이터를 추천에 사용하지 않는다.
+
+`GET /api/v1/routines/templates`와 `GET /api/v1/routines`는 다음 목록 구조를 사용한다. 템플릿 목록은 활성 시스템 템플릿만 반환하고, 내 루틴 목록은 인증 사용자가 소유한 활성 사용자 루틴만 반환한다.
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "40000000-0000-0000-0000-000000000001",
+        "ownerUserId": null,
+        "sportCode": "HEALTH",
+        "name": "초급 전신 루틴",
+        "sourceType": "SYSTEM_TEMPLATE",
+        "targetGoalCode": "FITNESS",
+        "targetLevel": "BEGINNER",
+        "difficulty": "BEGINNER",
+        "template": true,
+        "version": 0
+      }
+    ]
+  }
+}
+```
+
+시스템 템플릿 상세는 모든 로그인 사용자가 조회할 수 있다. 사용자 루틴은 소유자만 목록과 상세를 조회할 수 있으며, 다른 사용자의 사용자 루틴 상세 요청은 `404 RESOURCE_NOT_FOUND`를 반환한다.
 
 ### 9.3 루틴 상세 응답
 
