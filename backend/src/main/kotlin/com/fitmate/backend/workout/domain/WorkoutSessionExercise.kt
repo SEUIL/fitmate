@@ -14,6 +14,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.time.Instant
 import java.util.UUID
 
@@ -41,6 +42,7 @@ class WorkoutSessionExercise(
     var completedAt: Instant? = null,
     @Column(name = "client_updated_at", nullable = false)
     var clientUpdatedAt: Instant = Instant.EPOCH,
+    @Version
     @Column(name = "version", nullable = false)
     var version: Long = 0,
 ) : BaseTimeEntity()

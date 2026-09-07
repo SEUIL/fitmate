@@ -3,6 +3,7 @@ package com.fitmate.backend.fitness.application
 import com.fitmate.backend.common.api.CursorPageResponse
 import com.fitmate.backend.common.error.ApiErrorCode
 import com.fitmate.backend.common.error.ApiException
+import com.fitmate.backend.common.persistence.UuidBinaryConverter
 import com.fitmate.backend.fitness.application.dto.ExerciseDetail
 import com.fitmate.backend.fitness.application.dto.ExerciseListQuery
 import com.fitmate.backend.fitness.application.dto.ExerciseSummary
@@ -25,7 +26,7 @@ class FitnessQueryService(
         return sportRepository.findByIsActiveTrueOrderByDisplayOrderAsc()
             .map { sport ->
                 SportSummary(
-                    id = sport.id ?: throw IllegalStateException("sport id must not be null"),
+                    id = toApiId(sport.id),
                     code = sport.code,
                     name = sport.name,
                     displayOrder = sport.displayOrder,
@@ -48,7 +49,7 @@ class FitnessQueryService(
         val hasNext = exercises.size > size
         val items = exercises.take(size).map { exercise ->
             ExerciseSummary(
-                id = exercise.id ?: throw IllegalStateException("exercise id must not be null"),
+                id = toApiId(exercise.id),
                 sportCode = exercise.sport?.code ?: throw IllegalStateException("sport must not be null"),
                 name = exercise.name,
                 bodyPart = exercise.bodyPart,
@@ -65,11 +66,11 @@ class FitnessQueryService(
     }
 
     fun getExercise(exerciseId: java.util.UUID): ExerciseDetail {
-        val exercise = exerciseCatalogRepository.findActiveExerciseById(exerciseId)
+        val exercise = exerciseCatalogRepository.findActiveExerciseById(toDatabaseId(exerciseId))
             ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "운동 정보를 찾을 수 없습니다.")
 
         return ExerciseDetail(
-            id = exercise.id ?: throw IllegalStateException("exercise id must not be null"),
+            id = toApiId(exercise.id),
             sportCode = exercise.sport?.code ?: throw IllegalStateException("sport must not be null"),
             name = exercise.name,
             bodyPart = exercise.bodyPart,
@@ -79,16 +80,17 @@ class FitnessQueryService(
     }
 
     fun getSubstitutions(exerciseId: java.util.UUID): List<ExerciseSummary> {
-        exerciseCatalogRepository.findActiveExerciseById(exerciseId)
+        val databaseId = toDatabaseId(exerciseId)
+        exerciseCatalogRepository.findActiveExerciseById(databaseId)
             ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "기준 운동 정보를 찾을 수 없습니다.")
 
-        return exerciseSubstitutionRepository.findAllByBaseExerciseId(exerciseId)
+        return exerciseSubstitutionRepository.findAllByBaseExerciseId(databaseId)
             .map { substitution ->
                 val exercise = substitution.substituteExercise
                     ?: throw IllegalStateException("substitute exercise must not be null")
 
                 ExerciseSummary(
-                    id = exercise.id ?: throw IllegalStateException("exercise id must not be null"),
+                    id = toApiId(exercise.id),
                     sportCode = exercise.sport?.code ?: throw IllegalStateException("sport must not be null"),
                     name = exercise.name,
                     bodyPart = exercise.bodyPart,
@@ -107,4 +109,10 @@ class FitnessQueryService(
             ?.takeIf { it >= 0 }
             ?: throw ApiException(ApiErrorCode.VALIDATION_ERROR, "cursor는 0 이상의 숫자여야 합니다.")
     }
+
+    private fun toApiId(id: java.util.UUID?): java.util.UUID = UuidBinaryConverter.fromMysqlOrderedUuid(
+        id ?: throw IllegalStateException("reference id must not be null"),
+    )
+
+    private fun toDatabaseId(id: java.util.UUID): java.util.UUID = UuidBinaryConverter.toMysqlOrderedUuid(id)
 }
