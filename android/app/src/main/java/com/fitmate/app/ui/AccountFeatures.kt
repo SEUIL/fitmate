@@ -6,6 +6,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal fun validDemoEmail(email: String) = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(email)
 internal fun validDemoPassword(value: String) = value.length >= 8 && value.any(Char::isLetter) && value.any(Char::isDigit)
@@ -16,7 +19,13 @@ internal fun validDemoPassword(value: String) = value.length >= 8 && value.any(C
 }
 
 /** UI-only verification. The displayed code is deliberately not a real credential. */
-@Composable internal fun DemoEmailVerification(email: String, verified: Boolean, onVerified: (Boolean) -> Unit) {
+@Composable internal fun DemoEmailVerification(
+    email: String,
+    verified: Boolean,
+    onVerified: (Boolean) -> Unit,
+    checkAvailability: (suspend (String) -> Boolean)? = null
+) {
+    val scope = rememberCoroutineScope()
     var checked by remember(email) { mutableStateOf(false) }
     var sent by remember(email) { mutableStateOf(false) }
     var code by remember(email) { mutableStateOf("") }
@@ -26,9 +35,24 @@ internal fun validDemoPassword(value: String) = value.length >= 8 && value.any(C
     Text("인증 UI 데모 · 이메일은 발송하지 않습니다. 테스트 코드: 123456", style = MaterialTheme.typography.bodySmall)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton({
-            checked = validDemoEmail(email) && !email.equals("used@example.com", true)
             onVerified(false)
-            message = when { !validDemoEmail(email) -> "이메일 형식을 확인하세요."; !checked -> "이미 사용 중인 이메일 예시입니다."; else -> "사용 가능한 이메일 예시입니다." }
+            if (!validDemoEmail(email)) {
+                checked = false
+                message = "이메일 형식을 확인하세요."
+            } else if (checkAvailability == null) {
+                checked = !email.equals("used@example.com", true)
+                message = if (checked) "사용 가능한 이메일 예시입니다." else "이미 사용 중인 이메일 예시입니다."
+            } else {
+                scope.launch {
+                    val available = runCatching { withContext(Dispatchers.IO) { checkAvailability(email) } }.getOrNull()
+                    checked = available == true
+                    message = when (available) {
+                        true -> "사용 가능한 이메일입니다."
+                        false -> "이미 사용 중인 이메일입니다."
+                        null -> "이메일 중복 확인에 실패했습니다. 서버 연결을 확인하세요."
+                    }
+                }
+            }
         }) { Text("중복 확인") }
         TextButton({ sent = true; expiresAt = System.currentTimeMillis() + 180_000; code = ""; onVerified(false); message = "발송 성공 예시 · 3분 이내 코드를 입력하세요." }, enabled = checked) { Text(if (sent) "코드 재발송" else "인증 코드 받기") }
     }
@@ -86,7 +110,7 @@ internal fun validDemoPassword(value: String) = value.length >= 8 && value.any(C
     Text("실제 비밀번호는 변경하지 않는 UI 데모입니다. 최종 정책은 API 계약에 따릅니다.")
     if (change) SecretField(current, { current = it }, "현재 테스트 비밀번호")
     OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("이메일") })
-    DemoEmailVerification(email, verified) { verified = it }
+    DemoEmailVerification(email, verified, onVerified = { verified = it })
     SecretField(next, { next = it }, "새 테스트 비밀번호")
     SecretField(repeat, { repeat = it }, "새 비밀번호 확인")
     PrimaryAction("변경 결과 확인 (Mock)") {

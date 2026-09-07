@@ -65,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -93,6 +94,7 @@ import com.fitmate.app.data.model.Sport
 import com.fitmate.app.data.model.UserProfile
 import com.fitmate.app.data.model.WorkoutSet
 import com.fitmate.app.data.model.WorkoutSummary
+import com.fitmate.app.data.remote.FitMateApiClient
 import com.fitmate.app.data.repository.MockFitMateRepository
 import com.fitmate.app.running.RunTrackingService
 import com.fitmate.app.running.RunTrackingStore
@@ -104,6 +106,7 @@ import com.fitmate.app.ui.theme.FitMateShapes
 import com.fitmate.app.ui.theme.FitMateSpacing
 import com.fitmate.app.ui.theme.FitmateTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private enum class PrototypeRoute(val title: String) {
     PERSON("프로필"),
@@ -167,6 +170,8 @@ fun FitMatePrototypeApp(
     var locationConsent by remember { mutableStateOf(initial.locationConsent) }
     var savedRoutines by remember { mutableStateOf(initial.routines) }
     var storageError by remember { mutableStateOf(localStore.readFailed) }
+    val apiClient = rememberFitMateApiClient()
+    val exerciseCatalog = rememberExerciseCatalog(apiClient)
     val repository = remember { MockFitMateRepository }
     val screenStates = rememberSaveableStateHolder()
     var route by remember { mutableStateOf(if (signedIn) PrototypeRoute.HOME else PrototypeRoute.LOGIN) }
@@ -190,6 +195,7 @@ fun FitMatePrototypeApp(
             personOrigin = route; route = PrototypeRoute.PERSON
         }
     }
+    LaunchedEffect(exerciseCatalog) { exerciseCatalog.refresh() }
     val currentSnapshot by rememberUpdatedState {
         FrontendSnapshot(profile = if (registered) profile else null, signedIn = signedIn,
             workout = workoutSession?.snapshot(), history = workoutHistory, routines = savedRoutines,
@@ -217,7 +223,7 @@ fun FitMatePrototypeApp(
     }
     if (!signedIn) {
         BackHandler(route == PrototypeRoute.ONBOARDING) { route = PrototypeRoute.LOGIN }
-        if (route == PrototypeRoute.ONBOARDING) OnboardingScreen(Modifier.safeDrawingPadding(), onHealthConsent = { healthConsent = it }) {
+        if (route == PrototypeRoute.ONBOARDING) OnboardingScreen(Modifier.safeDrawingPadding(), apiClient, onHealthConsent = { healthConsent = it }) {
             profile = it; registered = true; signedIn = true; route = PrototypeRoute.HOME
         } else LoginFlow(Modifier.safeDrawingPadding(), if (registered) profile.email else null,
             login = { signedIn = true; route = PrototypeRoute.HOME }, signup = { route = PrototypeRoute.ONBOARDING })
@@ -313,7 +319,7 @@ fun FitMatePrototypeApp(
                     else -> route = runCatching { PrototypeRoute.valueOf(notice.destination) }.getOrDefault(PrototypeRoute.HOME)
                 }
             }
-            PrototypeRoute.ONBOARDING -> OnboardingScreen(Modifier.padding(padding)) { updatedProfile ->
+            PrototypeRoute.ONBOARDING -> OnboardingScreen(Modifier.padding(padding), apiClient) { updatedProfile ->
                 profile = updatedProfile
                 route = PrototypeRoute.HOME
             }
@@ -324,7 +330,12 @@ fun FitMatePrototypeApp(
                 mates = { route = PrototypeRoute.MATE_LIST }, community = { route = PrototypeRoute.COMMUNITY },
                 dm = { route = PrototypeRoute.DM }, inbody = { inbodyOrigin = PrototypeRoute.HOME; route = PrototypeRoute.INBODY })
             PrototypeRoute.SOLO -> SoloScreen(Modifier.padding(padding), { mateState.activeWorkoutId = null; route = PrototypeRoute.HEALTH_ROUTINE }, { mateState.activeWorkoutId = null; route = PrototypeRoute.RUNNING })
-            PrototypeRoute.HEALTH_ROUTINE -> RoutineLibrary(Modifier.padding(padding), savedRoutines, { savedRoutines = it }) { routine ->
+            PrototypeRoute.HEALTH_ROUTINE -> RoutineLibrary(
+                modifier = Modifier.padding(padding),
+                saved = savedRoutines,
+                update = { savedRoutines = it },
+                exerciseCatalog = exerciseCatalog
+            ) { routine ->
                 selectedWorkoutRoutine = WorkoutRoutine(routine.name, routine.exercises.joinToString(" → "), routine.exercises.firstOrNull().orEmpty(), routine.exercises)
                 route = PrototypeRoute.WORKOUT_PREP
             }
@@ -502,7 +513,8 @@ private fun FitMatePrototypePreview() {
         interactionSource = interaction, shape = FitMateShapes.Button) { Text(label, style = MaterialTheme.typography.labelLarge) }
 }
 
-@Composable private fun OnboardingScreen(modifier: Modifier, onHealthConsent: (Boolean) -> Unit = {}, done: (UserProfile) -> Unit) = Screen(modifier) {
+@Composable private fun OnboardingScreen(modifier: Modifier, apiClient: FitMateApiClient, onHealthConsent: (Boolean) -> Unit = {}, done: (UserProfile) -> Unit) = Screen(modifier) {
+    val scope = rememberCoroutineScope()
     var verified by remember { mutableStateOf(false) }
     var checkedNickname by remember { mutableStateOf<String?>(null) }
     var signupError by remember { mutableStateOf<String?>(null) }
@@ -569,7 +581,7 @@ private fun FitMatePrototypePreview() {
                 }
             }
             Text("로그인 아이디로 사용해요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-            DemoEmailVerification(email, verified) { verified = it }
+            DemoEmailVerification(email, verified, { verified = it }) { value -> apiClient.checkEmailAvailability(value).available }
             SecretField(password, { password = it }, "테스트 비밀번호")
             Text("실제 비밀번호를 입력하지 마세요. 테스트 규칙: 영문·숫자 포함 8자 이상. 최종 정책은 API 계약에서 확정합니다.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(displayName, { displayName = it }, Modifier.fillMaxWidth(), label = { Text("이름") }, singleLine = true)
@@ -592,9 +604,22 @@ private fun FitMatePrototypePreview() {
             Text("2 / 4  프로필", color = Mint)
             OutlinedTextField(nickname, { nickname = it }, Modifier.fillMaxWidth(), label = { Text("닉네임") }, singleLine = true)
             TextButton({
-                checkedNickname = nickname.trim().takeIf { it.isNotBlank() && it !in listOf("민준", "수연", "지현") }
-                signupError = if (checkedNickname == null) "빈 닉네임 또는 사용 중인 예시 닉네임입니다." else null
-            }) { Text(if (checkedNickname == nickname.trim()) "사용 가능 (Mock)" else "닉네임 중복 확인") }
+                val value = nickname.trim()
+                if (value.isBlank()) {
+                    checkedNickname = null
+                    signupError = "닉네임을 입력하세요."
+                } else {
+                    scope.launch {
+                        val available = runCatching { withContext(Dispatchers.IO) { apiClient.checkNicknameAvailability(value).available } }.getOrNull()
+                        checkedNickname = value.takeIf { available == true }
+                        signupError = when (available) {
+                            true -> null
+                            false -> "이미 사용 중인 닉네임입니다."
+                            null -> "닉네임 중복 확인에 실패했습니다. 서버 연결을 확인하세요."
+                        }
+                    }
+                }
+            }) { Text(if (checkedNickname == nickname.trim()) "사용 가능" else "닉네임 중복 확인") }
             OutlinedTextField(region, { region = it }, Modifier.fillMaxWidth(), label = { Text("주 활동 지역") }, supportingText = { Text("정확한 주소가 아닌 동 단위로 표시돼요.") }, singleLine = true)
             OutlinedTextField(facilityName, { facilityName = it }, Modifier.fillMaxWidth(), label = { Text("이용 헬스장 (선택)") }, singleLine = true)
             OutlinedTextField(bio, { bio = it }, Modifier.fillMaxWidth(), label = { Text("자기소개 (선택)") }, minLines = 2)

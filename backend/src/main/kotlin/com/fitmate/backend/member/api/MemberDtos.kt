@@ -25,8 +25,8 @@ data class AvailableTimeResponse(val id: UUID, val weekdayLocal: Int, val startL
 data class UserSportResponse(val sportCode: String, val skillLevel: String)
 data class UserGoalResponse(val goalCode: String, val primary: Boolean)
 data class ConsentResponse(val termsDocumentId: UUID, val type: TermsType, val version: String, val consentedAt: Instant, val withdrawnAt: Instant?)
-data class ProfileResponse(val nickname: String, val displayName: String, val birthDate: LocalDate?, val gender: Gender?, val visibility: ProfileVisibility, val bio: String?, val weightUnit: WeightUnit, val timezoneId: String, val version: Long)
-data class MeResponse(val id: UUID, val email: String, val accountStatus: String, val profile: ProfileResponse, val activityRegions: List<ActivityRegionResponse>, val facilities: List<UserFacilityResponse>, val availableTimes: List<AvailableTimeResponse>, val sports: List<UserSportResponse>, val goals: List<UserGoalResponse>, val consents: List<ConsentResponse>)
+data class MemberProfileResponse(val nickname: String, val displayName: String, val birthDate: LocalDate?, val gender: Gender?, val visibility: ProfileVisibility, val bio: String?, val weightUnit: WeightUnit, val timezoneId: String, val version: Long)
+data class MeResponse(val id: UUID, val email: String, val accountStatus: String, val profile: MemberProfileResponse, val activityRegions: List<ActivityRegionResponse>, val facilities: List<UserFacilityResponse>, val availableTimes: List<AvailableTimeResponse>, val sports: List<UserSportResponse>, val goals: List<UserGoalResponse>, val consents: List<ConsentResponse>)
 
 data class ProfileUpdateRequest(
     @field:Size(max = 30) val nickname: String? = null,

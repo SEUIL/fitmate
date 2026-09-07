@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import com.fitmate.app.data.model.WorkoutSummary
 import com.fitmate.app.data.model.WorkoutSet
+import kotlinx.coroutines.launch
 
 @Composable internal fun WorkoutAction(label: String, action: () -> Unit) {
     Button(action, Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)) { Text(label) }
@@ -69,7 +70,14 @@ internal val ExampleRoutines = listOf(
     SavedRoutine("3분할 · 등/이두", listOf("랫풀다운", "시티드 로우", "케이블 컬"))
 )
 
-@Composable internal fun RoutineLibrary(modifier: Modifier, saved: List<SavedRoutine>, update: (List<SavedRoutine>) -> Unit, select: (SavedRoutine) -> Unit) = Screen(modifier) {
+@Composable internal fun RoutineLibrary(
+    modifier: Modifier,
+    saved: List<SavedRoutine>,
+    update: (List<SavedRoutine>) -> Unit,
+    exerciseCatalog: ExerciseCatalog,
+    select: (SavedRoutine) -> Unit
+) = Screen(modifier) {
+    val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf("기본 루틴") }
     var editing by remember { mutableStateOf(false) }
     var original by remember { mutableStateOf<String?>(null) }
@@ -80,6 +88,14 @@ internal val ExampleRoutines = listOf(
     var deleting by remember { mutableStateOf<String?>(null) }
     SocialTabs(listOf("기본 루틴", "저장 루틴"), tab) { tab = it }
     Text("기본 루틴은 UI 검증용 예시이며 개인 맞춤 AI 추천이 아닙니다. 운동 구성은 자유롭게 수정할 수 있어요.", style = MaterialTheme.typography.bodySmall)
+    when (val catalog = exerciseCatalog.state) {
+        ExerciseCatalogState.Loading -> Text("서버 운동 목록을 불러오는 중입니다.", style = MaterialTheme.typography.bodySmall)
+        is ExerciseCatalogState.Ready -> Text("서버 운동 목록 ${catalog.exercises.size}개를 사용 중입니다.", style = MaterialTheme.typography.bodySmall)
+        is ExerciseCatalogState.Failed -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("서버 목록을 불러오지 못해 기본 목록을 표시합니다.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            TextButton({ scope.launch { exerciseCatalog.refresh() } }) { Text("다시 시도") }
+        }
+    }
     val rows = if (tab == "기본 루틴") ExampleRoutines else saved
     if (rows.isEmpty()) Text("저장한 루틴이 없어요. 직접 구성해 보세요.")
     rows.forEach { routine -> SoftCard {
@@ -101,7 +117,12 @@ internal val ExampleRoutines = listOf(
             TextButton({ exercises = exercises.toMutableList().apply { add(index + 1, removeAt(index)) } }, enabled = index < exercises.lastIndex) { Text("↓") }
             TextButton({ exercises = exercises.filterIndexed { i, _ -> i != index } }) { Text("삭제") }
         } }
-        Choices(ExerciseGuides.map { it.name }, "") { if (it !in exercises) exercises = exercises + it }
+        val serverExerciseNames = (exerciseCatalog.state as? ExerciseCatalogState.Ready)
+            ?.exercises
+            ?.map { it.name }
+            ?.distinct()
+            .orEmpty()
+        Choices(if (serverExerciseNames.isEmpty()) ExerciseGuides.map { it.name } else serverExerciseNames, "") { if (it !in exercises) exercises = exercises + it }
         OutlinedTextField(draft, { draft = it.take(60) }, Modifier.fillMaxWidth(), label = { Text("직접 운동명 입력") })
         TextButton({ if (draft.isNotBlank() && draft.trim() !in exercises) { exercises = exercises + draft.trim(); draft = "" } }) { Text("운동 추가") }
         ErrorText(error)
