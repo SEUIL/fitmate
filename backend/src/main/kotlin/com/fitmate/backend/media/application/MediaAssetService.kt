@@ -9,6 +9,7 @@ import com.fitmate.backend.media.domain.MediaAsset
 import com.fitmate.backend.media.domain.MediaPurpose
 import com.fitmate.backend.media.domain.MediaStatus
 import com.fitmate.backend.media.repository.MediaAssetRepository
+import com.fitmate.backend.member.repository.UserProfileRepository
 import org.springframework.core.io.FileSystemResource
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -25,6 +26,7 @@ class MediaAssetService(
     private val assets: MediaAssetRepository,
     private val communityPostMedia: CommunityPostMediaRepository,
     private val directMessages: DirectMessageRepository,
+    private val profiles: UserProfileRepository,
     private val properties: MediaStorageProperties,
 ) {
     @Transactional
@@ -90,6 +92,9 @@ class MediaAssetService(
         }
         if (directMessages.existsByMediaIdAndDeletedAtIsNull(mediaId)) {
             throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION, "대화에 사용 중인 이미지는 삭제할 수 없습니다.")
+        }
+        if (profiles.existsByProfileImageMediaId(mediaId)) {
+            throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION, "프로필에 사용 중인 이미지는 새 프로필 사진으로 변경한 뒤 삭제할 수 있습니다.")
         }
         asset.status = MediaStatus.DELETED
         assets.saveAndFlush(asset)

@@ -18,10 +18,8 @@ enum class FollowStatus { PENDING, ACCEPTED, REJECTED, CANCELED }
 
 @Embeddable
 data class FollowId(
-    @Convert(converter = UuidBinaryConverter::class)
     @Column(name = "follower_user_id", columnDefinition = "BINARY(16)")
     var followerUserId: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class)
     @Column(name = "following_user_id", columnDefinition = "BINARY(16)")
     var followingUserId: UUID? = null,
 ) : Serializable

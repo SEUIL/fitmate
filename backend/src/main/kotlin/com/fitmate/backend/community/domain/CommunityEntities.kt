@@ -20,7 +20,7 @@ enum class PostVisibility { PUBLIC, MUTUAL }
 @Table(name = "community_posts")
 class CommunityPost(
     @Id @Convert(converter = UuidBinaryConverter::class) @Column(name = "id", columnDefinition = "BINARY(16)") var id: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "author_user_id", nullable = false, columnDefinition = "BINARY(16)") var authorUserId: UUID? = null,
+    @Column(name = "author_user_id", nullable = false, columnDefinition = "BINARY(16)") var authorUserId: UUID? = null,
     @Column(name = "content", nullable = false, length = 2000) var content: String = "",
     @Enumerated(EnumType.STRING) @Column(name = "visibility", nullable = false, length = 16) var visibility: PostVisibility = PostVisibility.PUBLIC,
     @Column(name = "deleted_at") var deletedAt: Instant? = null,
@@ -51,8 +51,8 @@ data class CommunityPostLikeId(var postId: UUID? = null, var userId: UUID? = nul
 @Table(name = "community_post_comments")
 class CommunityPostComment(
     @Id @Convert(converter = UuidBinaryConverter::class) @Column(name = "id", columnDefinition = "BINARY(16)") var id: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "post_id", nullable = false, columnDefinition = "BINARY(16)") var postId: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "author_user_id", nullable = false, columnDefinition = "BINARY(16)") var authorUserId: UUID? = null,
+    @Column(name = "post_id", nullable = false, columnDefinition = "BINARY(16)") var postId: UUID? = null,
+    @Column(name = "author_user_id", nullable = false, columnDefinition = "BINARY(16)") var authorUserId: UUID? = null,
     @Column(name = "content", nullable = false, length = 1000) var content: String = "",
     @Column(name = "deleted_at") var deletedAt: Instant? = null,
 ) : BaseTimeEntity()

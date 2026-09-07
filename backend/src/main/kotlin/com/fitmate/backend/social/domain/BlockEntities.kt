@@ -13,10 +13,8 @@ import java.util.UUID
 
 @Embeddable
 data class BlockId(
-    @Convert(converter = UuidBinaryConverter::class)
     @Column(name = "blocker_user_id", columnDefinition = "BINARY(16)")
     var blockerUserId: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class)
     @Column(name = "blocked_user_id", columnDefinition = "BINARY(16)")
     var blockedUserId: UUID? = null,
 ) : Serializable

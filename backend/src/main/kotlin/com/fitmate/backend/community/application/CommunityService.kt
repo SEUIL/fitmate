@@ -65,12 +65,15 @@ class CommunityService(
     fun update(userId: UUID, postId: UUID, request: UpdateCommunityPostRequest): CommunityPostResponse {
         val post = ownedPost(userId, postId)
         if (post.version != request.version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
-        validateContent(request.content, request.mediaIds)
+        val mediaIds = request.mediaIds ?: postMedia.findAllByPostIdOrderByDisplayOrderAsc(postId).map { requireNotNull(it.mediaId) }
+        validateContent(request.content, mediaIds)
         post.content = request.content.trim()
         post.visibility = request.visibility
         posts.saveAndFlush(post)
-        postMedia.deleteAllByPostId(postId)
-        replaceMedia(userId, postId, request.mediaIds)
+        request.mediaIds?.let { replacement ->
+            postMedia.deleteAllByPostId(postId)
+            replaceMedia(userId, postId, replacement)
+        }
         return response(userId, post)
     }
 

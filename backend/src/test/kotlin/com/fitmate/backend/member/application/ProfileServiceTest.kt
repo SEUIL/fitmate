@@ -15,6 +15,7 @@ import com.fitmate.backend.member.domain.UserProfile
 import com.fitmate.backend.member.domain.UserSport
 import com.fitmate.backend.member.domain.UserSportId
 import com.fitmate.backend.member.repository.*
+import com.fitmate.backend.media.application.MediaAssetService
 import com.fitmate.backend.terms.repository.UserConsentRepository
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -39,9 +40,10 @@ class ProfileServiceTest {
     private val goals = mock(UserGoalRepository::class.java)
     private val consents = mock(UserConsentRepository::class.java)
     private val customSports = mock(CustomSportService::class.java)
+    private val mediaAssets = mock(MediaAssetService::class.java)
     private val now = Instant.parse("2026-09-06T00:00:00Z")
     private val service = ProfileService(users, profiles, regions, facilities, userRegions, userFacilities,
-        times, userSports, sports, goals, consents, customSports, Clock.fixed(now, ZoneOffset.UTC))
+        times, userSports, sports, goals, consents, customSports, mediaAssets, Clock.fixed(now, ZoneOffset.UTC))
     private val userId = UUID.randomUUID()
     private val profile = UserProfile(userId = userId, nickname = "fitmate", version = 3)
 

@@ -114,7 +114,7 @@ internal fun JsonObject.toUserProfile(): UserProfile {
         email = text("email"), birthDate = p.text("birthDate"), gender = when (p.text("gender")) { "MALE" -> "남성"; "FEMALE" -> "여성"; else -> "선택 안 함" },
         facilityName = rows("facilities").joinToString { it.text("name") }, experience = skillCodes.entries.firstOrNull { it.value == health?.text("skillLevel") }?.key ?: "입문",
         customInterests = rows("customSports").map { it.text("name") }.toSet(), goals = rows("goals").sortedByDescending { it.get("primary").asBoolean }.mapNotNull { g -> goalCodes.entries.firstOrNull { it.value == g.text("goalCode") }?.key }.toSet(),
-        availableTime = rows("availableTimes").joinToString { "${listOf("월", "화", "수", "목", "금", "토", "일").getOrNull(it.text("weekdayLocal").toIntOrNull() ?: -1).orEmpty()}요일 ${it.text("startLocalTime")}~${it.text("endLocalTime")}" }, bio = p.text("bio"),
+        availableTime = rows("availableTimes").joinToString { "${listOf("월", "화", "수", "목", "금", "토", "일").getOrNull(it.text("weekdayLocal").toIntOrNull() ?: -1).orEmpty()}요일 ${it.text("startLocalTime")}~${it.text("endLocalTime")}" }, bio = p.text("bio"), profileImageUrl = p.text("profileImageUrl").ifBlank { null },
         activityRegionId = rows("activityRegions").singleOrNull()?.text("id").orEmpty())
 }
 
@@ -221,7 +221,11 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
                 when (selected) {
                     "회원 탈퇴" -> { api.request("DELETE", "users/me", mapOf("password" to current)); api.clearSession() }
                     "비밀번호 변경" -> { api.request("PATCH", "users/me/password", mapOf("currentPassword" to current, "newPassword" to next)); api.clearSession() }
-                    else -> api.logout(selected == "전체 기기 로그아웃")
+                    else -> {
+                        // A stale local token must not trap the user on the signed-in screen.
+                        runCatching { api.logout(selected == "전체 기기 로그아웃") }
+                        api.clearSession()
+                    }
                 }
             }, { current = ""; next = ""; repeat = ""; finished() })
         }, enabled = !busy && (selected !in listOf("회원 탈퇴", "비밀번호 변경") || current.isNotBlank())) { Text(if (busy) "처리 중…" else "확인") }
