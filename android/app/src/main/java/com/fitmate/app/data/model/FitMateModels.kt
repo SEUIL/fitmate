@@ -20,7 +20,8 @@ data class UserProfile(
     val goals: Set<String> = emptySet(),
     val availableTime: String = "",
     val bio: String = "",
-    val isAdultVerified: Boolean = false
+    val isAdultVerified: Boolean = false,
+    val activityRegionId: String = ""
 )
 
 data class MatePost(

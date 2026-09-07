@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import com.fitmate.app.BuildConfig
 import com.fitmate.app.data.remote.ApiExercise
 import com.fitmate.app.data.remote.FitMateApiClient
+import com.fitmate.app.data.remote.SessionTokenStore
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -31,8 +33,9 @@ internal class ExerciseCatalog(private val api: FitMateApiClient) {
 }
 
 @Composable
-internal fun rememberFitMateApiClient(): FitMateApiClient = remember {
-    FitMateApiClient(BuildConfig.API_BASE_URL)
+internal fun rememberFitMateApiClient(): FitMateApiClient {
+    val context = LocalContext.current
+    return remember { FitMateApiClient(BuildConfig.API_BASE_URL, tokenStore = SessionTokenStore(context)) }
 }
 
 @Composable

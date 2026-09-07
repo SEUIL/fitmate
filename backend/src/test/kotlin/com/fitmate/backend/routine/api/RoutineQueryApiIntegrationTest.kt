@@ -26,8 +26,8 @@ import java.util.UUID
 @EnabledIfEnvironmentVariable(named = "FITMATE_TEST_DB_URL", matches = ".+")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = [
     "spring.datasource.url=\${FITMATE_TEST_DB_URL}",
-    "spring.datasource.username=root",
-    "spring.datasource.password=",
+    "spring.datasource.username=\${FITMATE_TEST_DB_USERNAME:root}",
+    "spring.datasource.password=\${FITMATE_TEST_DB_PASSWORD:}",
 ])
 class RoutineQueryApiIntegrationTest {
     @Autowired private lateinit var http: TestRestTemplate

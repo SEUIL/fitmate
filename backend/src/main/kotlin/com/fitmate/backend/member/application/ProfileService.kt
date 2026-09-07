@@ -91,6 +91,11 @@ class ProfileService(
         val profile = profileRepository.findForUpdateByUserId(userId) ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND)
         if (request.version != profile.version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
         request.customSports?.let(customSportService::validate)
+        if (request.sports != null || request.customSports != null) {
+            val effectiveSports = request.sports?.isNotEmpty() ?: userSportRepository.findAllByIdUserId(userId).isNotEmpty()
+            val effectiveCustomSports = request.customSports?.isNotEmpty() ?: customSportService.get(userId).isNotEmpty()
+            if (!effectiveSports && !effectiveCustomSports) invalid("관심 운동을 하나 이상 선택해야 합니다.")
+        }
         request.nickname?.let {
             val nickname = it.trim()
             if (nickname.isEmpty()) invalid("닉네임을 입력해야 합니다.")
@@ -121,8 +126,8 @@ class ProfileService(
             availableTimeRepository.saveAll(times.map { UserAvailableTime(UUID.randomUUID(), userId, it.weekdayLocal, it.startLocalTime, it.endLocalTime, it.timezoneId) })
         }
         request.sports?.let { selections ->
-            if (selections.map { it.sportCode }.distinct().size != selections.size || selections.count { it.sportCode == SportCode.HEALTH } != 1) {
-                invalid("HEALTH 숙련도를 하나 선택해야 합니다.")
+            if (selections.map { it.sportCode }.distinct().size != selections.size) {
+                invalid("관심 운동은 중복 선택할 수 없습니다.")
             }
             val sports = selections.map { selection ->
                 val sport = sportRepository.findByCodeAndIsActiveTrue(selection.sportCode) ?: invalid("활성 운동 종목만 선택할 수 있습니다.")
