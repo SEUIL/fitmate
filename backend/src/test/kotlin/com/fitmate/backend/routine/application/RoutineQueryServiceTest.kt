@@ -87,9 +87,9 @@ class RoutineQueryServiceTest {
 
     @Test
     fun `recommendation requires active sport and complete user selections`() {
-        `when`(sports.findByCodeAndIsActiveTrue(SportCode.RUNNING)).thenReturn(null)
         val inactive = assertThrows(ApiException::class.java) { service.getRecommended(userId, SportCode.RUNNING) }
         assertEquals(ApiErrorCode.VALIDATION_ERROR, inactive.errorCode)
+        verify(sports, never()).findByCodeAndIsActiveTrue(SportCode.RUNNING)
         verify(goals, never()).findAllByIdUserId(userId)
 
         `when`(goals.findAllByIdUserId(userId)).thenReturn(emptyList())

@@ -97,7 +97,15 @@ class RoutineQueryApiIntegrationTest {
     @Test
     fun `reference catalog exposes logical ids that its detail endpoints accept`() {
         val sport = http.getForEntity("/api/v1/sports", JsonNode::class.java)
-        assertEquals("01000000-0000-0000-0000-000000000001", sport.body!!["data"]["items"][0]["id"].asText())
+        val sportItems = sport.body!!["data"]["items"]
+        assertEquals(listOf("HEALTH", "RUNNING"), sportItems.map { it["code"].asText() })
+        assertEquals(
+            listOf(
+                "01000000-0000-0000-0000-000000000001",
+                "01000000-0000-0000-0000-000000000002",
+            ),
+            sportItems.map { it["id"].asText() },
+        )
         val exerciseId = "30000000-0000-0000-0000-000000000001"
         val exercise = http.getForEntity("/api/v1/exercises/$exerciseId", JsonNode::class.java)
         assertEquals(HttpStatus.OK, exercise.statusCode, exercise.body.toString())
@@ -108,7 +116,7 @@ class RoutineQueryApiIntegrationTest {
     }
 
     @Test
-    fun `routine queries require authentication and reject inactive sport`() {
+    fun `routine queries require authentication and reject running for health routines`() {
         listOf("/api/v1/routines", "/api/v1/routines/templates", "/api/v1/routines/recommended?sportCode=HEALTH")
             .forEach {
                 val response = http.getForEntity(it, JsonNode::class.java)
@@ -116,9 +124,10 @@ class RoutineQueryApiIntegrationTest {
                 assertEquals("INVALID_ACCESS_TOKEN", response.body!!["error"]["code"].asText())
             }
         val account = signup(GoalCode.FITNESS, SkillLevel.BEGINNER)
-        val inactive = exchange("/api/v1/routines/recommended?sportCode=RUNNING", account.token)
-        assertEquals(HttpStatus.BAD_REQUEST, inactive.statusCode)
-        assertEquals("VALIDATION_ERROR", inactive.body!!["error"]["code"].asText())
+        val running = exchange("/api/v1/routines/recommended?sportCode=RUNNING", account.token)
+        assertEquals(HttpStatus.BAD_REQUEST, running.statusCode)
+        assertEquals("VALIDATION_ERROR", running.body!!["error"]["code"].asText())
+        assertEquals("추천 루틴은 헬스 종목만 지원합니다.", running.body!!["error"]["message"].asText())
     }
 
     private fun signup(goal: GoalCode, skill: SkillLevel): Account {

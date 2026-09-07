@@ -29,6 +29,9 @@ class RoutineQueryService(
 ) {
     @Transactional(readOnly = true)
     fun getRecommended(userId: UUID, sportCode: SportCode): RoutineDetail {
+        if (sportCode != SportCode.HEALTH) {
+            throw ApiException(ApiErrorCode.VALIDATION_ERROR, "추천 루틴은 헬스 종목만 지원합니다.")
+        }
         val sport = sportRepository.findByCodeAndIsActiveTrue(sportCode)
             ?: throw ApiException(ApiErrorCode.VALIDATION_ERROR, "활성 운동 종목만 추천받을 수 있습니다.")
         val sportId = requireNotNull(sport.id)

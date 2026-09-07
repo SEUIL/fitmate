@@ -2,7 +2,7 @@
 
 - 작성일: 2026-09-03
 - 최종 수정일: 2026-09-07
-- 버전: v0.4
+- 버전: v0.5
 - 상태: 검토 중
 - 대상: Kotlin Spring Boot Backend, Android Client
 - 기준 문서:
@@ -16,7 +16,7 @@
 
 P0의 사용자 흐름은 다음과 같다.
 
-`회원가입·로그인 -> 운동 프로필 작성 -> 헬스 루틴 선택 -> SOLO 운동 세션 생성 -> 세트 기록 -> 운동 완료 -> 기본 개인 리포트`
+`회원가입·로그인 -> 운동 프로필 작성 -> 혼자 운동에서 헬스 또는 러닝 선택 -> 헬스 루틴 선택 -> SOLO 운동 세션 생성 -> 세트 기록 -> 운동 완료 -> 기본 개인 리포트`
 
 이 문서는 기존 기능과 DB 기획을 API 형태로 구체화한 초안이다. 새로운 사용자 기능은 추가하지 않는다.
 
@@ -28,6 +28,7 @@ P0의 사용자 흐름은 다음과 같다.
 - JWT access token과 refresh token 세션
 - 현재 기기 및 전체 기기 로그아웃
 - 운동 프로필과 동의
+- 혼자 운동 진입용 활성 종목 `HEALTH`, `RUNNING`
 - 지역, 시설, 종목 사전
 - 헬스 운동 사전과 대체 운동
 - 정적 추천 루틴, 사용자 저장 루틴과 직접 구성 루틴
@@ -44,7 +45,7 @@ P0의 사용자 흐름은 다음과 같다.
 - 프로필 이미지 업로드
 - Push 알림 발송
 - Samsung Health Data 서버 저장과 동기화
-- 러닝
+- 러닝 기록의 서버 저장, 동기화와 리포트
 - 같이 운동하기
 - 일반 커뮤니티와 DM
 - 인바디와 AI 판독
@@ -92,7 +93,7 @@ API 구현 전에 Flyway로 아래 순서의 테이블과 시드를 생성한다
 ### 3.2 초기 시드
 
 - `regions`: 시·도와 시 단위 지역
-- `sports`: 전체 운동 종목 코드, P0에서는 `HEALTH`만 활성
+- `sports`: V2에서 전체 운동 종목 코드를 생성하고 V5에서 혼자 운동 기본 진입 종목인 `HEALTH`, `RUNNING`을 활성화
 - `exercise_catalog`: 헬스 운동 20~30개와 YouTube `reference_url`
 - `exercise_substitutions`: 같은 종목 안의 대체 운동 관계
 - `routines`: 시스템 템플릿 5개
@@ -675,7 +676,28 @@ Response:
 
 `GET /api/v1/sports`
 
-P0 응답에는 활성 상태인 `HEALTH`를 제공한다.
+P0 응답에는 혼자 운동 기본 진입 종목인 `HEALTH`, `RUNNING`을 제공한다.
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "01000000-0000-0000-0000-000000000001",
+        "code": "HEALTH",
+        "name": "헬스"
+      },
+      {
+        "id": "01000000-0000-0000-0000-000000000002",
+        "code": "RUNNING",
+        "name": "러닝"
+      }
+    ]
+  }
+}
+```
+
+Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러닝 기록의 서버 저장, 동기화와 리포트 API는 P1 범위다.
 
 사용자가 직접 입력한 `customSports`는 이 목록에 포함하지 않는다. 사용자용 `POST /sports`는 추가하지 않는다.
 
@@ -725,6 +747,7 @@ P0 응답에는 활성 상태인 `HEALTH`를 제공한다.
 - 사용자의 주 목표와 `HEALTH` 숙련도에 맞는 `SYSTEM_TEMPLATE` 하나를 반환한다.
 - 선택 순서는 주 목표와 숙련도 정확 일치, 같은 목표의 `targetLevel=null` 공통 템플릿, `FITNESS+BEGINNER` 초급 전신 fallback이다.
 - 일치하는 템플릿이 없으면 헬스 초급 전신 루틴을 반환한다.
+- `sportCode=RUNNING`은 러닝용 루틴 템플릿이 없으므로 `400 VALIDATION_ERROR`를 반환한다.
 - P0에서는 AI, 인바디와 건강 데이터를 추천에 사용하지 않는다.
 
 `GET /api/v1/routines/templates`와 `GET /api/v1/routines`는 다음 목록 구조를 사용한다. 템플릿 목록은 활성 시스템 템플릿만 반환하고, 내 루틴 목록은 인증 사용자가 소유한 활성 사용자 루틴만 반환한다.
@@ -1117,7 +1140,7 @@ Response:
 | 내 프로필 | `GET /users/me` |
 | 프로필 수정 | `PATCH /users/me/profile` |
 | 알림 설정 | `GET`, `PATCH /users/me/notification-settings` |
-| 혼자 운동 진입 | `GET /routines/recommended`, `GET /routines/templates`, `GET /routines` |
+| 혼자 운동 진입 | `GET /sports`로 헬스·러닝 선택지를 조회. 헬스 선택 시 `GET /routines/recommended`, `GET /routines/templates`, `GET /routines` |
 | 루틴 직접 구성 | `GET /exercises`, `GET /exercises/{id}/substitutions`, `POST /routines` |
 | 운동 시작 전 | `GET /routines/{id}`, `POST /workout-sessions` |
 | 운동 진행 | 세션 조회, 상태 변경, 운동 추가·변경·삭제, 세트 `PUT` |
