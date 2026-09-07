@@ -31,6 +31,7 @@ class SecurityConfig(
                 it.accessDeniedHandler { _, response, _ -> writeError(response, ApiErrorCode.FORBIDDEN_RESOURCE) }
             }
             .authorizeHttpRequests {
+                it.requestMatchers("/api/v1/exercises/*/previous-record").authenticated()
                 it.requestMatchers(
                     "/api/v1/health",
                     "/api/v1/auth/email-availability",

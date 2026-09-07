@@ -233,8 +233,8 @@ class AuthService(
     }
 
     private fun validateRequestCollections(request: SignUpRequest) {
-        if (request.sports.map { it.sportCode }.distinct().size != request.sports.size || request.sports.count { it.sportCode == SportCode.HEALTH } != 1) {
-            throw ApiException(ApiErrorCode.VALIDATION_ERROR, "HEALTH 숙련도를 하나 선택해야 합니다.")
+        if (request.sports.map { it.sportCode }.distinct().size != request.sports.size || (request.sports.isEmpty() && request.customSports.isEmpty())) {
+            throw ApiException(ApiErrorCode.VALIDATION_ERROR, "중복 없이 관심 운동을 하나 이상 선택해야 합니다.")
         }
         if (request.goals.map { it.goalCode }.distinct().size != request.goals.size || request.goals.count { it.primary } != 1) {
             throw ApiException(ApiErrorCode.VALIDATION_ERROR, "주 목표를 하나 선택해야 합니다.")

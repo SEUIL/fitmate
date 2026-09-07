@@ -33,7 +33,7 @@ data class SignUpRequest(
     val activityRegionIds: List<UUID> = emptyList(),
     val facilityNames: List<@NotBlank @Size(max = 150) String> = emptyList(),
     val availableTimes: List<@Valid AvailableTimeRequest> = emptyList(),
-    @field:NotEmpty val sports: List<@Valid SportSelectionRequest>,
+    val sports: List<@Valid SportSelectionRequest> = emptyList(),
     @field:NotEmpty val goals: List<@Valid GoalSelectionRequest>,
     @field:NotEmpty val consentDocumentIds: List<UUID>,
     @field:Size(max = 128) val deviceId: String? = null,
