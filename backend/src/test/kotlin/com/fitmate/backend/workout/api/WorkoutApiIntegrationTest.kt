@@ -129,6 +129,80 @@ class WorkoutApiIntegrationTest {
         assertEquals("CANCELED", canceled.body!!["data"]["status"].asText())
     }
 
+    @Test
+    fun `user defined split cycles while workout day number keeps increasing`() {
+        val token = signup()
+        val routine = command(
+            "/api/v1/routines", HttpMethod.POST, token,
+            mapOf(
+                "name" to "내 2분할",
+                "sourceType" to "MANUAL",
+                "sportCode" to "HEALTH",
+                "splitCount" to 2,
+                "items" to listOf(
+                    mapOf(
+                        "exerciseId" to "30000000-0000-0000-0000-000000000004",
+                        "sequenceNo" to 1, "splitDayNo" to 1, "targetSets" to 1,
+                    ),
+                    mapOf(
+                        "exerciseId" to "30000000-0000-0000-0000-000000000001",
+                        "sequenceNo" to 2, "splitDayNo" to 2, "targetSets" to 1,
+                    ),
+                ),
+            ),
+        ).body!!["data"]
+        assertEquals(2, routine["splitCount"].asInt())
+        val routineId = routine["id"].asText()
+
+        val day1 = createRoutineWorkout(token, routineId)
+        assertEquals(1, day1["routineWorkoutDayNumber"].asInt())
+        assertEquals(1, day1["routineSplitDayNo"].asInt())
+        assertEquals("CHEST", day1["focusBodyParts"][0].asText())
+        completeSingleSetWorkout(token, day1)
+
+        val day2 = createRoutineWorkout(token, routineId)
+        assertEquals(2, day2["routineWorkoutDayNumber"].asInt())
+        assertEquals(2, day2["routineSplitDayNo"].asInt())
+        assertEquals("LEGS", day2["focusBodyParts"][0].asText())
+        completeSingleSetWorkout(token, day2)
+
+        val day3 = createRoutineWorkout(token, routineId)
+        assertEquals(3, day3["routineWorkoutDayNumber"].asInt())
+        assertEquals(1, day3["routineSplitDayNo"].asInt())
+        assertEquals(2, day3["routineSplitCount"].asInt())
+        val canceled = command(
+            "/api/v1/workout-sessions/${day3["id"].asText()}/cancel", HttpMethod.POST, token,
+            mapOf("version" to 0),
+        )
+        assertEquals(HttpStatus.OK, canceled.statusCode)
+        val retryDay3 = createRoutineWorkout(token, routineId)
+        assertEquals(3, retryDay3["routineWorkoutDayNumber"].asInt())
+        assertEquals(1, retryDay3["routineSplitDayNo"].asInt())
+    }
+
+    private fun createRoutineWorkout(token: String, routineId: String): JsonNode {
+        val response = command(
+            "/api/v1/workout-sessions", HttpMethod.POST, token, mapOf("routineId" to routineId),
+        )
+        assertEquals(HttpStatus.CREATED, response.statusCode, response.body.toString())
+        return response.body!!["data"]
+    }
+
+    private fun completeSingleSetWorkout(token: String, session: JsonNode) {
+        val sessionId = session["id"].asText()
+        val sessionExerciseId = session["exercises"][0]["id"].asText()
+        assertEquals(HttpStatus.OK, command(
+            "/api/v1/workout-sessions/$sessionId/start", HttpMethod.POST, token, mapOf("version" to 0),
+        ).statusCode)
+        assertEquals(HttpStatus.OK, command(
+            "/api/v1/workout-sessions/$sessionId/exercises/$sessionExerciseId/sets/1", HttpMethod.PUT, token,
+            mapOf("weightKg" to 20, "repetitions" to 10, "completed" to true, "version" to 0),
+        ).statusCode)
+        assertEquals(HttpStatus.OK, command(
+            "/api/v1/workout-sessions/$sessionId/complete", HttpMethod.POST, token, mapOf("version" to 1),
+        ).statusCode)
+    }
+
     private fun createDirectWorkout(token: String) = command(
         "/api/v1/workout-sessions", HttpMethod.POST, token,
         mapOf(

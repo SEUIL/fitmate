@@ -51,8 +51,17 @@ class WorkoutService(
                 ?.takeIf { it.isTemplate || it.ownerUserId == userId }
                 ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "루틴을 찾을 수 없습니다.")
         }
+        val completedRoutineSessionCount = routine?.let {
+            sessions.countByUserIdAndRoutineIdAndStatus(
+                userId, requireNotNull(it.id), WorkoutSessionStatus.COMPLETED,
+            )
+        }
+        val workoutDayNumber = completedRoutineSessionCount?.let { Math.toIntExact(it + 1) }
+        val splitDayNo = routine?.let { ((workoutDayNumber!! - 1) % it.splitCount) + 1 }
         val plans = if (routine != null) {
-            routineItems.findAllByRoutineIdOrderBySequenceNoAsc(requireNotNull(routine.id)).map { item ->
+            routineItems.findAllByRoutineIdOrderBySequenceNoAsc(requireNotNull(routine.id))
+                .filter { it.splitDayNo == splitDayNo }
+                .map { item ->
                 val exercise = requireNotNull(item.exercise)
                 Plan(
                     exercise, item.sequenceNo, item.targetSets ?: 1, item.targetWeightKg,
@@ -72,6 +81,8 @@ class WorkoutService(
 
         val session = sessions.saveAndFlush(WorkoutSession(
             id = dbId(UUID.randomUUID()), userId = userId, routine = routine,
+            routineSplitDayNo = splitDayNo, routineSplitCount = routine?.splitCount,
+            routineWorkoutDayNumber = workoutDayNumber,
             status = WorkoutSessionStatus.READY, startedAt = now, clientUpdatedAt = request.clientUpdatedAt,
         ))
         plans.sortedBy { it.sequenceNo }.forEach { plan ->
@@ -102,17 +113,16 @@ class WorkoutService(
         size: Int,
     ): CursorPageResponse<WorkoutSessionSummaryResponse> {
         if (cursor < 0 || size !in 1..100) invalid("cursor는 0 이상, size는 1부터 100까지 가능합니다.")
-        val pageable = PageRequest.of(cursor, size + 1)
+        val pageable = PageRequest.of(cursor, size)
         val found = if (status == null) {
             sessions.findAllByUserIdOrderByStartedAtDescIdDesc(userId, pageable)
         } else {
             sessions.findAllByUserIdAndStatusOrderByStartedAtDescIdDesc(userId, status, pageable)
         }
-        val hasNext = found.size > size
         return CursorPageResponse(
-            items = found.take(size).map(::toSummary),
-            nextCursor = (cursor + 1).toString().takeIf { hasNext },
-            hasNext = hasNext,
+            items = found.content.map(::toSummary),
+            nextCursor = (cursor + 1).toString().takeIf { found.hasNext() },
+            hasNext = found.hasNext(),
         )
     }
 
@@ -197,23 +207,25 @@ class WorkoutService(
         return previousRecord(userId, dbId(exerciseId), before)
     }
 
-    private fun toResponse(session: WorkoutSession, userId: UUID): WorkoutSessionResponse = WorkoutSessionResponse(
-        id = apiId(session.id),
-        routineId = session.routine?.id?.let(::apiId),
-        status = session.status,
-        startedAt = session.startedAt,
-        endedAt = session.endedAt,
-        version = session.version,
-        exercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id)).map { item ->
-            val exercise = requireNotNull(item.exercise)
-            WorkoutSessionExerciseResponse(
-                id = apiId(item.id), exerciseId = apiId(exercise.id), exerciseName = item.displayNameSnapshot,
-                bodyPart = item.bodyPartSnapshot, sequenceNo = item.sequenceNo, version = item.version,
-                sets = sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(item.id)).map(::toSetResponse),
-                previousRecord = previousRecord(userId, requireNotNull(exercise.id), session.startedAt),
-            )
-        },
-    )
+    private fun toResponse(session: WorkoutSession, userId: UUID): WorkoutSessionResponse {
+        val workoutExercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
+        return WorkoutSessionResponse(
+            id = apiId(session.id), routineId = session.routine?.id?.let(::apiId),
+            routineSplitDayNo = session.routineSplitDayNo, routineSplitCount = session.routineSplitCount,
+            routineWorkoutDayNumber = session.routineWorkoutDayNumber,
+            focusBodyParts = workoutExercises.mapNotNull { it.bodyPartSnapshot }.distinct(),
+            status = session.status, startedAt = session.startedAt, endedAt = session.endedAt, version = session.version,
+            exercises = workoutExercises.map { item ->
+                val exercise = requireNotNull(item.exercise)
+                WorkoutSessionExerciseResponse(
+                    id = apiId(item.id), exerciseId = apiId(exercise.id), exerciseName = item.displayNameSnapshot,
+                    bodyPart = item.bodyPartSnapshot, sequenceNo = item.sequenceNo, version = item.version,
+                    sets = sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(item.id)).map(::toSetResponse),
+                    previousRecord = previousRecord(userId, requireNotNull(exercise.id), session.startedAt),
+                )
+            },
+        )
+    }
 
     private fun previousRecord(userId: UUID, exerciseId: UUID, before: Instant): PreviousExerciseRecordResponse? {
         val previous = sessionExercises.findPreviousCompleted(
@@ -236,6 +248,8 @@ class WorkoutService(
         val workoutExercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
         return WorkoutSessionSummaryResponse(
             id = apiId(session.id), routineId = session.routine?.id?.let(::apiId), routineName = session.routine?.name,
+            routineSplitDayNo = session.routineSplitDayNo, routineSplitCount = session.routineSplitCount,
+            routineWorkoutDayNumber = session.routineWorkoutDayNumber,
             status = session.status, startedAt = session.startedAt, endedAt = session.endedAt,
             exerciseCount = workoutExercises.size,
             completedSetCount = workoutExercises.sumOf { exercise ->

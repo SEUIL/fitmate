@@ -30,6 +30,8 @@ class RoutineItem(
     var exercise: ExerciseCatalog? = null,
     @Column(name = "sequence_no", nullable = false)
     var sequenceNo: Int = 0,
+    @Column(name = "split_day_no", nullable = false)
+    var splitDayNo: Int = 1,
     @Column(name = "target_sets")
     var targetSets: Int? = null,
     @Column(name = "target_reps_min")

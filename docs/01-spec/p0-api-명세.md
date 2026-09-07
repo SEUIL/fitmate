@@ -2,7 +2,7 @@
 
 - 작성일: 2026-09-03
 - 최종 수정일: 2026-09-07
-- 버전: v0.5
+- 버전: v0.6
 - 상태: 검토 중
 - 대상: Kotlin Spring Boot Backend, Android Client
 - 기준 문서:
@@ -783,6 +783,7 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
         "targetGoalCode": "FITNESS",
         "targetLevel": "BEGINNER",
         "difficulty": "BEGINNER",
+        "splitCount": 1,
         "template": true,
         "version": 0
       }
@@ -806,6 +807,7 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
     "targetGoalCode": "HABIT",
     "targetLevel": "BEGINNER",
     "difficulty": "BEGINNER",
+    "splitCount": 1,
     "template": true,
     "version": 0,
     "items": [
@@ -815,6 +817,7 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
         "exerciseName": "체스트 프레스",
         "bodyPart": "CHEST",
         "sequenceNo": 1,
+        "splitDayNo": 1,
         "targetSets": 3,
         "targetRepsMin": 8,
         "targetRepsMax": 12,
@@ -839,10 +842,12 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
   "sportCode": "HEALTH",
   "name": "나의 전신 루틴",
   "sourceType": "MANUAL",
+  "splitCount": 1,
   "items": [
     {
       "exerciseId": "bf7a5460-854d-481c-9786-ed224a1a3db0",
       "sequenceNo": 1,
+      "splitDayNo": 1,
       "targetSets": 3,
       "targetRepsMin": 8,
       "targetRepsMax": 12,
@@ -867,6 +872,7 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
 - 시스템 템플릿은 수정하거나 삭제할 수 없다.
 - 사용자 루틴은 소유자만 수정하고 삭제할 수 있다.
 - 운동 순서는 루틴 안에서 중복될 수 없다.
+- `splitCount`는 `1..10`, 각 항목의 `splitDayNo`는 `1..splitCount`이며 모든 분할에 운동이 하나 이상 필요하다.
 - 목표 중량, 반복 수, RPE와 휴식 시간의 허용 범위를 검증한다.
 - 직접 구성은 `sourceType=MANUAL`, `sportCode=HEALTH`, 하나 이상의 `items`를 사용한다.
 - 템플릿 복사는 `sourceType=USER_COPY`, `sourceRoutineId`를 사용하며 원본 항목을 사용자 루틴으로 복제한다.
@@ -879,10 +885,12 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
 {
   "version": 0,
   "name": "수정한 전신 루틴",
+  "splitCount": 1,
   "items": [
     {
       "exerciseId": "bf7a5460-854d-481c-9786-ed224a1a3db0",
       "sequenceNo": 1,
+      "splitDayNo": 1,
       "targetSets": 4,
       "targetRepsMin": 8,
       "targetRepsMax": 12,
@@ -948,6 +956,10 @@ Response `201 Created`:
     "id": "6c070701-88ca-434f-99b1-3c330d0a6f12",
     "entryType": "SOLO",
     "routineId": "6fb84380-a9f9-4641-95a2-76525a723610",
+    "routineWorkoutDayNumber": 3,
+    "routineSplitDayNo": 1,
+    "routineSplitCount": 2,
+    "focusBodyParts": ["CHEST", "BACK", "SHOULDERS"],
     "status": "READY",
     "startedAt": null,
     "endedAt": null,
@@ -960,6 +972,8 @@ Response `201 Created`:
 
 - `SOLO` 세션의 `mateParticipationId`는 `null`이다.
 - 선택한 루틴의 운동을 세션 운동 스냅샷으로 생성한다.
+- 같은 루틴의 완료 세션 수를 기준으로 누적 운동일을 계산하고, 분할 순번을 `1..splitCount` 안에서 순환한다. 취소 세션은 진행 횟수에서 제외한다.
+- 세션에는 현재 분할의 운동만 복사하며 `routineWorkoutDayNumber`, `routineSplitDayNo`, `routineSplitCount`, `focusBodyParts`를 반환한다.
 - 카탈로그나 루틴이 나중에 변경되어도 진행 중인 세션의 운동명과 부위를 유지한다.
 - Samsung Health 사용 여부는 P0에서 Android 화면 내부 선택이며 서버에 외부 데이터를 저장하지 않는다.
 

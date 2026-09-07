@@ -19,18 +19,21 @@ data class CreateRoutineRequest(
     val sourceType: RoutineSourceType,
     val sportCode: SportCode? = null,
     val sourceRoutineId: UUID? = null,
+    @field:Min(1) @field:Max(10) val splitCount: Int = 1,
     @field:Valid @field:Size(max = 100) val items: List<RoutineItemWriteRequest>? = null,
 )
 
 data class UpdateRoutineRequest(
     @param:JsonProperty(required = true) @param:JsonSetter(nulls = Nulls.FAIL) @field:Min(0) val version: Long,
     @field:Size(min = 1, max = 100) val name: String? = null,
+    @field:Min(1) @field:Max(10) val splitCount: Int? = null,
     @field:Valid @field:Size(min = 1, max = 100) val items: List<RoutineItemWriteRequest>? = null,
 )
 
 data class RoutineItemWriteRequest(
     val exerciseId: UUID,
     @field:Min(1) @field:Max(100) val sequenceNo: Int,
+    @field:Min(1) @field:Max(10) val splitDayNo: Int = 1,
     @field:Min(1) @field:Max(100) val targetSets: Int? = null,
     @field:Min(1) @field:Max(10000) val targetRepsMin: Int? = null,
     @field:Min(1) @field:Max(10000) val targetRepsMax: Int? = null,
