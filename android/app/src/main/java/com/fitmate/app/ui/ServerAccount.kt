@@ -10,8 +10,11 @@ import com.fitmate.app.data.model.UserProfile
 import com.fitmate.app.data.remote.FitMateApiClient
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 internal fun JsonObject.text(key: String): String = get(key)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
 internal fun JsonObject.rows(key: String): List<JsonObject> = getAsJsonArray(key)?.map { it.asJsonObject }.orEmpty()
@@ -53,6 +56,37 @@ internal fun Sport.apiCode() = if (this == Sport.FITNESS) "HEALTH" else name
     }
     if (!loading && regions.isEmpty() && parent?.text("level") != "TOWN") Text("선택 가능한 하위 지역이 없습니다.")
     error?.let { ErrorText(it); TextButton({ retry++ }) { Text("지역 다시 불러오기") } }
+}
+
+/** 서버에 등록된 시설을 지역 기준으로 찾아 제안하되, 등록되지 않은 시설명 직접 입력도 보존한다. */
+@Composable internal fun ServerFacilityPicker(api: FitMateApiClient, regionId: String, value: String, change: (String) -> Unit) {
+    var suggestions by remember { mutableStateOf(emptyList<JsonObject>()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val query = value.trim()
+    LaunchedEffect(regionId, query) {
+        suggestions = emptyList(); error = null
+        if (regionId.isBlank() || query.length < 2) return@LaunchedEffect
+        delay(300)
+        loading = true
+        try {
+            val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
+            suggestions = withContext(Dispatchers.IO) { api.items("facilities?regionId=$regionId&name=$encoded", false).take(5) }
+        } catch (failure: Exception) { error = failure.message ?: "시설을 불러오지 못했습니다." }
+        finally { loading = false }
+    }
+    OutlinedTextField(value, change, Modifier.fillMaxWidth(), label = { Text("이용 헬스장 (선택)") }, singleLine = true,
+        supportingText = { Text(if (regionId.isBlank()) "활동 지역을 먼저 읍/면/동까지 선택하세요." else "등록된 시설을 검색하거나 직접 입력할 수 있어요.") })
+    if (loading) Text("시설 검색 중…", style = MaterialTheme.typography.bodySmall)
+    suggestions.forEach { facility ->
+        TextButton({ change(facility.text("name")) }, Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth()) {
+                Text(facility.text("name"))
+                facility.text("addressSummary").takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+    }
+    error?.let { Text("시설 추천을 불러오지 못했어요. 직접 입력은 가능합니다.", style = MaterialTheme.typography.bodySmall) }
 }
 
 internal fun signupPayload(profile: UserProfile, password: String, regionId: String, terms: List<String>, activeCodes: Set<String>): Map<String, Any> {

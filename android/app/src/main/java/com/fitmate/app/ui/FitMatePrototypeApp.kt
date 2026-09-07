@@ -701,7 +701,7 @@ private fun FitMatePrototypePreview() {
                 }
             }) { Text(if (checkedNickname == nickname.trim()) "사용 가능" else "닉네임 중복 확인") }
             ServerRegionPicker(apiClient, region) { id, name -> regionId = id; region = name }
-            OutlinedTextField(facilityName, { facilityName = it }, Modifier.fillMaxWidth(), label = { Text("이용 헬스장 (선택)") }, singleLine = true)
+            ServerFacilityPicker(apiClient, regionId, facilityName) { facilityName = it }
             OutlinedTextField(bio, { bio = it }, Modifier.fillMaxWidth(), label = { Text("자기소개 (선택)") }, minLines = 2)
             PrimaryAction("다음") { if (nickname.isNotBlank() && checkedNickname == nickname.trim() && region.isNotBlank()) { signupError = null; step = 3 } else signupError = "닉네임 중복 확인과 활동 지역을 입력하세요." }
         }
@@ -1442,7 +1442,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
             OutlinedTextField(displayName, { displayName = it }, Modifier.fillMaxWidth(), label = { Text("이름") }, singleLine = true)
             OutlinedTextField(nickname, { nickname = it }, Modifier.fillMaxWidth(), label = { Text("닉네임") }, singleLine = true)
             ServerRegionPicker(api, region) { id, name -> regionId = id; region = name }
-            OutlinedTextField(facilityName, { facilityName = it }, Modifier.fillMaxWidth(), label = { Text("이용 헬스장 (선택)") }, singleLine = true)
+            ServerFacilityPicker(api, regionId, facilityName) { facilityName = it }
             OutlinedTextField(bio, { bio = it }, Modifier.fillMaxWidth(), label = { Text("자기소개 (선택)") }, minLines = 2)
         }
         SoftCard {
