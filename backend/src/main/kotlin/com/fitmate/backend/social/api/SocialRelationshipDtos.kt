@@ -17,6 +17,7 @@ data class UserProfilePreviewResponse(
     val displayName: String,
     val visibility: ProfileVisibility,
     val bio: String?,
+    val profileImageUrl: String?,
     val followerCount: Long,
     val followingCount: Long,
     val canViewProfile: Boolean,

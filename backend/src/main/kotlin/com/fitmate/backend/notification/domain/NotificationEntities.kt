@@ -18,11 +18,11 @@ enum class NotificationType { FOLLOW_REQUEST, FOLLOW_ACCEPTED, POST_LIKED, POST_
 @Table(name = "user_notifications")
 class UserNotification(
     @Id @Convert(converter = UuidBinaryConverter::class) @Column(columnDefinition = "BINARY(16)") var id: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "recipient_user_id", columnDefinition = "BINARY(16)") var recipientUserId: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "actor_user_id", columnDefinition = "BINARY(16)") var actorUserId: UUID? = null,
+    @Column(name = "recipient_user_id", columnDefinition = "BINARY(16)") var recipientUserId: UUID? = null,
+    @Column(name = "actor_user_id", columnDefinition = "BINARY(16)") var actorUserId: UUID? = null,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var type: NotificationType = NotificationType.FOLLOW_REQUEST,
     @Column(name = "resource_type", length = 32) var resourceType: String? = null,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "resource_id", columnDefinition = "BINARY(16)") var resourceId: UUID? = null,
+    @Column(name = "resource_id", columnDefinition = "BINARY(16)") var resourceId: UUID? = null,
     @Column(length = 500) var body: String? = null,
     @Column(name = "read_at") var readAt: Instant? = null,
 ) : BaseTimeEntity()

@@ -96,6 +96,7 @@ import com.fitmate.app.data.model.UserProfile
 import com.fitmate.app.data.model.WorkoutSet
 import com.fitmate.app.data.model.WorkoutSummary
 import com.fitmate.app.data.remote.FitMateApiClient
+import com.fitmate.app.data.remote.ServerSocialApi
 import com.fitmate.app.data.repository.MockFitMateRepository
 import com.fitmate.app.running.RunTrackingService
 import com.fitmate.app.running.RunTrackingStore
@@ -179,6 +180,7 @@ fun FitMatePrototypeApp(
     var savedRoutines by remember { mutableStateOf(initial.routines) }
     var storageError by remember { mutableStateOf(localStore.readFailed) }
     val exerciseCatalog = rememberExerciseCatalog(apiClient)
+    val serverSocial = remember(apiClient) { ServerSocialApi(apiClient) }
     val repository = remember { MockFitMateRepository }
     val screenStates = rememberSaveableStateHolder()
     var route by remember { mutableStateOf(if (signedIn) PrototypeRoute.HOME else PrototypeRoute.LOGIN) }
@@ -250,7 +252,7 @@ fun FitMatePrototypeApp(
             login = { signedIn = true; route = PrototypeRoute.HOME }, signup = { route = PrototypeRoute.ONBOARDING })
         return
     }
-    CommunityAccountSheets(socialState) { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }
+    CommunityAccountSheets(socialState, { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }, serverSocial, serverAccount.text("id"))
     SocialDelivery(socialState)
     if (workoutExit) AlertDialog(
         onDismissRequest = { workoutExit = false },
@@ -323,7 +325,7 @@ fun FitMatePrototypeApp(
         RouteEntrance(route.name, rootTab, depth) {
         screenStates.SaveableStateProvider(route.name) {
         when (route) {
-            PrototypeRoute.PERSON -> MemberProfileScreen(Modifier.padding(padding), socialState, back = { socialState.accounts.opened = null; route = personOrigin }) { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }
+            PrototypeRoute.PERSON -> MemberProfileScreen(Modifier.padding(padding), socialState, back = { socialState.accounts.opened = null; route = personOrigin }, dm = { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }, server = serverSocial)
             PrototypeRoute.LOGIN -> Unit
             PrototypeRoute.ACCOUNT -> ServerAccountSettings(Modifier.padding(padding), apiClient,
                 finished = { workoutSession?.pause(); RunTrackingService.stop(context); resetApp() }, external = onOpenSamsungTest,
@@ -334,14 +336,22 @@ fun FitMatePrototypeApp(
                 })
             PrototypeRoute.HISTORY -> WorkoutHistoryFlow(Modifier.padding(padding), workoutHistory)
             PrototypeRoute.REPORTS -> ReportTicketsFlow(Modifier.padding(padding), socialState)
-            PrototypeRoute.NOTIFICATIONS -> NotificationFlow(Modifier.padding(padding), socialState) { notice ->
+            PrototypeRoute.NOTIFICATIONS -> NotificationFlow(Modifier.padding(padding), socialState, { notice ->
                 when (notice.destination) {
                     "PERSON" -> { socialState.accounts.opened = notice.target }
                     "FOLLOW" -> socialState.accounts.directory = "팔로우 요청"
+                    "POST" -> {
+                        socialState.localPostId(notice.target)?.let { socialState.selectedPostId = it }
+                        route = PrototypeRoute.COMMUNITY
+                    }
+                    "DM_CONVERSATION" -> {
+                        socialState.serverChat(notice.target)?.let { currentChat = it; route = PrototypeRoute.DM_DETAIL }
+                            ?: run { route = PrototypeRoute.DM }
+                    }
                     "NOTICE" -> socialState.notice = "공지사항 예시 · 실제 운영 공지는 서버 연결 후 제공됩니다."
                     else -> route = runCatching { PrototypeRoute.valueOf(notice.destination) }.getOrDefault(PrototypeRoute.HOME)
                 }
-            }
+            }, serverSocial)
             PrototypeRoute.ONBOARDING -> OnboardingScreen(Modifier.padding(padding), apiClient) { updatedProfile ->
                 profile = updatedProfile
                 route = PrototypeRoute.HOME
@@ -351,7 +361,7 @@ fun FitMatePrototypeApp(
                 resuming = workoutSession != null || runningState.phase != "설정",
                 start = { if (workoutSession != null) route = PrototypeRoute.WORKOUT else if (runningState.phase != "설정") route = PrototypeRoute.RUNNING else { mateState.activeWorkoutId = null; route = PrototypeRoute.SOLO } },
                 mates = { route = PrototypeRoute.MATE_LIST }, community = { route = PrototypeRoute.COMMUNITY },
-                dm = { route = PrototypeRoute.DM }, inbody = { inbodyOrigin = PrototypeRoute.HOME; route = PrototypeRoute.INBODY })
+                dm = { route = PrototypeRoute.DM }, inbody = { inbodyOrigin = PrototypeRoute.HOME; route = PrototypeRoute.INBODY }, server = serverSocial)
             PrototypeRoute.SOLO -> SoloScreen(Modifier.padding(padding), { mateState.activeWorkoutId = null; route = PrototypeRoute.HEALTH_ROUTINE }, { mateState.activeWorkoutId = null; route = PrototypeRoute.RUNNING })
             PrototypeRoute.HEALTH_ROUTINE -> if (!localRoutineMode) ServerRoutineLibrary(Modifier.padding(padding), apiClient, Sport.FITNESS in profile.interests,
                 select = { routine ->
@@ -474,9 +484,9 @@ fun FitMatePrototypeApp(
                 PrimaryAction("건강정보 처리에 동의하고 계속") { healthConsent = true }
                 TextButton({ route = inbodyOrigin }) { Text("나중에") }
             }
-            PrototypeRoute.COMMUNITY -> CommunityFlow(Modifier.padding(padding), socialState, profile.nickname, workoutHistory, runningState.history)
-            PrototypeRoute.DM -> DmListFlow(Modifier.padding(padding), socialState) { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }
-            PrototypeRoute.DM_DETAIL -> currentChat?.let { room -> DmChatFlow(Modifier.padding(padding), socialState, room) { route = PrototypeRoute.DM } }
+            PrototypeRoute.COMMUNITY -> CommunityFlow(Modifier.padding(padding), socialState, profile.nickname, workoutHistory, runningState.history, serverSocial, serverAccount.text("id"))
+            PrototypeRoute.DM -> DmListFlow(Modifier.padding(padding), socialState, { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }, serverSocial)
+            PrototypeRoute.DM_DETAIL -> currentChat?.let { room -> DmChatFlow(Modifier.padding(padding), socialState, room, { route = PrototypeRoute.DM }, serverSocial) }
             PrototypeRoute.PROFILE -> ProfileScreen(
                 modifier = Modifier.padding(padding),
                 profile = profile,
@@ -493,6 +503,12 @@ fun FitMatePrototypeApp(
                     val saved = withContext(Dispatchers.IO) { apiClient.request("PATCH", "users/me/profile", profilePatch(profile, updated, profileVersion, apiClient.fetchSports().map { it.code }.toSet())).asJsonObject }
                     profileVersion = saved.getAsJsonObject("profile").get("version").asLong
                     profile = saved.toUserProfile()
+                },
+                onSavePhoto = { mediaId ->
+                    val saved = withContext(Dispatchers.IO) { apiClient.request("PATCH", "users/me/profile", mapOf("version" to profileVersion, "profileImageMediaId" to mediaId)).asJsonObject }
+                    profileVersion = saved.getAsJsonObject("profile").get("version").asLong
+                    profile = saved.toUserProfile()
+                    profile
                 },
                 onOpenInbody = { inbodyOrigin = PrototypeRoute.PROFILE; route = PrototypeRoute.INBODY },
                 onSamsungTest = onOpenSamsungTest,
@@ -1410,6 +1426,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     api: FitMateApiClient,
     onReload: suspend () -> Unit,
     onSave: suspend (UserProfile) -> Unit,
+    onSavePhoto: suspend (String) -> UserProfile,
     onOpenInbody: () -> Unit,
     onSamsungTest: () -> Unit,
     onAccount: () -> Unit,
@@ -1419,6 +1436,8 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     onOpenAdminDemo: () -> Unit
 ) = Screen(modifier) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val serverSocial = remember(api) { ServerSocialApi(api) }
     var saving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
     var isEditing by remember { mutableStateOf(false) }
@@ -1502,7 +1521,18 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         if (saveError != null) TextButton({ saving = true; scope.launch { try { onReload(); saveError = null; isEditing = false } catch (failure: Exception) { saveError = failure.message } finally { saving = false } } }, enabled = !saving) { Text("편집 취소하고 서버 최신 정보 불러오기") }
         if (saving) AlertDialog(onDismissRequest = {}, title = { Text("프로필 저장 중") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
     } else {
-        ProfileOverview(profile, social, workouts, runs, { isEditing = true }, onOpenInbody, onSamsungTest, onOpenAdminDemo, onAccount, onHistory, onNotifications, onReports)
+        ProfileOverview(profile, social, workouts, runs, { isEditing = true }, onOpenInbody, onSamsungTest, onOpenAdminDemo, onAccount, onHistory, onNotifications, onReports, serverSocial, profileImageSelected = { uri ->
+            if (saving) return@ProfileOverview
+            saving = true; saveError = null
+            scope.launch {
+                try {
+                    val mediaId = withContext(Dispatchers.IO) { serverSocial.uploadImage(context, uri, "PROFILE") }
+                    val saved = onSavePhoto(mediaId)
+                    social.accounts.photo = saved.profileImageUrl
+                } catch (failure: Exception) { saveError = failure.message ?: "프로필 사진을 저장하지 못했습니다." }
+                finally { saving = false }
+            }
+        })
     }
 }
 

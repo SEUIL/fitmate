@@ -9,6 +9,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.UUID
 
 /** API v1의 공통 응답(data)을 파싱하는 최소 HTTP client입니다. */
 internal class FitMateApiClient(
@@ -69,6 +70,23 @@ internal class FitMateApiClient(
 
     fun items(path: String, authenticated: Boolean = true): List<JsonObject> =
         request("GET", path, authenticated = authenticated).asJsonObject.getAsJsonArray("items").map { it.asJsonObject }
+
+    @Synchronized fun uploadImage(purpose: String, fileName: String, contentType: String, bytes: ByteArray): JsonObject {
+        require(bytes.isNotEmpty()) { "업로드할 사진이 없습니다." }
+        require(bytes.size <= 10 * 1024 * 1024) { "사진은 10MB 이하여야 합니다." }
+        loadSession()
+        val token = tokens?.accessToken ?: throw ApiFailure(401, "로그인이 필요합니다.")
+        return multipart("$baseUrl/media?purpose=$purpose", fileName, contentType, bytes, token).getAsJsonObject("data")
+    }
+
+    /** Downloads an authenticated media resource returned by the API (for example, a post image). */
+    @Synchronized fun downloadImage(path: String): ByteArray {
+        loadSession()
+        val token = tokens?.accessToken ?: throw ApiFailure(401, "로그인이 필요합니다.")
+        val origin = baseUrl.substringBefore("/api/")
+        val url = if (path.startsWith("http://") || path.startsWith("https://")) path else "$origin$path"
+        return binaryGet(url, token)
+    }
     fun fetchExercises(sportCode: String = "HEALTH"): List<ApiExercise> {
         require(baseUrl.isNotBlank()) { "연결할 서버 주소가 설정되지 않았습니다." }
         val encodedSport = URLEncoder.encode(sportCode, StandardCharsets.UTF_8.name())
@@ -130,6 +148,45 @@ internal class FitMateApiClient(
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun multipart(url: String, fileName: String, contentType: String, bytes: ByteArray, token: String): JsonObject {
+        val boundary = "FitMate-${UUID.randomUUID()}"
+        val safeFileName = fileName.replace('"', '_')
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"; connectTimeout = REQUEST_TIMEOUT_MS; readTimeout = REQUEST_TIMEOUT_MS
+            doOutput = true; instanceFollowRedirects = false
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Authorization", "Bearer $token")
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        return try {
+            connection.outputStream.use { output ->
+                output.write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$safeFileName\"\r\nContent-Type: $contentType\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
+                output.write(bytes)
+                output.write("\r\n--$boundary--\r\n".toByteArray(StandardCharsets.UTF_8))
+            }
+            val status = connection.responseCode
+            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (status !in 200..299) throw ApiFailure(status, runCatching { gson.fromJson(body, JsonObject::class.java).getAsJsonObject("error")?.get("message")?.asString }.getOrNull() ?: "사진 업로드에 실패했습니다. ($status)")
+            gson.fromJson(body, JsonObject::class.java) ?: error("빈 응답을 받았습니다.")
+        } finally { connection.disconnect() }
+    }
+
+    private fun binaryGet(url: String, token: String): ByteArray {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"; connectTimeout = REQUEST_TIMEOUT_MS; readTimeout = REQUEST_TIMEOUT_MS
+            setRequestProperty("Authorization", "Bearer $token")
+        }
+        return try {
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val body = connection.errorStream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val message = runCatching { gson.fromJson(body, JsonObject::class.java).getAsJsonObject("error")?.get("message")?.asString }.getOrNull()
+                throw ApiFailure(status, message ?: "사진을 불러오지 못했습니다. ($status)")
+            }
+            connection.inputStream.use { it.readBytes() }
+        } finally { connection.disconnect() }
     }
 
     private companion object { const val REQUEST_TIMEOUT_MS = 10_000 }

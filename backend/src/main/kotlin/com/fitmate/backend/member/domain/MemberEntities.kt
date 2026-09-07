@@ -36,6 +36,7 @@ class UserProfile(
     @Enumerated(EnumType.STRING) @Column(name = "gender", length = 16) var gender: Gender? = null,
     @Enumerated(EnumType.STRING) @Column(name = "visibility", nullable = false, length = 16) var visibility: ProfileVisibility = ProfileVisibility.PUBLIC,
     @Column(name = "bio", length = 500) var bio: String? = null,
+    @Column(name = "profile_image_media_id", columnDefinition = "BINARY(16)") var profileImageMediaId: UUID? = null,
     @Enumerated(EnumType.STRING) @Column(name = "weight_unit", nullable = false, length = 4) var weightUnit: WeightUnit = WeightUnit.KG,
     @Column(name = "timezone_id", nullable = false, length = 64) var timezoneId: String = "Asia/Seoul",
     @Column(name = "onboarding_completed_at") var onboardingCompletedAt: Instant? = null,

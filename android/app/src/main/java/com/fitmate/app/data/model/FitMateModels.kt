@@ -20,6 +20,7 @@ data class UserProfile(
     val goals: Set<String> = emptySet(),
     val availableTime: String = "",
     val bio: String = "",
+    val profileImageUrl: String? = null,
     val isAdultVerified: Boolean = false,
     val activityRegionId: String = ""
 )

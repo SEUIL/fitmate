@@ -34,16 +34,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fitmate.app.data.model.*
+import com.fitmate.app.data.remote.ServerSocialApi
 import com.fitmate.app.R
 import com.fitmate.app.ui.theme.FitMateColors
 import com.fitmate.app.ui.theme.FitMateShapes
 
 internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme.surfaceContainerLow
 
-@Composable internal fun ProfileIdentityRow(name: String, photo: String?, counts: List<String>, select: (String) -> Unit) {
+@Composable internal fun ProfileIdentityRow(name: String, photo: String?, counts: List<String>, server: ServerSocialApi? = null, select: (String) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (photo == null) SocialAvatar(name, 80)
-        else Box(Modifier.size(80.dp).clip(CircleShape)) { LocalPhoto(photo, square = true) }
+        else Box(Modifier.size(80.dp).clip(CircleShape)) { FitMatePhoto(photo, server, square = true) }
         listOf("운동 기록", "팔로워", "팔로잉").forEachIndexed { index, label ->
             Column(Modifier.weight(1f).clickable { select(label) }.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(counts[index], fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -53,11 +54,11 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     }
 }
 
-@Composable internal fun ProfilePostGrid(entries: List<FeedEntry>, open: (FeedEntry) -> Unit) {
+@Composable internal fun ProfilePostGrid(entries: List<FeedEntry>, server: ServerSocialApi? = null, open: (FeedEntry) -> Unit) {
     Column(Modifier.animateContentSize(tween(MotionDuration)), verticalArrangement = Arrangement.spacedBy(3.dp)) {
     entries.chunked(3).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         row.forEach { entry -> Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surfaceContainer).clickable { open(entry) }) {
-            if (entry.photo != null) LocalPhoto(entry.photo, square = true)
+            if (entry.photo != null) FitMatePhoto(entry.photo, server, square = true)
             else Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(if (entry.workout != null) Icons.Outlined.FitnessCenter else Icons.AutoMirrored.Outlined.Notes, null, Modifier.size(18.dp))
                 Text(entry.workout ?: entry.post.content, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
@@ -103,7 +104,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     }
 }
 
-@Composable internal fun EditorialPost(entry: FeedEntry, onLike: () -> Unit, onComments: () -> Unit, menu: Map<String, () -> Unit> = emptyMap(), onAuthor: (() -> Unit)? = null) {
+@Composable internal fun EditorialPost(entry: FeedEntry, onLike: () -> Unit, onComments: () -> Unit, menu: Map<String, () -> Unit> = emptyMap(), onAuthor: (() -> Unit)? = null, server: ServerSocialApi? = null) {
     var expanded by remember { mutableStateOf(false) }
     val heartScale = likeScale(entry.post.isLiked)
     Card(
@@ -128,7 +129,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
             }
         }
         Text(entry.post.content, fontSize = 16.sp, lineHeight = 25.sp, letterSpacing = (-0.2).sp, color = FitMateColors.TextPrimary)
-        entry.photo?.let { LocalPhoto(it, square = true) }
+        entry.photo?.let { FitMatePhoto(it, server, square = true) }
         entry.workout?.let { summary ->
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Outlined.FitnessCenter, "운동 기록", tint = FitMateColors.Primary)
@@ -188,7 +189,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     )
 }
 
-@Composable internal fun SocialHome(modifier: Modifier, profile: UserProfile, social: SocialState, workoutCount: Int, runCount: Int, start: () -> Unit, mates: () -> Unit, community: () -> Unit, dm: () -> Unit, inbody: () -> Unit, resuming: Boolean = false, notifications: () -> Unit = {}) = Screen(modifier, background = FeedBackground) {
+@Composable internal fun SocialHome(modifier: Modifier, profile: UserProfile, social: SocialState, workoutCount: Int, runCount: Int, start: () -> Unit, mates: () -> Unit, community: () -> Unit, dm: () -> Unit, inbody: () -> Unit, resuming: Boolean = false, notifications: () -> Unit = {}, server: ServerSocialApi? = null) = Screen(modifier, background = FeedBackground) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(40.dp).background(Color(0xFF1F2927), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
@@ -250,18 +251,18 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         EditorialPost(entry, {
             val index = social.feed.indexOfFirst { it.post.id == entry.post.id }
             if (index >= 0) social.feed[index] = entry.copy(post = entry.post.copy(isLiked = !entry.post.isLiked, likeCount = entry.post.likeCount + if (entry.post.isLiked) -1 else 1))
-        }, { social.selectedPostId = entry.post.id; community() }, onAuthor = { if (!entry.mine) social.accounts.opened = entry.post.authorName })
+        }, { social.selectedPostId = entry.post.id; community() }, onAuthor = { if (!entry.mine) social.accounts.opened = entry.post.authorName }, server = server)
     } }
     TextButton(community, Modifier.fillMaxWidth()) { Text("커뮤니티에서 더 보기", color = FitMateColors.TextPrimary) }
 }
 
-@Composable internal fun ProfileOverview(profile: UserProfile, social: SocialState, workouts: List<WorkoutSummary>, runs: List<RunResult>, edit: () -> Unit, inbody: () -> Unit, samsung: () -> Unit, admin: () -> Unit, account: () -> Unit, history: () -> Unit, notifications: () -> Unit, reports: () -> Unit) {
+@Composable internal fun ProfileOverview(profile: UserProfile, social: SocialState, workouts: List<WorkoutSummary>, runs: List<RunResult>, edit: () -> Unit, inbody: () -> Unit, samsung: () -> Unit, admin: () -> Unit, account: () -> Unit, history: () -> Unit, notifications: () -> Unit, reports: () -> Unit, server: ServerSocialApi? = null, profileImageSelected: (String) -> Unit = {}) {
     var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("게시물") }
     var settings by remember { mutableStateOf(false) }
     var opened by remember { mutableStateOf<FeedEntry?>(null) }
     val mine = social.feed.filter { it.mine }
     SocialTitle(profile.nickname, Icons.Outlined.Menu, "프로필 설정") { settings = true }
-    ProfileIdentityRow(profile.nickname, social.accounts.photo, listOf((workouts.size + runs.size).toString(), social.accounts.followers.size.toString(), social.following.size.toString())) {
+    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo, listOf((workouts.size + runs.size).toString(), social.accounts.followers.size.toString(), social.following.size.toString()), server) {
         if (it == "운동 기록") tab = it else social.accounts.directory = it
     }
     Text(profile.displayName.ifBlank { profile.nickname }, fontWeight = FontWeight.SemiBold)
@@ -279,14 +280,14 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
             Text("나의 첫 운동 이야기", fontWeight = FontWeight.Bold)
             Text("커뮤니티에 작성한 글이 여기에 모여요.", color = FitMateColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
         }
-        ProfilePostGrid(mine) { opened = it }
+        ProfilePostGrid(mine, server) { opened = it }
     } else {
         WorkoutRecordBrowser(workouts, runs)
     }
     }
     opened?.let { entry -> SocialSheet({ opened = null }) {
         Text(entry.post.authorName, fontWeight = FontWeight.Bold)
-        entry.photo?.let { LocalPhoto(it, square = true) }
+        entry.photo?.let { FitMatePhoto(it, server, square = true) }
         entry.workout?.let { Text(it) }
         Text(entry.post.content)
         Text("${entry.visibility} · ${entry.comments.size}개의 댓글", color = FitMateColors.TextSecondary)
@@ -306,8 +307,8 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         TextButton({ settings = false; social.accounts.directory = "팔로우 요청" }) { Text("팔로우 요청 관리") }
         TextButton({ settings = false; social.accounts.directory = "사용자" }) { Text("사용자 둘러보기") }
         Text("프로필 사진", style = MaterialTheme.typography.titleMedium)
-        PhotoActions({ social.accounts.photo = it })
-        if (social.accounts.photo != null) TextButton({ social.accounts.photo = null }) { Text("프로필 사진 제거") }
+        PhotoActions(profileImageSelected)
+        if (profile.profileImageUrl != null) Text("새 사진을 선택하면 즉시 변경됩니다.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
         DebugOnly {
             var tools by remember { mutableStateOf(false) }
             TextButton({ tools = !tools }) { Text("개발 및 테스트 도구") }

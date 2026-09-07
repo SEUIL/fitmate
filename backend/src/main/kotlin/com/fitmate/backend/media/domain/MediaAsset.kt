@@ -19,7 +19,7 @@ enum class MediaStatus { ACTIVE, DELETED }
 class MediaAsset(
     @Id @Convert(converter = UuidBinaryConverter::class) @Column(name = "id", columnDefinition = "BINARY(16)")
     var id: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "owner_user_id", nullable = false, columnDefinition = "BINARY(16)")
+    @Column(name = "owner_user_id", nullable = false, columnDefinition = "BINARY(16)")
     var ownerUserId: UUID? = null,
     @Enumerated(EnumType.STRING) @Column(name = "purpose", nullable = false, length = 32)
     var purpose: MediaPurpose = MediaPurpose.COMMUNITY_POST,

@@ -20,9 +20,9 @@ enum class ReportStatus { RECEIVED, REVIEWING, RESOLVED, DISMISSED }
 @Table(name = "user_reports")
 class UserReport(
     @Id @Convert(converter = UuidBinaryConverter::class) @Column(columnDefinition = "BINARY(16)") var id: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "reporter_user_id", columnDefinition = "BINARY(16)") var reporterUserId: UUID? = null,
+    @Column(name = "reporter_user_id", columnDefinition = "BINARY(16)") var reporterUserId: UUID? = null,
     @Enumerated(EnumType.STRING) @Column(name = "target_type", nullable = false) var targetType: ReportTargetType = ReportTargetType.USER,
-    @Convert(converter = UuidBinaryConverter::class) @Column(name = "target_id", columnDefinition = "BINARY(16)") var targetId: UUID? = null,
+    @Column(name = "target_id", columnDefinition = "BINARY(16)") var targetId: UUID? = null,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var reason: ReportReason = ReportReason.OTHER,
     @Column(length = 1000) var detail: String? = null,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ReportStatus = ReportStatus.RECEIVED,

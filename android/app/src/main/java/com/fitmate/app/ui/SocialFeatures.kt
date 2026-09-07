@@ -18,14 +18,32 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fitmate.app.data.model.*
+import com.fitmate.app.data.remote.ServerSocialApi
+import com.google.gson.JsonObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 internal data class FeedComment(val id: Long, val author: String, val text: String, val mine: Boolean)
+internal data class ServerMemberProfile(
+    val userId: String,
+    val nickname: String,
+    val displayName: String,
+    val bio: String?,
+    val profileImageUrl: String?,
+    val isPrivate: Boolean,
+    val followerCount: Long,
+    val followingCount: Long,
+    val canViewProfile: Boolean,
+    val followingStatus: String?,
+)
 internal data class FeedEntry(
     val post: CommunityPost, val mine: Boolean = false, val visibility: String = "전체 공개",
     val photo: String? = null, val workout: String? = null,
@@ -49,6 +67,14 @@ internal class ChatRoom(val id: Long, val name: String, initial: List<ChatEntry>
     var requestSent by mutableStateOf(initialStatus == "요청 대기" && initial.any { it.mine })
 }
 internal class SocialState(posts: List<CommunityPost>, conversations: List<DmConversation>) {
+    private val serverPostIds = mutableMapOf<Long, String>()
+    private val serverPostVersions = mutableMapOf<Long, Long>()
+    private val serverCommentIds = mutableMapOf<Long, String>()
+    private val serverNoticeIds = mutableMapOf<Long, String>()
+    private val serverConversationIds = mutableMapOf<Long, String>()
+    private val serverConversationOtherUsers = mutableMapOf<Long, String>()
+    private val serverUserIdsByNickname = mutableMapOf<String, String>()
+    var serverProfiles by mutableStateOf<Map<String, ServerMemberProfile>>(emptyMap())
     val accounts = CommunityAccounts()
     val communityTab = mutableStateOf("전체 공개")
     val composerText = mutableStateOf("")
@@ -68,6 +94,88 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
     val feed = mutableStateListOf<FeedEntry>().apply {
         addAll(posts.map { item -> FeedEntry(item, comments = List(item.commentCount) { i -> FeedComment(nextId(), "메이트 ${i + 1}", "오늘도 응원해요!", false) }) })
     }
+    fun replaceServerFeed(rows: List<JsonObject>, mineId: String) {
+        feed.clear(); serverUserIdsByNickname.clear()
+        serverPostIds.clear(); serverPostVersions.clear(); serverCommentIds.clear()
+        rows.forEach { row ->
+            val id = row.text("postId").hashCode().toLong()
+            serverPostIds[id] = row.text("postId")
+            serverPostVersions[id] = row.get("version")?.asLong ?: 0L
+            val author = row.getAsJsonObject("author")
+            val name = author.text("nickname")
+            serverUserIdsByNickname[name] = author.text("userId")
+            feed += FeedEntry(
+                CommunityPost(id, name, row.text("content"), row.get("likedByMe")?.asBoolean ?: false,
+                    row.get("likeCount")?.asInt ?: 0, row.get("commentCount")?.asInt ?: 0, row.text("createdAt")),
+                mine = author.text("userId") == mineId,
+                visibility = if (row.text("visibility") == "MUTUAL") "맞팔 공개" else "전체 공개",
+                photo = row.getAsJsonArray("mediaUrls")?.firstOrNull()?.asString,
+            )
+        }
+    }
+    fun serverPostId(localId: Long): String? = serverPostIds[localId]
+    fun localPostId(serverId: String?): Long? = serverId?.let { value -> serverPostIds.entries.firstOrNull { it.value == value }?.key }
+    fun serverPostVersion(localId: Long): Long? = serverPostVersions[localId]
+    fun rememberServerProfile(row: JsonObject): ServerMemberProfile {
+        val relationship = row.getAsJsonObject("relationship")
+        val profile = ServerMemberProfile(
+            userId = row.text("userId"), nickname = row.text("nickname"), displayName = row.text("displayName"),
+            bio = row.text("bio").ifBlank { null }, profileImageUrl = row.text("profileImageUrl").ifBlank { null }, isPrivate = row.text("visibility") == "PRIVATE",
+            followerCount = row.get("followerCount")?.asLong ?: 0L, followingCount = row.get("followingCount")?.asLong ?: 0L,
+            canViewProfile = row.get("canViewProfile")?.asBoolean ?: true,
+            followingStatus = relationship?.text("followingStatus")?.ifBlank { null },
+        )
+        serverUserIdsByNickname[profile.nickname] = profile.userId
+        serverProfiles = serverProfiles + (profile.nickname to profile)
+        return profile
+    }
+    fun replaceServerComments(postLocalId: Long, rows: List<JsonObject>, mineId: String) {
+        val index = feed.indexOfFirst { it.post.id == postLocalId }
+        if (index < 0) return
+        val comments = rows.map { row ->
+            val id = row.text("commentId").hashCode().toLong()
+            serverCommentIds[id] = row.text("commentId")
+            val author = row.getAsJsonObject("author")
+            FeedComment(id, author.text("nickname"), row.text("content"), author.text("userId") == mineId)
+        }
+        feed[index] = feed[index].copy(comments = comments)
+    }
+    fun serverCommentId(localId: Long): String? = serverCommentIds[localId]
+    fun serverUserId(nickname: String): String? = serverUserIdsByNickname[nickname]
+    fun rememberServerUsers(rows: List<JsonObject>) {
+        rows.forEach { row ->
+            val nickname = row.text("nickname")
+            val userId = row.text("userId")
+            if (nickname.isNotBlank() && userId.isNotBlank()) serverUserIdsByNickname[nickname] = userId
+        }
+    }
+    fun replaceServerNotices(rows: List<JsonObject>) {
+        accounts.notices.clear(); serverNoticeIds.clear()
+        rows.forEach { row ->
+            val id = row.text("notificationId").hashCode().toLong()
+            serverNoticeIds[id] = row.text("notificationId")
+            val type = row.text("type")
+            accounts.notices += AppNotice(id, row.text("body").ifBlank { type }, when {
+                type.startsWith("DM") -> "DM"; type.startsWith("POST") -> "커뮤니티"; type.startsWith("FOLLOW") -> "커뮤니티"; else -> "안내"
+            }, if (type.startsWith("FOLLOW")) "FOLLOW" else row.text("resourceType"), row.text("resourceId").ifBlank { null }, row.text("readAt").isNotBlank())
+        }
+    }
+    fun serverNoticeId(localId: Long): String? = serverNoticeIds[localId]
+    fun replaceServerConversations(rows: List<JsonObject>) {
+        chats.clear(); serverConversationIds.clear(); serverConversationOtherUsers.clear()
+        rows.forEach { row ->
+            val id = row.text("conversationId").hashCode().toLong()
+            serverConversationIds[id] = row.text("conversationId")
+            serverConversationOtherUsers[id] = row.text("otherUserId")
+            chats += ChatRoom(id, "메이트 ${row.text("otherUserId").take(8)}", emptyList(),
+                if (row.text("status") == "ACTIVE") "대화 가능" else if (row.text("status") == "REJECTED") "거절" else "요청 대기",
+                incoming = row.text("requesterUserId") == row.text("otherUserId"))
+        }
+    }
+    fun serverConversationId(localId: Long): String? = serverConversationIds[localId]
+    fun serverChat(conversationId: String?): ChatRoom? = conversationId?.let { value -> chats.firstOrNull { serverConversationIds[it.id] == value } }
+    fun serverChatForUser(userId: String): ChatRoom? = chats.firstOrNull { serverConversationOtherUsers[it.id] == userId }
+    fun isMyServerMessage(localId: Long, senderId: String): Boolean = senderId != serverConversationOtherUsers[localId]
     val chats = mutableStateListOf<ChatRoom>().apply {
         addAll(conversations.map { chat -> ChatRoom(chat.id, chat.participantName, chat.messages.map { ChatEntry(nextId(), it.text, it.isMine) }).apply { unread = chat.unreadCount } })
         add(ChatRoom(nextId(), "요청 메이트", listOf(ChatEntry(nextId(), "같이 운동하고 싶어요!", false)), "요청 대기"))
@@ -102,7 +210,19 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
     }
 }
 
-@Composable internal fun CommunityFlow(modifier: Modifier, state: SocialState, nickname: String, workouts: List<WorkoutSummary>, runs: List<RunResult>) {
+@Composable internal fun CommunityFlow(modifier: Modifier, state: SocialState, nickname: String, workouts: List<WorkoutSummary>, runs: List<RunResult>, server: ServerSocialApi? = null, myUserId: String = "") {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var serverError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(server) {
+        if (server == null) return@LaunchedEffect
+        runCatching { withContext(Dispatchers.IO) { server.feed() to server.blocks() } }.onSuccess { (posts, blocks) ->
+            state.replaceServerFeed(posts, myUserId)
+            state.rememberServerUsers(blocks)
+            state.blocked = blocks.map { it.text("nickname") }.toSet()
+        }
+            .onFailure { serverError = it.message ?: "커뮤니티를 불러오지 못했습니다." }
+    }
     val targetPost = remember { state.feed.firstOrNull { it.post.id == state.selectedPostId } }
     var tab by state.communityTab
     LaunchedEffect(Unit) {
@@ -130,12 +250,20 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
     var deleting by remember { mutableStateOf<Long?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var limit by remember(tab) { mutableStateOf(10) }
-    deleting?.let { id -> ConfirmAction("게시물 삭제", "이 게시물과 댓글을 삭제할까요?", { deleting = null }) { state.feed.removeAll { it.post.id == id && it.mine }; deleting = null } }
+    deleting?.let { id -> ConfirmAction("게시물 삭제", "이 게시물과 댓글을 삭제할까요?", { deleting = null }) {
+        val serverId = state.serverPostId(id)
+        if (server != null && serverId != null) scope.launch {
+            runCatching { withContext(Dispatchers.IO) { server.deletePost(serverId); server.feed() } }
+                .onSuccess { state.replaceServerFeed(it, myUserId); deleting = null }
+                .onFailure { error = it.message ?: "게시물을 삭제하지 못했습니다."; deleting = null }
+        } else { state.feed.removeAll { it.post.id == id && it.mine }; deleting = null }
+    } }
     Screen(modifier, background = FeedBackground) {
         SocialTitle("커뮤니티", Icons.Outlined.AddBox, "게시물 작성") {
             composing = true; error = null
         }
         state.notice?.let { Text(it) }
+        ErrorText(serverError)
         SocialTabs(listOf("전체 공개", "팔로잉", "내 게시물"), tab) { tab = it }
         if (composing) SocialSheet({ composing = false }) {
             Text(if (editing == null) "새 게시물" else "게시물 수정", fontWeight = FontWeight.Bold)
@@ -161,7 +289,28 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                 TextButton({ discard = true }) { Text("초안 삭제") }
                 Button({
                     if (draft.isBlank()) error = "게시물 내용을 입력하세요."
-                    else {
+                    else if (server != null && editing == null) {
+                        scope.launch {
+                            runCatching { withContext(Dispatchers.IO) {
+                                val mediaIds = photo?.let { listOf(server.uploadImage(context, it, "COMMUNITY_POST")) }.orEmpty()
+                                server.createPost(draft.trim(), visibility == "맞팔 공개", mediaIds); server.feed()
+                            } }
+                                .onSuccess { state.replaceServerFeed(it, myUserId); composing = false; tab = "내 게시물"; state.clearComposer() }
+                                .onFailure { error = it.message ?: "게시물을 저장하지 못했습니다." }
+                        }
+                    }
+                    else if (server != null && editing != null && state.serverPostId(editing!!) != null && state.serverPostVersion(editing!!) != null) {
+                        val postId = state.serverPostId(editing!!)!!
+                        val version = state.serverPostVersion(editing!!)!!
+                        scope.launch {
+                            runCatching { withContext(Dispatchers.IO) {
+                                val mediaIds = photo?.let { listOf(server.uploadImage(context, it, "COMMUNITY_POST")) }
+                                server.updatePost(postId, draft.trim(), visibility == "맞팔 공개", version, mediaIds); server.feed()
+                            } }
+                                .onSuccess { state.replaceServerFeed(it, myUserId); composing = false; tab = "내 게시물"; state.clearComposer() }
+                                .onFailure { error = it.message ?: "게시물을 수정하지 못했습니다. 최신 내용을 다시 확인해 주세요." }
+                        }
+                    } else {
                         val old = state.feed.firstOrNull { it.post.id == editing && it.mine }
                         val base = old?.post?.copy(content = draft.trim()) ?: CommunityPost(state.nextId(), nickname, draft.trim(), true, 0, 0, "방금 전")
                         val entry = FeedEntry(base, true, visibility, photo, workout, old?.comments.orEmpty())
@@ -193,15 +342,45 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                 "삭제" to { deleting = entry.post.id }
             ) else linkedMapOf<String, () -> Unit>(
                 "프로필 보기" to { state.accounts.opened = entry.post.authorName },
-                "게시물 신고" to { state.accounts.reportTarget = "게시물 #${entry.post.id}: ${entry.post.authorName}" },
-                (if (entry.post.authorName in state.following) "팔로우 해제" else "팔로우") to {
-                    state.accounts.follow(state, entry.post.authorName)
+                "게시물 신고" to {
+                    state.accounts.reportTarget = ReportTarget(
+                        label = "게시물: ${entry.post.authorName}", targetType = "POST", targetId = state.serverPostId(entry.post.id),
+                    )
                 },
-                "차단" to { state.blocked = state.blocked + entry.post.authorName }
+                (if (entry.post.authorName in state.following) "팔로우 해제" else "팔로우") to {
+                    val userId = state.serverUserId(entry.post.authorName)
+                    if (server != null && userId != null) scope.launch {
+                        runCatching { withContext(Dispatchers.IO) { if (entry.post.authorName in state.following) server.unfollow(userId) else server.follow(userId) } }
+                            .onSuccess { state.accounts.follow(state, entry.post.authorName) }
+                            .onFailure { serverError = it.message ?: "팔로우를 처리하지 못했습니다." }
+                    } else state.accounts.follow(state, entry.post.authorName)
+                },
+                "차단" to {
+                    val userId = state.serverUserId(entry.post.authorName)
+                    if (server != null && userId != null) scope.launch {
+                        runCatching { withContext(Dispatchers.IO) { server.block(userId) } }
+                            .onSuccess { state.blocked = state.blocked + entry.post.authorName }
+                            .onFailure { serverError = it.message ?: "사용자를 차단하지 못했습니다." }
+                    } else state.blocked = state.blocked + entry.post.authorName
+                }
             )
             EditorialPost(entry,
-                onLike = { update { it.copy(post = it.post.copy(isLiked = !it.post.isLiked, likeCount = it.post.likeCount + if (it.post.isLiked) -1 else 1)) } },
-                onComments = { commentsOpen = true }, menu = menu, onAuthor = { if (!entry.mine) state.accounts.opened = entry.post.authorName })
+                onLike = {
+                    val serverId = state.serverPostId(entry.post.id)
+                    if (server != null && serverId != null) scope.launch {
+                        runCatching { withContext(Dispatchers.IO) { if (entry.post.isLiked) server.unlike(serverId) else server.like(serverId); server.feed() } }
+                            .onSuccess { state.replaceServerFeed(it, myUserId) }.onFailure { serverError = it.message ?: "좋아요를 처리하지 못했습니다." }
+                    } else update { it.copy(post = it.post.copy(isLiked = !it.post.isLiked, likeCount = it.post.likeCount + if (it.post.isLiked) -1 else 1)) }
+                },
+                onComments = {
+                    commentsOpen = true
+                    val serverId = state.serverPostId(entry.post.id)
+                    if (server != null && serverId != null) scope.launch {
+                        runCatching { withContext(Dispatchers.IO) { server.comments(serverId) } }
+                            .onSuccess { state.replaceServerComments(entry.post.id, it, myUserId) }
+                            .onFailure { serverError = it.message ?: "댓글을 불러오지 못했습니다." }
+                    }
+                }, menu = menu, onAuthor = { if (!entry.mine) state.accounts.opened = entry.post.authorName }, server = server)
             if (commentsOpen) SocialSheet({ commentsOpen = false }) {
                 Text("댓글", style = MaterialTheme.typography.titleLarge)
                 if (entry.comments.isEmpty()) Text("첫 댓글을 남겨보세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -212,13 +391,36 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                         Text(reply.text, style = MaterialTheme.typography.bodyMedium)
                     }
                     TextButton({
-                        if (reply.mine) update { it.copy(comments = it.comments.filterNot { c -> c.id == reply.id }) }
+                        val serverPostId = state.serverPostId(entry.post.id)
+                        val serverCommentId = state.serverCommentId(reply.id)
+                        if (reply.mine && server != null && serverPostId != null && serverCommentId != null) scope.launch {
+                            runCatching { withContext(Dispatchers.IO) {
+                                server.deleteComment(serverPostId, serverCommentId)
+                                server.feed() to server.comments(serverPostId)
+                            } }.onSuccess { (posts, comments) ->
+                                state.replaceServerFeed(posts, myUserId)
+                                state.replaceServerComments(entry.post.id, comments, myUserId)
+                            }
+                                .onFailure { serverError = it.message ?: "댓글을 삭제하지 못했습니다." }
+                        } else if (reply.mine) update { it.copy(comments = it.comments.filterNot { c -> c.id == reply.id }) }
                         else state.notice = "댓글 신고를 임시 접수했어요. 서버 연결 후 전송됩니다."
                     }) { Text(if (reply.mine) "삭제" else "신고") }
                 } }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(comment, { comment = it.take(500) }, label = { Text("댓글 남기기") }, modifier = Modifier.weight(1f), maxLines = 3)
-                    TextButton({ update { it.copy(comments = it.comments + FeedComment(state.nextId(), nickname, comment.trim(), true)) }; comment = "" }, enabled = comment.isNotBlank()) { Text("게시") }
+                    TextButton({
+                        val serverId = state.serverPostId(entry.post.id)
+                        if (server != null && serverId != null) scope.launch {
+                            runCatching { withContext(Dispatchers.IO) {
+                                server.addComment(serverId, comment.trim())
+                                server.feed() to server.comments(serverId)
+                            } }.onSuccess { (posts, comments) ->
+                                state.replaceServerFeed(posts, myUserId)
+                                state.replaceServerComments(entry.post.id, comments, myUserId)
+                                comment = ""
+                            }.onFailure { serverError = it.message ?: "댓글을 저장하지 못했습니다." }
+                        } else { update { it.copy(comments = it.comments + FeedComment(state.nextId(), nickname, comment.trim(), true)) }; comment = "" }
+                    }, enabled = comment.isNotBlank()) { Text("게시") }
                 }
             }
         } }
@@ -239,12 +441,20 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
         }
         if (state.blocked.isNotEmpty()) SoftCard {
             Text("차단 관리")
-            state.blocked.forEach { name -> TextButton({ state.blocked = state.blocked - name }) { Text("$name 차단 해제") } }
+            state.blocked.forEach { name -> TextButton({
+                val userId = state.serverUserId(name)
+                if (server != null && userId != null) scope.launch {
+                    runCatching { withContext(Dispatchers.IO) { server.unblock(userId) } }
+                        .onSuccess { state.blocked = state.blocked - name }
+                        .onFailure { serverError = it.message ?: "차단을 해제하지 못했습니다." }
+                } else state.blocked = state.blocked - name
+            }) { Text("$name 차단 해제") } }
         }
     }
 }
 
-@Composable internal fun DmListFlow(modifier: Modifier, state: SocialState, open: (ChatRoom) -> Unit) = Screen(modifier) {
+@Composable internal fun DmListFlow(modifier: Modifier, state: SocialState, open: (ChatRoom) -> Unit, server: ServerSocialApi? = null) = Screen(modifier) {
+    LaunchedEffect(server) { if (server != null) runCatching { withContext(Dispatchers.IO) { server.conversations() } }.onSuccess(state::replaceServerConversations) }
     SectionTitle("DM", "요청을 수락하고 메이트와 대화하세요.")
     val requests = state.chats.filter { !it.left && it.status == "요청 대기" && it.name !in state.blocked }
     Text("메시지 요청 ${requests.size}개", fontWeight = FontWeight.Bold)
@@ -285,7 +495,15 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
 }
 
 @OptIn(ExperimentalFoundationApi::class)
-@Composable internal fun DmChatFlow(modifier: Modifier, state: SocialState, room: ChatRoom, back: () -> Unit) {
+@Composable internal fun DmChatFlow(modifier: Modifier, state: SocialState, room: ChatRoom, back: () -> Unit, server: ServerSocialApi? = null) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val serverConversationId = state.serverConversationId(room.id)
+    LaunchedEffect(serverConversationId) {
+        if (server != null && serverConversationId != null) runCatching { withContext(Dispatchers.IO) { server.messages(serverConversationId) } }.onSuccess { rows ->
+            room.messages = rows.map { row -> ChatEntry(row.text("messageId").hashCode().toLong(), row.text("content"), state.isMyServerMessage(room.id, row.text("senderUserId")), photo = row.text("mediaUrl").ifBlank { null }, time = row.text("createdAt").takeLast(8).take(5), read = row.text("readAt").isNotBlank()) }
+        }
+    }
     val scroll = rememberLazyListState()
     var limit by remember(room.id) { mutableStateOf(30) }
     var action by remember { mutableStateOf<String?>(null) }
@@ -347,8 +565,18 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                     if (!blocked && room.status == "요청 대기") {
                         Text(if (room.incoming) "받은 메시지 요청" else "최초 요청 메시지는 1개만 보낼 수 있어요.")
                         if (room.incoming) Row {
-                            Button({ state.following = state.following + room.name; state.accounts.followers = state.accounts.followers + room.name; state.accounts.reconcile(state); room.status = "대화 가능" }) { Text("맞팔하고 수락") }
-                            TextButton({ room.status = "거절" }) { Text("거절") }
+                            Button({
+                                if (server != null && serverConversationId != null) scope.launch {
+                                    runCatching { withContext(Dispatchers.IO) { server.respondToMessageRequest(serverConversationId, true) } }
+                                        .onSuccess { room.status = "대화 가능" }.onFailure { notice = it.message ?: "요청을 수락하지 못했습니다." }
+                                } else { state.following = state.following + room.name; state.accounts.followers = state.accounts.followers + room.name; state.accounts.reconcile(state); room.status = "대화 가능" }
+                            }) { Text("수락") }
+                            TextButton({
+                                if (server != null && serverConversationId != null) scope.launch {
+                                    runCatching { withContext(Dispatchers.IO) { server.respondToMessageRequest(serverConversationId, false) } }
+                                        .onSuccess { room.status = "거절" }.onFailure { notice = it.message ?: "요청을 거절하지 못했습니다." }
+                                } else room.status = "거절"
+                            }) { Text("거절") }
                         } else if (room.messages.any { it.mine && it.state == "전송 완료" }) {
                             Text("테스트: 상대방 응답")
                             Row {
@@ -366,7 +594,7 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                     Column(horizontalAlignment = if (message.mine) Alignment.End else Alignment.Start) {
                         Card(Modifier.widthIn(max = 280.dp).combinedClickable(onClickLabel = "메시지 옵션", onClick = { selectedMessage = message }, onLongClickLabel = "메시지 옵션", onLongClick = { selectedMessage = message }), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = if (message.mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
                             Column(Modifier.padding(10.dp)) {
-                                message.photo?.let { LocalPhoto(it, Modifier.width(220.dp)) }
+                message.photo?.let { FitMatePhoto(it, server, Modifier.width(220.dp)) }
                                 if (message.text.isNotEmpty()) Text(message.text)
                             }
                         }
@@ -386,7 +614,16 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (accepted) IconButton({ attachments = true }) { Icon(Icons.Outlined.Add, "사진 첨부") }
                 OutlinedTextField(room.draft, { room.draft = it.take(2000) }, Modifier.weight(1f), placeholder = { Text("메시지 입력") }, maxLines = 3)
-                Button({ state.send(room) }, enabled = room.draft.isNotBlank() || room.photo != null) { Text("전송") }
+                Button({
+                    if (server != null && serverConversationId != null && accepted && (room.draft.isNotBlank() || room.photo != null)) scope.launch {
+                        runCatching { withContext(Dispatchers.IO) {
+                            val mediaId = room.photo?.let { server.uploadImage(context, it, "DM") }
+                            server.sendMessage(serverConversationId, room.draft, mediaId); server.messages(serverConversationId)
+                        } }.onSuccess { rows ->
+                            room.messages = rows.map { row -> ChatEntry(row.text("messageId").hashCode().toLong(), row.text("content"), state.isMyServerMessage(room.id, row.text("senderUserId")), photo = row.text("mediaUrl").ifBlank { null }, time = row.text("createdAt").takeLast(8).take(5), read = row.text("readAt").isNotBlank()) }; room.draft = ""; room.photo = null
+                        }.onFailure { notice = it.message ?: "메시지를 보내지 못했습니다." }
+                    } else state.send(room)
+                }, enabled = room.draft.isNotBlank() || room.photo != null) { Text("전송") }
             }
         }
     }

@@ -32,6 +32,8 @@ import com.fitmate.backend.member.repository.UserFacilityRepository
 import com.fitmate.backend.member.repository.UserGoalRepository
 import com.fitmate.backend.member.repository.UserProfileRepository
 import com.fitmate.backend.member.repository.UserSportRepository
+import com.fitmate.backend.media.application.MediaAssetService
+import com.fitmate.backend.media.domain.MediaPurpose
 import com.fitmate.backend.terms.repository.UserConsentRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -53,6 +55,7 @@ class ProfileService(
     private val goalRepository: UserGoalRepository,
     private val consentRepository: UserConsentRepository,
     private val customSportService: CustomSportService,
+    private val mediaAssets: MediaAssetService,
     private val clock: Clock,
 ) {
     @Transactional(readOnly = true)
@@ -63,7 +66,7 @@ class ProfileService(
         return MyProfileResponse(
             userId, user.email, user.accountStatus,
             ProfileResponse(profile.nickname, profile.displayName, profile.birthDate, profile.gender, profile.visibility,
-                profile.bio, profile.weightUnit, profile.timezoneId, profile.version),
+                profile.bio, profile.profileImageMediaId?.let { "/api/v1/users/$userId/profile-image" }, profile.weightUnit, profile.timezoneId, profile.version),
             activityRegionRepository.findAllByIdUserId(userId).map { selection ->
                 val region = regionRepository.findById(requireNotNull(selection.id.regionId)).orElseThrow()
                 ProfilePlaceResponse(UuidBinaryConverter.fromMysqlOrderedUuid(requireNotNull(region.id)), region.name, selection.isPrimary)
@@ -85,6 +88,10 @@ class ProfileService(
             },
         )
     }
+
+    @Transactional(readOnly = true)
+    fun profileImageMediaId(userId: UUID): UUID? = profileRepository.findById(userId).orElseThrow { ApiException(ApiErrorCode.RESOURCE_NOT_FOUND) }
+        .takeIf { it.deletedAt == null }?.profileImageMediaId
 
     @Transactional
     fun update(userId: UUID, request: UpdateProfileRequest): MyProfileResponse {
@@ -113,6 +120,7 @@ class ProfileService(
         request.gender?.let { profile.gender = it }
         request.visibility?.let { profile.visibility = it }
         request.bio?.let { profile.bio = it.trim().takeIf(String::isNotEmpty) }
+        request.profileImageMediaId?.let { profile.profileImageMediaId = mediaAssets.requireOwnedActive(userId, it, MediaPurpose.PROFILE).id }
         request.weightUnit?.let { profile.weightUnit = it }
         request.timezoneId?.let { profile.timezoneId = validZoneId(it) }
         updatePlaces(userId, request)

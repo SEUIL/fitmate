@@ -15,7 +15,7 @@ data class CreateCommunityPostRequest(
 data class UpdateCommunityPostRequest(
     @field:Size(max = 2000) val content: String = "",
     val visibility: PostVisibility = PostVisibility.PUBLIC,
-    @field:Size(max = 10) val mediaIds: List<UUID> = emptyList(),
+    @field:Size(max = 10) val mediaIds: List<UUID>? = null,
     val version: Long,
 )
 

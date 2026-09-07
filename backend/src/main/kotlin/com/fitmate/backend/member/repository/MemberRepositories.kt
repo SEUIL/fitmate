@@ -23,6 +23,7 @@ import java.util.UUID
 
 interface UserProfileRepository : JpaRepository<UserProfile, UUID> {
     fun existsByNicknameNormalizedAndDeletedAtIsNull(nicknameNormalized: String): Boolean
+    fun existsByProfileImageMediaId(mediaId: UUID): Boolean
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select profile from UserProfile profile where profile.userId = :userId and profile.deletedAt is null")

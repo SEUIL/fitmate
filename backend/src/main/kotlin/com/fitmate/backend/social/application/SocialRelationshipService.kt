@@ -46,6 +46,7 @@ class SocialRelationshipService(
             displayName = target.displayName,
             visibility = target.visibility,
             bio = target.bio?.takeIf { canView },
+            profileImageUrl = target.profileImageMediaId?.takeIf { canView }?.let { "/api/v1/users/$targetId/profile-image" },
             followerCount = follows.countByIdFollowingUserIdAndStatus(targetId, FollowStatus.ACCEPTED),
             followingCount = follows.countByIdFollowerUserIdAndStatus(targetId, FollowStatus.ACCEPTED),
             canViewProfile = canView,

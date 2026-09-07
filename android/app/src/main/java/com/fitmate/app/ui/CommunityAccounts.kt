@@ -17,19 +17,26 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import com.fitmate.app.ui.theme.FitMateColors
 import com.fitmate.app.ui.theme.FitMateShapes
+import com.fitmate.app.data.remote.ServerSocialApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal data class MemberPreview(val name: String, val private: Boolean = false, val bio: String = "함께 꾸준히 운동해요.")
 internal data class AppNotice(val id: Long, val text: String, val category: String, val destination: String, val target: String? = null, val read: Boolean = false)
 internal data class ReportTicket(val id: Long, val target: String, val reason: String, val detail: String, val status: String = "RECEIVED", val result: String = "서버 전송 전 로컬 접수")
+internal data class ReportTarget(val label: String, val targetType: String? = null, val targetId: String? = null)
+private data class DirectoryUser(val id: String, val nickname: String, val status: String? = null)
 internal class CommunityAccounts {
     val people = listOf(MemberPreview("민준"), MemberPreview("수연"), MemberPreview("지현"), MemberPreview("비공개 메이트", true), MemberPreview("요청 메이트", true))
     var opened by mutableStateOf<String?>(null)
     var directory by mutableStateOf<String?>(null)
+    var directoryUserId by mutableStateOf<String?>(null)
     var followers by mutableStateOf(setOf("민준"))
     var incoming by mutableStateOf(mapOf("요청 메이트" to "PENDING"))
     var outgoing by mutableStateOf(emptyMap<String, String>())
     var photo by mutableStateOf<String?>(null)
-    var reportTarget by mutableStateOf<String?>(null)
+    var reportTarget by mutableStateOf<ReportTarget?>(null)
     val reports = mutableStateListOf<ReportTicket>()
     val notices = mutableStateListOf<AppNotice>()
     var push by mutableStateOf(false)
@@ -63,82 +70,165 @@ internal class CommunityAccounts {
     }
 }
 
-@Composable internal fun CommunityAccountSheets(state: SocialState, dm: (ChatRoom) -> Unit) {
+@Composable internal fun CommunityAccountSheets(state: SocialState, dm: (ChatRoom) -> Unit, server: ServerSocialApi? = null, myUserId: String = "") {
     val accounts = state.accounts
     accounts.directory?.let { mode -> SocialSheet({ accounts.directory = null }) {
+        val scope = rememberCoroutineScope()
+        val targetUserId = accounts.directoryUserId?.takeIf { mode != "팔로우 요청" } ?: myUserId
+        var serverUsers by remember(mode, targetUserId) { mutableStateOf<List<DirectoryUser>?>(null) }
+        var serverError by remember(mode, targetUserId) { mutableStateOf<String?>(null) }
+        LaunchedEffect(mode, targetUserId, server) {
+            if (server == null || targetUserId.isBlank() || mode == "사용자") return@LaunchedEffect
+            runCatching { withContext(Dispatchers.IO) {
+                when (mode) {
+                    "팔로워" -> server.followers(targetUserId)
+                    "팔로잉" -> server.following(targetUserId)
+                    else -> server.followRequests()
+                }
+            } }.onSuccess { rows ->
+                state.rememberServerUsers(rows)
+                serverUsers = rows.map { DirectoryUser(it.text("userId"), it.text("nickname"), if (mode == "팔로우 요청") "PENDING" else it.getAsJsonObject("relationship")?.text("followingStatus")) }
+            }.onFailure { serverError = it.message ?: "목록을 불러오지 못했습니다." }
+        }
         Text(mode, style = MaterialTheme.typography.titleLarge)
         Choices(listOf("사용자", "팔로워", "팔로잉", "팔로우 요청"), mode) { accounts.directory = it }
-        val names = when (mode) {
-            "팔로워" -> accounts.followers.toList(); "팔로잉" -> state.following.toList()
-            "팔로우 요청" -> accounts.incoming.keys.toList(); else -> accounts.people.map { it.name }
-        }.filterNot { it in state.blocked }
-        if (names.isEmpty()) Text("아직 표시할 사용자가 없어요.")
-        names.forEach { name -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton({ accounts.opened = name; accounts.directory = null }, Modifier.weight(1f)) { Text(name) }
+        ErrorText(serverError)
+        val users = serverUsers ?: when (mode) {
+            "팔로워" -> accounts.followers.map { DirectoryUser(state.serverUserId(it).orEmpty(), it) }
+            "팔로잉" -> state.following.map { DirectoryUser(state.serverUserId(it).orEmpty(), it) }
+            "팔로우 요청" -> accounts.incoming.map { DirectoryUser(state.serverUserId(it.key).orEmpty(), it.key, it.value) }
+            else -> accounts.people.map { DirectoryUser(state.serverUserId(it.name).orEmpty(), it.name) }
+        }.filterNot { it.nickname in state.blocked }
+        if (users.isEmpty()) Text("아직 표시할 사용자가 없어요.")
+        users.forEach { user -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton({ accounts.opened = user.nickname; accounts.directory = null }, Modifier.weight(1f)) { Text(user.nickname) }
             if (mode == "팔로우 요청") {
-                if (accounts.incoming[name] == "PENDING") {
-                    TextButton({ accounts.respond(state, name, true) }) { Text("수락") }
-                    TextButton({ accounts.respond(state, name, false) }) { Text("거절") }
-                } else Text(accounts.incoming[name].orEmpty())
-            } else if (mode == "팔로워") TextButton({ accounts.followers = accounts.followers - name; accounts.reconcile(state) }) { Text("삭제") }
+                if (user.status == "PENDING") {
+                    TextButton({
+                        if (server != null && user.id.isNotBlank()) scope.launch { runCatching { withContext(Dispatchers.IO) { server.acceptFollowRequest(user.id) } }.onSuccess { serverUsers = serverUsers?.filterNot { it.id == user.id } } }
+                        else accounts.respond(state, user.nickname, true)
+                    }) { Text("수락") }
+                    TextButton({
+                        if (server != null && user.id.isNotBlank()) scope.launch { runCatching { withContext(Dispatchers.IO) { server.rejectFollowRequest(user.id) } }.onSuccess { serverUsers = serverUsers?.filterNot { it.id == user.id } } }
+                        else accounts.respond(state, user.nickname, false)
+                    }) { Text("거절") }
+                } else Text(user.status.orEmpty())
+            } else if (mode == "팔로워") TextButton({
+                if (server != null && user.id.isNotBlank()) scope.launch { runCatching { withContext(Dispatchers.IO) { server.removeFollower(user.id) } }.onSuccess { serverUsers = serverUsers?.filterNot { it.id == user.id } } }
+                else { accounts.followers = accounts.followers - user.nickname; accounts.reconcile(state) }
+            }) { Text("삭제") }
         } }
         if (mode == "팔로우 요청") DebugOnly {
             TextButton({ accounts.incoming = accounts.incoming + ("요청 메이트" to "PENDING") }) { Text("테스트: 요청 1건 받기") }
         }
     } }
     accounts.reportTarget?.let { target -> SocialSheet({ accounts.reportTarget = null }) {
+        val scope = rememberCoroutineScope()
         var reason by remember(target) { mutableStateOf("부적절한 콘텐츠") }
         var detail by remember(target) { mutableStateOf("") }
+        var error by remember(target) { mutableStateOf<String?>(null) }
         Text("신고", style = MaterialTheme.typography.titleLarge)
-        Text(target)
+        Text(target.label)
         Choices(listOf("부적절한 콘텐츠", "욕설 또는 괴롭힘", "광고 또는 스팸", "사칭", "노쇼 또는 반복적인 일정 취소", "기타"), reason) { reason = it }
         OutlinedTextField(detail, { detail = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("상세 사유 (선택)") })
-        Text("서버 전송 없이 이 앱 실행 중에만 접수 상태를 보관합니다.", style = MaterialTheme.typography.bodySmall)
-        PrimaryAction("로컬 신고 접수") {
-            accounts.reports.add(0, ReportTicket(state.nextId(), target, reason, detail))
-            accounts.notify(state, "신고를 로컬 접수했어요.", "안내", "REPORTS")
-            accounts.reportTarget = null
+        if (target.targetType != null && target.targetId != null && server != null) {
+            Text("신고 내용은 서버로 전송되며, 운영 검토 후 처리됩니다.", style = MaterialTheme.typography.bodySmall)
+        } else Text("이 대상은 서버 식별자가 없어 앱 실행 중에만 접수 상태를 보관합니다.", style = MaterialTheme.typography.bodySmall)
+        ErrorText(error)
+        PrimaryAction(if (target.targetType != null && target.targetId != null && server != null) "신고 접수" else "로컬 신고 접수") {
+            val type = target.targetType
+            val id = target.targetId
+            if (server != null && type != null && id != null) scope.launch {
+                val serverReason = when (reason) {
+                    "광고 또는 스팸" -> "SPAM"
+                    "욕설 또는 괴롭힘" -> "HARASSMENT"
+                    else -> "OTHER"
+                }
+                runCatching { withContext(Dispatchers.IO) { server.report(type, id, serverReason, detail.ifBlank { null }) } }
+                    .onSuccess { response ->
+                        accounts.reports.add(0, ReportTicket(state.nextId(), target.label, reason, detail, response.text("status"), "서버에 신고가 접수되었습니다."))
+                        accounts.notify(state, "신고가 접수되었어요.", "안내", "REPORTS")
+                        accounts.reportTarget = null
+                    }.onFailure { error = it.message ?: "신고를 접수하지 못했습니다." }
+            } else {
+                accounts.reports.add(0, ReportTicket(state.nextId(), target.label, reason, detail))
+                accounts.notify(state, "신고를 로컬 접수했어요.", "안내", "REPORTS")
+                accounts.reportTarget = null
+            }
         }
     } }
 }
 
-@Composable internal fun MemberProfileScreen(modifier: Modifier, state: SocialState, back: () -> Unit, dm: (ChatRoom) -> Unit) = Screen(modifier) {
+@Composable internal fun MemberProfileScreen(modifier: Modifier, state: SocialState, back: () -> Unit, dm: (ChatRoom) -> Unit, server: ServerSocialApi? = null) = Screen(modifier) {
     val accounts = state.accounts
     accounts.opened?.let { name ->
+        val scope = rememberCoroutineScope()
+        val serverUserId = state.serverUserId(name)
+        LaunchedEffect(server, serverUserId) {
+            if (server != null && serverUserId != null) {
+                runCatching { withContext(Dispatchers.IO) { server.profile(serverUserId) } }
+                    .onSuccess(state::rememberServerProfile)
+            }
+        }
         val person = accounts.people.firstOrNull { it.name == name } ?: MemberPreview(name)
+        val serverProfile = state.serverProfiles[name]
+        val privateAccount = serverProfile?.isPrivate ?: person.private
+        val canView = serverProfile?.canViewProfile ?: accounts.visibleProfile(state, name)
+        val following = serverProfile?.followingStatus == "ACCEPTED" || name in state.following
         var tab by remember(name) { mutableStateOf("게시물") }
         var options by remember(name) { mutableStateOf(false) }
         var information by remember(name) { mutableStateOf<String?>(null) }
         var selected by remember(name) { mutableStateOf<FeedEntry?>(null) }
+        var firstMessage by remember(name) { mutableStateOf(false) }
+        var draftMessage by remember(name) { mutableStateOf("") }
+        var dmError by remember(name) { mutableStateOf<String?>(null) }
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "뒤로가기") }
             Box(Modifier.weight(1f)) { SocialTitle(name, Icons.Outlined.MoreHoriz, "사용자 옵션") { options = true } }
         }
-        ProfileIdentityRow(name, null, listOf("—", "—", "—")) {
-            if (it == "운동 기록") tab = it else information = "상대방의 $it 정보는 서버 연결 후 제공됩니다."
+        ProfileIdentityRow(name, serverProfile?.profileImageUrl, listOf("—", serverProfile?.followerCount?.toString() ?: "—", serverProfile?.followingCount?.toString() ?: "—"), server) {
+            if (it == "운동 기록") tab = it
+            else if (serverUserId != null) { accounts.directory = it; accounts.directoryUserId = serverUserId }
+            else information = "상대방의 $it 정보는 서버 연결 후 제공됩니다."
         }
-        Text(name, fontWeight = FontWeight.SemiBold)
+        Text(serverProfile?.displayName ?: name, fontWeight = FontWeight.SemiBold)
         if (name in state.blocked) {
             Text("차단한 사용자입니다. 프로필과 게시물이 숨겨져 있어요.")
-            TextButton({ state.blocked = state.blocked - name }) { Text("차단 해제") }
+            TextButton({
+                if (server != null && serverUserId != null) scope.launch {
+                    runCatching { withContext(Dispatchers.IO) { server.unblock(serverUserId) } }
+                        .onSuccess { state.blocked = state.blocked - name }
+                } else state.blocked = state.blocked - name
+            }) { Text("차단 해제") }
         } else {
-            if (accounts.visibleProfile(state, name)) Text(person.bio, style = MaterialTheme.typography.bodyMedium)
-            Text(if (person.private) "비공개 계정" else "공개 계정", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
+            if (canView) Text(serverProfile?.bio ?: person.bio, style = MaterialTheme.typography.bodyMedium)
+            Text(if (privateAccount) "비공개 계정" else "공개 계정", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ accounts.follow(state, name) }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text(when { name in state.following -> "팔로잉"; accounts.outgoing[name] == "PENDING" -> "요청 취소"; else -> "팔로우" }, color = FitMateColors.TextPrimary) }
                 OutlinedButton({
-                    val room = state.chat(name)
-                    room.status = if (person.private && name !in state.mutual) "요청 대기" else "대화 가능"
-                    dm(room)
-                }, Modifier.weight(1f), shape = FitMateShapes.Button, enabled = accounts.canDm(state, name)) { Text(if (person.private && name !in state.mutual) "DM 요청" else "메시지") }
+                    if (server != null && serverUserId != null) scope.launch {
+                        runCatching { withContext(Dispatchers.IO) { if (following) server.unfollow(serverUserId) else server.follow(serverUserId); server.profile(serverUserId) } }
+                            .onSuccess { profile ->
+                                state.rememberServerProfile(profile)
+                                state.following = if (profile.getAsJsonObject("relationship").text("followingStatus") == "ACCEPTED") state.following + name else state.following - name
+                            }
+                    } else accounts.follow(state, name)
+                }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text(when { following -> "팔로잉"; serverProfile?.followingStatus == "PENDING" || accounts.outgoing[name] == "PENDING" -> "요청 취소"; else -> "팔로우" }, color = FitMateColors.TextPrimary) }
+                OutlinedButton({
+                    if (server != null && serverUserId != null) firstMessage = true
+                    else {
+                        val room = state.chat(name)
+                        room.status = if (privateAccount && name !in state.mutual) "요청 대기" else "대화 가능"
+                        dm(room)
+                    }
+                }, Modifier.weight(1f), shape = FitMateShapes.Button, enabled = accounts.canDm(state, name)) { Text(if (privateAccount && name !in state.mutual) "DM 요청" else "메시지") }
             }
-            if (!accounts.visibleProfile(state, name)) Text("팔로우가 승인되면 프로필 상세를 볼 수 있어요.")
+            if (!canView) Text("팔로우가 승인되면 프로필 상세를 볼 수 있어요.")
             val entries = state.feed.filter { it.post.authorName == name && (it.visibility == "전체 공개" || name in state.mutual) }
             Column(verticalArrangement = Arrangement.spacedBy(if (tab == "게시물") 3.dp else 12.dp)) {
             SocialTabs(listOf("게시물", "운동 기록"), tab) { tab = it }
             if (tab == "게시물") {
                 if (entries.isEmpty()) Text("표시할 게시물이 없습니다.", Modifier.padding(vertical = 32.dp), color = FitMateColors.TextSecondary)
-                ProfilePostGrid(entries) { selected = it }
+                ProfilePostGrid(entries, server) { selected = it }
             } else {
                 Text("공개된 운동 기록", style = MaterialTheme.typography.titleSmall)
                 if (entries.none { it.workout != null }) Text("공개 게시물에 첨부된 운동 기록이 없어요.", Modifier.padding(vertical = 24.dp), color = FitMateColors.TextSecondary)
@@ -157,10 +247,33 @@ internal class CommunityAccounts {
             entry.comments.forEach { Text("${it.author}: ${it.text}") }
         } }
         information?.let { text -> SocialSheet({ information = null }) { Text(text) } }
+        if (firstMessage) SocialSheet({ firstMessage = false }) {
+            Text(if (privateAccount && name !in state.mutual) "DM 요청" else "새 메시지", style = MaterialTheme.typography.titleLarge)
+            Text("첫 메시지를 보내면 상대방에게 대화 요청이 전달됩니다.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(draftMessage, { draftMessage = it.take(2000) }, Modifier.fillMaxWidth(), label = { Text("메시지") }, minLines = 3)
+            ErrorText(dmError)
+            Button(onClick = {
+                if (server != null && serverUserId != null) scope.launch {
+                    runCatching { withContext(Dispatchers.IO) { server.startConversation(serverUserId, draftMessage.trim()); server.conversations() } }
+                        .onSuccess { conversations ->
+                            state.replaceServerConversations(conversations)
+                            state.serverChatForUser(serverUserId)?.let(dm)
+                            firstMessage = false
+                        }.onFailure { dmError = it.message ?: "메시지 요청을 보내지 못했습니다." }
+                }
+            }, enabled = draftMessage.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("보내기") }
+        }
         if (options) SocialSheet({ options = false }) {
             Text("사용자 옵션", style = MaterialTheme.typography.titleLarge)
-            TextButton({ options = false; accounts.reportTarget = "프로필: $name" }) { Text("프로필 신고") }
-            TextButton({ state.blocked = state.blocked + name; state.following = state.following - name; accounts.followers = accounts.followers - name; accounts.reconcile(state); options = false }) { Text("차단") }
+            TextButton({ options = false; accounts.reportTarget = ReportTarget("프로필: $name", "USER", serverUserId) }) { Text("프로필 신고") }
+            TextButton({
+                if (server != null && serverUserId != null) scope.launch {
+                    runCatching { withContext(Dispatchers.IO) { server.block(serverUserId) } }.onSuccess {
+                        state.blocked = state.blocked + name; state.following = state.following - name; accounts.followers = accounts.followers - name; accounts.reconcile(state)
+                    }
+                } else { state.blocked = state.blocked + name; state.following = state.following - name; accounts.followers = accounts.followers - name; accounts.reconcile(state) }
+                options = false
+            }) { Text("차단") }
             if (accounts.outgoing[name] == "PENDING" && name !in state.blocked) DebugOnly {
                 Text("개발용: 상대방 응답 예시", style = MaterialTheme.typography.labelSmall)
                 Row {
@@ -172,7 +285,11 @@ internal class CommunityAccounts {
     }
 }
 
-@Composable internal fun NotificationFlow(modifier: Modifier, state: SocialState, open: (AppNotice) -> Unit) = Screen(modifier) {
+@Composable internal fun NotificationFlow(modifier: Modifier, state: SocialState, open: (AppNotice) -> Unit, server: ServerSocialApi? = null) = Screen(modifier) {
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(server) {
+        if (server != null) runCatching { withContext(Dispatchers.IO) { server.notifications() } }.onSuccess(state::replaceServerNotices)
+    }
     val accounts = state.accounts
     var settings by remember { mutableStateOf(false) }
     state.notice?.let { Text(it) }
@@ -188,13 +305,16 @@ internal class CommunityAccounts {
             DropdownMenu(management, { management = false }) {
                 DropdownMenuItem(text = { Text("모두 읽음") }, enabled = unread > 0, onClick = {
                     accounts.notices.indices.forEach { i -> accounts.notices[i] = accounts.notices[i].copy(read = true) }
+                    if (server != null) scope.launch { runCatching { withContext(Dispatchers.IO) { server.readAllNotifications() } } }
                     management = false
                 })
                 DropdownMenuItem(text = { Text("전체 삭제") }, enabled = accounts.notices.isNotEmpty(), onClick = { management = false; clear = true })
             }
         }
     }
-    if (clear) ConfirmAction("알림 삭제", "앱 내 알림 목록을 모두 삭제할까요?", { clear = false }) { accounts.notices.clear(); clear = false }
+    if (clear) ConfirmAction("알림 삭제", "앱 내 알림 목록을 모두 삭제할까요?", { clear = false }) {
+        accounts.notices.clear(); if (server != null) scope.launch { runCatching { withContext(Dispatchers.IO) { server.deleteAllNotifications() } } }; clear = false
+    }
     if (accounts.notices.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Icon(Icons.Outlined.NotificationsNone, null, Modifier.size(32.dp), tint = FitMateColors.TextSecondary)
         Text("새로운 알림이 없어요", style = MaterialTheme.typography.titleSmall)
@@ -206,6 +326,7 @@ internal class CommunityAccounts {
         Row(Modifier.fillMaxWidth().semantics { stateDescription = if (item.read) "읽음" else "읽지 않음" }.clickable {
             val index = accounts.notices.indexOfFirst { it.id == item.id }
             if (index >= 0) accounts.notices[index] = item.copy(read = true)
+            state.serverNoticeId(item.id)?.let { id -> if (server != null) scope.launch { runCatching { withContext(Dispatchers.IO) { server.readNotification(id) } } } }
             open(item)
         }.heightIn(min = 76.dp).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
