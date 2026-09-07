@@ -20,10 +20,15 @@ import java.util.UUID
 @EnabledIfEnvironmentVariable(named = "FITMATE_TEST_DB_URL", matches = ".+")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = [
     "spring.datasource.url=\${FITMATE_TEST_DB_URL}",
-    "spring.datasource.username=root",
-    "spring.datasource.password=",
+    "spring.datasource.username=\${FITMATE_TEST_DB_USERNAME:root}",
+    "spring.datasource.password=\${FITMATE_TEST_DB_PASSWORD:}",
 ])
 class WorkoutApiIntegrationTest {
+    @Test
+    fun `previous workout record requires authentication`() {
+        val response = http.getForEntity("/api/v1/exercises/30000000-0000-0000-0000-000000000001/previous-record", String::class.java)
+        assertEquals(HttpStatus.UNAUTHORIZED, response.statusCode)
+    }
     @Autowired private lateinit var http: TestRestTemplate
     companion object {
         @JvmStatic

@@ -75,6 +75,7 @@ internal val ExampleRoutines = listOf(
     saved: List<SavedRoutine>,
     update: (List<SavedRoutine>) -> Unit,
     exerciseCatalog: ExerciseCatalog,
+    onServer: (() -> Unit)? = null,
     select: (SavedRoutine) -> Unit
 ) = Screen(modifier) {
     val scope = rememberCoroutineScope()
@@ -86,6 +87,7 @@ internal val ExampleRoutines = listOf(
     var draft by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<String?>(null) }
+    onServer?.let { TextButton(it) { Text("서버 루틴으로 돌아가기") } }
     SocialTabs(listOf("기본 루틴", "저장 루틴"), tab) { tab = it }
     Text("기본 루틴은 UI 검증용 예시이며 개인 맞춤 AI 추천이 아닙니다. 운동 구성은 자유롭게 수정할 수 있어요.", style = MaterialTheme.typography.bodySmall)
     when (val catalog = exerciseCatalog.state) {
@@ -142,7 +144,12 @@ internal val ExampleRoutines = listOf(
         TextButton({ help = true }) { Text("운동 설명·대체") }
         TextButton({ saving = true }) { Text("현재 구성을 루틴 저장") }
     }
-    val previous = history.firstNotNullOfOrNull { summary -> summary.sets.lastOrNull { it.exerciseName == session.exerciseName } }
+    val serverPrevious = session.serverState?.let { com.google.gson.JsonParser.parseString(it).asJsonObject }
+        ?.rows("exercises")?.firstOrNull { it.text("exerciseName") == session.exerciseName }
+        ?.get("previousRecord")?.takeUnless { it.isJsonNull }?.asJsonObject?.rows("sets")?.lastOrNull()
+    val previous = serverPrevious?.let { WorkoutSet(session.exerciseName, it.get("weightKg").asDouble, it.get("repetitions").asInt,
+        it.get("rpe")?.takeUnless { value -> value.isJsonNull }?.asInt, it.text("memo")) }
+        ?: history.firstNotNullOfOrNull { summary -> summary.sets.lastOrNull { it.exerciseName == session.exerciseName } }
     TextButton({ previous?.let {
         session.weightText = "%.2f".format(java.util.Locale.US, if (session.unit == "lb") it.weightKg * 2.2046226218 else it.weightKg)
         session.repetitionText = it.repetitions.toString(); session.rpeText = it.rpe?.toString().orEmpty()
@@ -154,7 +161,7 @@ internal val ExampleRoutines = listOf(
         Text(session.exerciseName.ifBlank { "운동을 먼저 추가하세요" }, style = MaterialTheme.typography.titleLarge)
         Text(guide?.let { "${it.body} · ${it.description}" } ?: "등록된 설명이 없는 직접 입력 운동입니다. 기구 안내와 전문가의 지도를 확인하세요.")
         Text("불편함이나 통증이 있으면 중단하세요. 예시 대체 운동이 모든 사용자에게 적합한 것은 아닙니다.")
-        guide?.let { g -> OutlinedButton({
+        guide?.takeIf { session.serverState == null }?.let { g -> OutlinedButton({
             val i = session.selectedExerciseIndex
             if (i in session.sessionExercises.indices) { session.sessionExercises[i] = g.alternative; session.exerciseName = g.alternative }
             help = false

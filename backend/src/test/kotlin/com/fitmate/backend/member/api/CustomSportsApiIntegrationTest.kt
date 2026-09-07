@@ -23,8 +23,8 @@ import java.util.concurrent.CompletableFuture
 @EnabledIfEnvironmentVariable(named = "FITMATE_TEST_DB_URL", matches = ".+")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = [
     "spring.datasource.url=\${FITMATE_TEST_DB_URL}",
-    "spring.datasource.username=root",
-    "spring.datasource.password=",
+    "spring.datasource.username=\${FITMATE_TEST_DB_USERNAME:root}",
+    "spring.datasource.password=\${FITMATE_TEST_DB_PASSWORD:}",
 ])
 class CustomSportsApiIntegrationTest {
     @Autowired private lateinit var http: TestRestTemplate
@@ -125,6 +125,32 @@ class CustomSportsApiIntegrationTest {
         val conflict = responses.single { it.statusCode == HttpStatus.CONFLICT }
         assertEquals("VERSION_CONFLICT", conflict.body!!["error"]["code"].asText())
         assertEquals(version + 1, get(token)["profile"]["version"].asLong())
+    }
+
+    @Test
+    fun `running-only and custom-only signup work without HEALTH`() {
+        for (selection in listOf(listOf(mapOf("sportCode" to "RUNNING", "skillLevel" to "BEGINNER")), emptyList())) {
+            val request = signupRequest(listOf("요가")) + ("sports" to selection)
+            val response = http.postForEntity("/api/v1/auth/signup", request, JsonNode::class.java)
+            assertEquals(HttpStatus.CREATED, response.statusCode)
+            val profile = get(response.body!!["data"]["tokens"]["accessToken"].asText())
+            assertTrue(profile["sports"].none { it["sportCode"].asText() == "HEALTH" })
+            assertEquals("요가", profile["customSports"][0]["name"].asText())
+        }
+    }
+
+    @Test
+    fun `region hierarchy reaches a legal town and signup keeps the selected UUID`() {
+        val root = http.getForEntity("/api/v1/regions", JsonNode::class.java).body!!["data"]["items"].first { it["name"].asText() == "서울특별시" }
+        val city = http.getForEntity("/api/v1/regions?parentId=${root["id"].asText()}", JsonNode::class.java).body!!["data"]["items"].first { it["name"].asText().endsWith("성동구") }
+        val town = http.getForEntity("/api/v1/regions?parentId=${city["id"].asText()}", JsonNode::class.java).body!!["data"]["items"].first { it["name"].asText().endsWith("성수동1가") }
+        assertEquals("TOWN", town["level"].asText())
+        val facilityName = "Integration gym ${UUID.randomUUID()}"
+        val response = http.postForEntity("/api/v1/auth/signup", signupRequest(emptyList()) + mapOf("activityRegionIds" to listOf(town["id"].asText()), "facilityNames" to listOf(facilityName)), JsonNode::class.java)
+        assertEquals(HttpStatus.CREATED, response.statusCode)
+        assertEquals(town["id"].asText(), get(response.body!!["data"]["tokens"]["accessToken"].asText())["activityRegions"][0]["id"].asText())
+        val facilities = http.getForEntity("/api/v1/facilities?regionId=${town["id"].asText()}", JsonNode::class.java).body!!["data"]["items"]
+        assertTrue(facilities.any { it["name"].asText() == facilityName && it["regionId"].asText() == town["id"].asText() })
     }
 
     private fun signupRequest(names: List<String>): Map<String, Any> = mapOf(

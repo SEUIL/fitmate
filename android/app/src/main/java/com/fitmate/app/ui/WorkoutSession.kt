@@ -5,6 +5,8 @@ import com.fitmate.app.data.model.WorkoutSet
 
 /** The root snapshots this session into app-private local storage. */
 internal class WorkoutSession(initialExercise: String, val useSamsung: Boolean) {
+    var serverState by mutableStateOf<String?>(null)
+    var syncError by mutableStateOf<String?>(null)
     var exerciseName by mutableStateOf(initialExercise)
     var exerciseDraft by mutableStateOf("")
     var selectedExerciseIndex by mutableStateOf(0)
@@ -37,7 +39,7 @@ internal class WorkoutSession(initialExercise: String, val useSamsung: Boolean) 
         val repetitions = repetitionText.toIntOrNull()
         val rpe = rpeText.toIntOrNull()
         if (exerciseName.isBlank()) { error = "운동을 먼저 추가해 주세요."; return false }
-        if (weight == null || !weight.isFinite() || weight < 0 || repetitions == null || repetitions <= 0 ||
+        if (weight == null || !weight.isFinite() || weight < 0 || repetitions == null || repetitions !in 1..10000 || memo.length > 500 ||
             (rpeText.isNotBlank() && (rpe == null || rpe !in 1..10))) {
             error = "중량·반복 횟수·RPE를 확인해 주세요."; return false
         }

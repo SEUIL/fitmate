@@ -50,6 +50,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -144,7 +145,12 @@ fun FitMatePrototypeApp(
 ) {
     var generation by remember { mutableStateOf(0) }
     key(generation) {
-        FitMateAppContent(onOpenSamsungTest, samsungHealthState, onRefreshSamsungHealth) { generation++ }
+        val api = rememberFitMateApiClient()
+        ServerSessionGate(api, signup = { done -> OnboardingScreen(Modifier.safeDrawingPadding(), api) { done() } }) { account ->
+            key(account.text("id")) {
+                FitMateAppContent(onOpenSamsungTest, samsungHealthState, onRefreshSamsungHealth, api, account) { generation++ }
+            }
+        }
     }
 }
 
@@ -153,10 +159,12 @@ fun FitMatePrototypeApp(
     onOpenSamsungTest: () -> Unit,
     samsungHealthState: SamsungHealthUiState,
     onRefreshSamsungHealth: () -> Unit,
+    apiClient: FitMateApiClient,
+    serverAccount: com.google.gson.JsonObject,
     resetApp: () -> Unit
 ) {
     val context = LocalContext.current
-    val localStore = remember { FrontendLocalStore(context) }
+    val localStore = remember { FrontendLocalStore(context, serverAccount.text("id")) }
     val initial = remember { localStore.load() }
     if (localStore.readFailed) {
         AlertDialog(onDismissRequest = {}, title = { Text("로컬 기록을 읽지 못했어요") },
@@ -164,24 +172,37 @@ fun FitMatePrototypeApp(
             confirmButton = { TextButton({ if (localStore.clearAndClose()) resetApp() }) { Text("로컬 데모 기록 초기화") } })
         return
     }
-    var signedIn by remember { mutableStateOf(initial.signedIn && initial.profile != null) }
-    var registered by remember { mutableStateOf(initial.profile != null) }
+    var signedIn by remember { mutableStateOf(true) }
+    var registered by remember { mutableStateOf(true) }
     var healthConsent by remember { mutableStateOf(initial.healthConsent) }
     var locationConsent by remember { mutableStateOf(initial.locationConsent) }
     var savedRoutines by remember { mutableStateOf(initial.routines) }
     var storageError by remember { mutableStateOf(localStore.readFailed) }
-    val apiClient = rememberFitMateApiClient()
     val exerciseCatalog = rememberExerciseCatalog(apiClient)
     val repository = remember { MockFitMateRepository }
     val screenStates = rememberSaveableStateHolder()
     var route by remember { mutableStateOf(if (signedIn) PrototypeRoute.HOME else PrototypeRoute.LOGIN) }
-    var profile by remember { mutableStateOf(initial.profile ?: repository.initialProfile()) }
+    var profile by remember { mutableStateOf(serverAccount.toUserProfile()) }
+    var profileVersion by remember { mutableStateOf(serverAccount.getAsJsonObject("profile").get("version").asLong) }
     var matePosts by remember { mutableStateOf(initial.mates?.posts ?: repository.matePosts()) }
     var selectedMatePost by remember { mutableStateOf(matePosts.firstOrNull() ?: repository.matePosts().first()) }
     var latestWorkoutSummary by remember { mutableStateOf(WorkoutSummary(0, emptyList(), false)) }
     var workoutHistory by remember { mutableStateOf(initial.history) }
     var selectedWorkoutRoutine by remember { mutableStateOf(MockHealthRoutines.first()) }
+    var selectedServerRoutine by remember { mutableStateOf<com.google.gson.JsonObject?>(null) }
+    var localRoutineMode by remember { mutableStateOf(false) }
     var workoutSession by remember { mutableStateOf(initial.workout?.restore()) }
+    val integrationScope = rememberCoroutineScope()
+    var startingWorkout by remember { mutableStateOf(false) }
+    var startError by remember { mutableStateOf<String?>(null) }
+    val serverWorkout = remember(workoutSession) { workoutSession?.let { ServerWorkout(apiClient, it) } }
+    LaunchedEffect(workoutSession) {
+        val current = workoutSession ?: return@LaunchedEffect
+        if (current.serverState != null) snapshotFlow { WorkoutUpload(current.recordedSets.toList(), current.isTimerRunning) }.conflate().collect { upload ->
+            try { withContext(Dispatchers.IO) { serverWorkout?.synchronize(upload) }; current.syncError = null }
+            catch (failure: Exception) { if (failure is kotlinx.coroutines.CancellationException) throw failure; current.syncError = failure.message }
+        }
+    }
     var workoutExit by remember { mutableStateOf(false) }
     var inbodyOrigin by remember { mutableStateOf(PrototypeRoute.HOME) }
     val runningState = remember { initial.running?.restore() ?: RunningState() }
@@ -304,11 +325,13 @@ fun FitMatePrototypeApp(
         when (route) {
             PrototypeRoute.PERSON -> MemberProfileScreen(Modifier.padding(padding), socialState, back = { socialState.accounts.opened = null; route = personOrigin }) { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }
             PrototypeRoute.LOGIN -> Unit
-            PrototypeRoute.ACCOUNT -> AccountSettings(Modifier.padding(padding), profile.email, healthConsent, locationConsent,
-                { healthConsent = it }, { locationConsent = it },
-                logout = { workoutSession?.pause(); if (RunTrackingStore.updates.value.active) RunTrackingService.pause(context) else runningState.paused = true; signedIn = false; route = PrototypeRoute.LOGIN },
-                withdraw = { RunTrackingService.stop(context); if (localStore.clearAndClose()) resetApp() else storageError = true },
-                deleteRecords = { RunTrackingService.stop(context); runningState.reset(); workoutSession = null; workoutHistory = emptyList(); mateState.activeWorkoutId = null }, external = onOpenSamsungTest)
+            PrototypeRoute.ACCOUNT -> ServerAccountSettings(Modifier.padding(padding), apiClient,
+                finished = { workoutSession?.pause(); RunTrackingService.stop(context); resetApp() }, external = onOpenSamsungTest,
+                health = healthConsent, setHealth = { healthConsent = it }, location = locationConsent, setLocation = { locationConsent = it },
+                deleteLocalRecords = {
+                    check(workoutSession?.serverState == null) { "진행 중인 서버 운동을 먼저 완료해 주세요." }
+                    workoutHistory = emptyList(); workoutSession = null; mateState.activeWorkoutId = null
+                })
             PrototypeRoute.HISTORY -> WorkoutHistoryFlow(Modifier.padding(padding), workoutHistory)
             PrototypeRoute.REPORTS -> ReportTicketsFlow(Modifier.padding(padding), socialState)
             PrototypeRoute.NOTIFICATIONS -> NotificationFlow(Modifier.padding(padding), socialState) { notice ->
@@ -330,20 +353,42 @@ fun FitMatePrototypeApp(
                 mates = { route = PrototypeRoute.MATE_LIST }, community = { route = PrototypeRoute.COMMUNITY },
                 dm = { route = PrototypeRoute.DM }, inbody = { inbodyOrigin = PrototypeRoute.HOME; route = PrototypeRoute.INBODY })
             PrototypeRoute.SOLO -> SoloScreen(Modifier.padding(padding), { mateState.activeWorkoutId = null; route = PrototypeRoute.HEALTH_ROUTINE }, { mateState.activeWorkoutId = null; route = PrototypeRoute.RUNNING })
-            PrototypeRoute.HEALTH_ROUTINE -> RoutineLibrary(
+            PrototypeRoute.HEALTH_ROUTINE -> if (!localRoutineMode) ServerRoutineLibrary(Modifier.padding(padding), apiClient, Sport.FITNESS in profile.interests,
+                select = { routine ->
+                    selectedServerRoutine = routine
+                    val names = routine.rows("items").map { it.text("exerciseName") }
+                    selectedWorkoutRoutine = WorkoutRoutine(routine.text("name"), names.joinToString(" → "), names.firstOrNull().orEmpty(), names)
+                    route = PrototypeRoute.WORKOUT_PREP
+                }, local = { localRoutineMode = true }) else RoutineLibrary(
                 modifier = Modifier.padding(padding),
                 saved = savedRoutines,
                 update = { savedRoutines = it },
-                exerciseCatalog = exerciseCatalog
+                exerciseCatalog = exerciseCatalog,
+                onServer = { localRoutineMode = false }
             ) { routine ->
+                selectedServerRoutine = null
                 selectedWorkoutRoutine = WorkoutRoutine(routine.name, routine.exercises.joinToString(" → "), routine.exercises.firstOrNull().orEmpty(), routine.exercises)
                 route = PrototypeRoute.WORKOUT_PREP
             }
             PrototypeRoute.WORKOUT_PREP -> WorkoutPrepScreen(Modifier.padding(padding), selectedWorkoutRoutine) { useSamsungHealth ->
-                if (workoutSession == null) workoutSession = WorkoutSession(selectedWorkoutRoutine.firstExerciseName, useSamsungHealth).also {
-                    it.sessionExercises.clear(); it.sessionExercises.addAll(selectedWorkoutRoutine.exercises)
+                if (!startingWorkout) {
+                    startingWorkout = true; startError = null
+                    integrationScope.launch {
+                        try {
+                            val routine = selectedServerRoutine
+                            val current = WorkoutSession(selectedWorkoutRoutine.firstExerciseName, useSamsungHealth).also {
+                                it.sessionExercises.clear(); it.sessionExercises.addAll(selectedWorkoutRoutine.exercises)
+                            }
+                            if (routine != null) {
+                                val response = withContext(Dispatchers.IO) { apiClient.request("POST", "workout-sessions", mapOf("routineId" to routine.text("id"))).asJsonObject }
+                                current.serverState = response.toString()
+                                current.targetSetCount = response.rows("exercises").sumOf { it.rows("sets").size }
+                            }
+                            workoutSession = current; route = PrototypeRoute.WORKOUT
+                        } catch (failure: Exception) { startError = failure.message }
+                        finally { startingWorkout = false }
+                    }
                 }
-                route = PrototypeRoute.WORKOUT
             }
             PrototypeRoute.RUNNING -> RunningFlow(Modifier.padding(padding), runningState, locationConsent, { locationConsent = it }) { saved ->
                 if (saved) mateState.completeWorkout() else mateState.activeWorkoutId = null
@@ -401,8 +446,12 @@ fun FitMatePrototypeApp(
                 modifier = Modifier.padding(padding),
                 session = requireNotNull(workoutSession),
                 history = workoutHistory,
+                completeServer = { summary ->
+                    val current = requireNotNull(workoutSession)
+                    if (current.serverState != null) withContext(Dispatchers.IO) { serverWorkout?.complete(WorkoutUpload(summary.sets, current.isTimerRunning)) }
+                },
                 saveRoutine = { routine -> if (savedRoutines.any { it.name == routine.name }) false else { savedRoutines = savedRoutines + routine; true } },
-                onCancel = { workoutSession = null; mateState.activeWorkoutId = null; route = PrototypeRoute.HOME }
+                onCancel = { if (workoutSession?.serverState != null) workoutSession?.pause() else { workoutSession = null; mateState.activeWorkoutId = null }; route = PrototypeRoute.HOME }
             ) { summary ->
                 latestWorkoutSummary = summary
                 workoutHistory = listOf(summary) + workoutHistory
@@ -434,7 +483,17 @@ fun FitMatePrototypeApp(
                 social = socialState,
                 workouts = workoutHistory,
                 runs = runningState.history,
-                onSave = { profile = it },
+                api = apiClient,
+                onReload = {
+                    val loaded = withContext(Dispatchers.IO) { apiClient.request("GET", "users/me").asJsonObject }
+                    profileVersion = loaded.getAsJsonObject("profile").get("version").asLong
+                    profile = loaded.toUserProfile()
+                },
+                onSave = { updated ->
+                    val saved = withContext(Dispatchers.IO) { apiClient.request("PATCH", "users/me/profile", profilePatch(profile, updated, profileVersion, apiClient.fetchSports().map { it.code }.toSet())).asJsonObject }
+                    profileVersion = saved.getAsJsonObject("profile").get("version").asLong
+                    profile = saved.toUserProfile()
+                },
                 onOpenInbody = { inbodyOrigin = PrototypeRoute.PROFILE; route = PrototypeRoute.INBODY },
                 onSamsungTest = onOpenSamsungTest,
                 onAccount = { route = PrototypeRoute.ACCOUNT },
@@ -448,6 +507,8 @@ fun FitMatePrototypeApp(
             PrototypeRoute.ADS -> AdsScreen(Modifier.padding(padding))
         }
         if (storageError) AlertDialog(onDismissRequest = { storageError = false }, title = { Text("기기 저장 확인 필요") }, text = { Text("기록을 읽거나 저장하지 못했어요. 저장 공간을 확인해 주세요. 최근 변경은 재실행 후 복원되지 않을 수 있습니다.") }, confirmButton = { TextButton({ storageError = false }) { Text("확인") } })
+        if (startingWorkout) AlertDialog(onDismissRequest = {}, title = { Text("운동 준비 중") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
+        startError?.let { message -> AlertDialog(onDismissRequest = { startError = null }, title = { Text("운동을 시작하지 못했어요") }, text = { Text(message) }, confirmButton = { TextButton({ startError = null }) { Text("확인") } }) }
         }
         }
     }
@@ -515,6 +576,18 @@ private fun FitMatePrototypePreview() {
 
 @Composable private fun OnboardingScreen(modifier: Modifier, apiClient: FitMateApiClient, onHealthConsent: (Boolean) -> Unit = {}, done: (UserProfile) -> Unit) = Screen(modifier) {
     val scope = rememberCoroutineScope()
+    var submitting by remember { mutableStateOf(false) }
+    var referenceError by remember { mutableStateOf<String?>(null) }
+    var terms by remember { mutableStateOf(emptyList<com.google.gson.JsonObject>()) }
+    var activeCodes by remember { mutableStateOf(emptySet<String>()) }
+    var referenceAttempt by remember { mutableStateOf(0) }
+    LaunchedEffect(referenceAttempt) {
+        referenceError = null
+        try {
+            val refs = withContext(Dispatchers.IO) { apiClient.items("terms", false) to apiClient.fetchSports() }
+            terms = refs.first; activeCodes = refs.second.map { it.code }.toSet()
+        } catch (failure: Exception) { referenceError = failure.message }
+    }
     var verified by remember { mutableStateOf(false) }
     var checkedNickname by remember { mutableStateOf<String?>(null) }
     var signupError by remember { mutableStateOf<String?>(null) }
@@ -530,7 +603,8 @@ private fun FitMatePrototypePreview() {
     var gender by remember { mutableStateOf("") }
     var isAdultVerified by remember { mutableStateOf(false) }
     var nickname by remember { mutableStateOf("") }
-    var region by remember { mutableStateOf("성수동") }
+    var region by remember { mutableStateOf("") }
+    var regionId by remember { mutableStateOf("") }
     var facilityName by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
     var selectedSports by remember { mutableStateOf(setOf(Sport.FITNESS, Sport.RUNNING)) }
@@ -547,6 +621,7 @@ private fun FitMatePrototypePreview() {
     val email = if (emailLocalPart.isBlank() || emailDomain.isBlank()) "" else "$emailLocalPart@$emailDomain"
     Text("FITMATE", color = Mint, fontWeight = FontWeight.Bold)
     ErrorText(signupError)
+    referenceError?.let { ErrorText(it); TextButton({ referenceAttempt++ }) { Text("가입 정보 다시 불러오기") } }
     policy?.let { title -> SocialSheet({ policy = null }) { PolicyDetail(title) } }
     when (step) {
         1 -> {
@@ -581,9 +656,13 @@ private fun FitMatePrototypePreview() {
                 }
             }
             Text("로그인 아이디로 사용해요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-            DemoEmailVerification(email, verified, { verified = it }) { value -> apiClient.checkEmailAvailability(value).available }
-            SecretField(password, { password = it }, "테스트 비밀번호")
-            Text("실제 비밀번호를 입력하지 마세요. 테스트 규칙: 영문·숫자 포함 8자 이상. 최종 정책은 API 계약에서 확정합니다.", style = MaterialTheme.typography.bodySmall)
+            LaunchedEffect(email) { verified = false }
+            TextButton({ val submittedEmail = email; scope.launch {
+                try { val available = withContext(Dispatchers.IO) { apiClient.checkEmailAvailability(submittedEmail).available }; if (email == submittedEmail) { verified = available; signupError = if (available) null else "이미 가입한 이메일입니다." } }
+                catch (failure: Exception) { signupError = failure.message }
+            } }, enabled = validDemoEmail(email)) { Text(if (verified) "사용 가능한 이메일" else "이메일 중복 확인") }
+            SecretField(password, { password = it }, "비밀번호")
+            Text("영문·숫자 포함 8~64자. 이메일 소유 인증은 아직 지원하지 않습니다.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(displayName, { displayName = it }, Modifier.fillMaxWidth(), label = { Text("이름") }, singleLine = true)
             OutlinedTextField(birthDate, { birthDate = it }, Modifier.fillMaxWidth(), label = { Text("생년월일 (YYYY.MM.DD)") }, singleLine = true)
             Text("성별", style = MaterialTheme.typography.labelLarge)
@@ -595,8 +674,9 @@ private fun FitMatePrototypePreview() {
                 Switch(isAdultVerified, { isAdultVerified = it })
             }
             PrimaryAction("다음") {
-                if (verified && validDemoPassword(password) && displayName.isNotBlank() && birthDate.isNotBlank() && isAdultVerified) { signupError = null; step = 2 }
-                else signupError = "이메일 인증, 테스트 비밀번호, 이름·생년월일·성인 확인을 완료하세요."
+                val birth = runCatching { java.time.LocalDate.parse(birthDate.replace('.', '-')) }.getOrNull()
+                if (verified && validDemoPassword(password) && password.length <= 64 && password.toByteArray().size <= 72 && displayName.isNotBlank() && birth != null && !birth.isAfter(java.time.LocalDate.now().minusYears(18)) && isAdultVerified) { signupError = null; step = 2 }
+                else signupError = "이메일 중복 확인, 비밀번호, 생년월일과 만 18세 이상 여부를 확인하세요."
             }
         }
         2 -> {
@@ -620,7 +700,7 @@ private fun FitMatePrototypePreview() {
                     }
                 }
             }) { Text(if (checkedNickname == nickname.trim()) "사용 가능" else "닉네임 중복 확인") }
-            OutlinedTextField(region, { region = it }, Modifier.fillMaxWidth(), label = { Text("주 활동 지역") }, supportingText = { Text("정확한 주소가 아닌 동 단위로 표시돼요.") }, singleLine = true)
+            ServerRegionPicker(apiClient, region) { id, name -> regionId = id; region = name }
             OutlinedTextField(facilityName, { facilityName = it }, Modifier.fillMaxWidth(), label = { Text("이용 헬스장 (선택)") }, singleLine = true)
             OutlinedTextField(bio, { bio = it }, Modifier.fillMaxWidth(), label = { Text("자기소개 (선택)") }, minLines = 2)
             PrimaryAction("다음") { if (nickname.isNotBlank() && checkedNickname == nickname.trim() && region.isNotBlank()) { signupError = null; step = 3 } else signupError = "닉네임 중복 확인과 활동 지역을 입력하세요." }
@@ -672,12 +752,14 @@ private fun FitMatePrototypePreview() {
                 listOf("입문", "6개월 미만", "1년 이상").forEach { option -> FilterChip(experience == option, { experience = option }, { Text(option) }) }
             }
             Text("운동 목표 · 복수 선택", style = MaterialTheme.typography.labelLarge)
+            Text("주 목표: ${goals.firstOrNull() ?: "목표를 선택하세요"} · 먼저 선택한 목표를 기준으로 추천해요.", style = MaterialTheme.typography.bodySmall)
             listOf("다이어트", "근육 증가", "체력 향상", "기록 향상", "운동 습관 만들기").chunked(3).forEach { goalRow ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     goalRow.forEach { goal -> FilterChip(goals.contains(goal), { goals = if (goals.contains(goal)) goals - goal else goals + goal }, { Text(goal) }) }
                 }
             }
             Text("주 운동 가능 시간", style = MaterialTheme.typography.labelLarge)
+            Text("평일 아침 06~09시 · 평일 저녁 18~22시 · 주말 09~18시", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("평일 아침", "평일 저녁", "주말").forEach { option -> FilterChip(availableTime == option, { availableTime = option }, { Text(option) }) }
             }
@@ -698,10 +780,11 @@ private fun FitMatePrototypePreview() {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text("개인정보 수집·이용 동의 (필수)"); Switch(agreedToPrivacy, { agreedToPrivacy = it }) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text("건강정보 처리 동의 (선택)"); Switch(agreedToHealthData, { agreedToHealthData = it }) }
             }
-            PrimaryAction("FitMate 시작하기") {
-                if (agreedToTerms && agreedToPrivacy) {
+            Button(onClick = {
+                if (agreedToTerms && agreedToPrivacy && !submitting) {
+                    submitting = true; signupError = null
                     onHealthConsent(agreedToHealthData)
-                    done(UserProfile(
+                    val submittedProfile = UserProfile(
                         nickname = nickname,
                         region = region,
                         interests = selectedSports,
@@ -717,9 +800,17 @@ private fun FitMatePrototypePreview() {
                         availableTime = availableTime,
                         bio = bio,
                         isAdultVerified = isAdultVerified
-                    ))
+                    )
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) { apiClient.authenticate("auth/signup", signupPayload(submittedProfile, password, regionId,
+                                terms.filter { it.get("required").asBoolean }.map { it.text("id") }, activeCodes)) }
+                            password = ""; done(submittedProfile)
+                        } catch (failure: Exception) { signupError = failure.message ?: "가입 요청에 실패했습니다." }
+                        finally { submitting = false }
+                    }
                 }
-            }
+            }, modifier = Modifier.fillMaxWidth(), enabled = !submitting && agreedToTerms && agreedToPrivacy && terms.isNotEmpty() && activeCodes.isNotEmpty() && regionId.isNotEmpty()) { Text(if (submitting) "가입 중…" else "FitMate 시작하기") }
         }
     }
 }
@@ -997,10 +1088,17 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     modifier: Modifier,
     session: WorkoutSession,
     history: List<WorkoutSummary>,
+    completeServer: suspend (WorkoutSummary) -> Unit,
     saveRoutine: (SavedRoutine) -> Boolean,
     onCancel: () -> Unit,
     finish: (WorkoutSummary) -> Unit
 ) = with(session) { Screen(modifier) {
+    val uploadScope = rememberCoroutineScope()
+    var completing by remember { mutableStateOf(false) }
+    if (serverState != null) {
+        Text("서버에 세트 기록을 저장합니다. 시작 후 운동 구성 변경은 아직 서버에서 지원하지 않습니다.")
+        syncError?.let { ErrorText(it) }
+    } else Text("직접 구성 운동은 이 기기에 저장됩니다.")
     var recordEvent by remember(session) { mutableStateOf(0) }
     var highlightedSet by remember(session) { mutableStateOf(-1) }
     var recordConfirmation by remember(session) { mutableStateOf<String?>(null) }
@@ -1055,13 +1153,13 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         Text("운동 구성", fontWeight = FontWeight.Bold)
         ExerciseHelp(session, history, saveRoutine)
         if (sessionExercises.isEmpty()) Text("첫 운동을 추가한 뒤 세트를 기록하세요.", color = Mint)
-        Text("운동을 추가하고 순서를 바꾸거나 대체 운동으로 변경할 수 있어요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
+        Text(if (serverState == null) "운동을 추가하고 순서를 바꾸거나 대체 운동으로 변경할 수 있어요." else "서버 운동 구성은 시작 전에 루틴에서 편집하세요. 진행 중에는 세트를 기록·수정할 수 있어요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
         sessionExercises.forEachIndexed { index, name ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${index + 1}. $name", modifier = Modifier.weight(1f), color = if (selectedExerciseIndex == index) Mint else FitMateColors.TextPrimary, fontWeight = if (selectedExerciseIndex == index) FontWeight.Bold else FontWeight.Normal)
                 Text("선택", color = Mint, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { selectedExerciseIndex = index; exerciseName = name })
                 Text("↑", color = if (index > 0) Mint else FitMateColors.TextSecondary, style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable {
-                    if (index > 0) {
+                    if (serverState == null && index > 0) {
                         val previous = sessionExercises[index - 1]
                         sessionExercises[index - 1] = name
                         sessionExercises[index] = previous
@@ -1069,7 +1167,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
                     }
                 })
                 Text("↓", color = if (index < sessionExercises.lastIndex) Mint else FitMateColors.TextSecondary, style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable {
-                    if (index < sessionExercises.lastIndex) {
+                    if (serverState == null && index < sessionExercises.lastIndex) {
                         val next = sessionExercises[index + 1]
                         sessionExercises[index + 1] = name
                         sessionExercises[index] = next
@@ -1077,7 +1175,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
                     }
                 })
                 Text("삭제", color = if (sessionExercises.size > 1) MaterialTheme.colorScheme.error else FitMateColors.TextSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable {
-                    if (sessionExercises.size > 1) {
+                    if (serverState == null && sessionExercises.size > 1) {
                         sessionExercises.removeAt(index)
                         selectedExerciseIndex = selectedExerciseIndex.coerceAtMost(sessionExercises.lastIndex)
                         exerciseName = sessionExercises[selectedExerciseIndex]
@@ -1085,6 +1183,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
                 })
             }
         }
+        if (serverState == null) {
         OutlinedTextField(exerciseDraft, { exerciseDraft = it }, Modifier.fillMaxWidth(), label = { Text("추가하거나 대체할 운동명") }, singleLine = true)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({
@@ -1102,6 +1201,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
                     exerciseDraft = ""
                 }
             }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("선택 운동 대체", color = Mint) }
+        }
         }
     }
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Ink), shape = RoundedCornerShape(24.dp)) {
@@ -1190,10 +1290,19 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         SoftCard {
             Text("안전 안내", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("날카로운 통증, 어지러움, 호흡 곤란이 느껴지면 즉시 운동을 멈추고 필요한 도움을 받으세요.", style = MaterialTheme.typography.bodyMedium, color = FitMateColors.TextSecondary)
-            OutlinedButton(onCancel, Modifier.fillMaxWidth(), shape = FitMateShapes.Button) { Text("운동 취소하고 홈으로", color = Mint) }
+            OutlinedButton(onCancel, Modifier.fillMaxWidth(), shape = FitMateShapes.Button) { Text(if (serverState == null) "운동 취소하고 홈으로" else "운동 일시정지하고 홈으로", color = Mint) }
         }
     }
-    PrimaryAction("운동 종료하고 리포트 보기") { finish(WorkoutSummary(elapsedSeconds / 60, recordedSets.toList(), useSamsung, targetSetCount, System.currentTimeMillis())) }
+    Button({
+        val summary = WorkoutSummary(elapsedSeconds / 60, recordedSets.toList(), useSamsung, targetSetCount, System.currentTimeMillis())
+        completing = true
+        uploadScope.launch {
+            try { completeServer(summary); finish(summary) }
+            catch (failure: Exception) { syncError = failure.message; error = failure.message }
+            finally { completing = false }
+        }
+    }, Modifier.fillMaxWidth(), enabled = !completing) { Text(if (completing) "기록 저장 중…" else "운동 종료하고 리포트 보기") }
+    if (completing) AlertDialog(onDismissRequest = {}, title = { Text("운동 기록을 저장하고 있어요") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
 } }
 
 @Composable private fun ReportScreen(
@@ -1298,7 +1407,9 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     social: SocialState,
     workouts: List<WorkoutSummary>,
     runs: List<RunResult>,
-    onSave: (UserProfile) -> Unit,
+    api: FitMateApiClient,
+    onReload: suspend () -> Unit,
+    onSave: suspend (UserProfile) -> Unit,
     onOpenInbody: () -> Unit,
     onSamsungTest: () -> Unit,
     onAccount: () -> Unit,
@@ -1307,9 +1418,13 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     onReports: () -> Unit,
     onOpenAdminDemo: () -> Unit
 ) = Screen(modifier) {
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
     var isEditing by remember { mutableStateOf(false) }
     var nickname by remember(profile) { mutableStateOf(profile.nickname) }
     var region by remember(profile) { mutableStateOf(profile.region) }
+    var regionId by remember(profile) { mutableStateOf(profile.activityRegionId) }
     var displayName by remember(profile) { mutableStateOf(profile.displayName) }
     var facilityName by remember(profile) { mutableStateOf(profile.facilityName) }
     var bio by remember(profile) { mutableStateOf(profile.bio) }
@@ -1326,7 +1441,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         SoftCard {
             OutlinedTextField(displayName, { displayName = it }, Modifier.fillMaxWidth(), label = { Text("이름") }, singleLine = true)
             OutlinedTextField(nickname, { nickname = it }, Modifier.fillMaxWidth(), label = { Text("닉네임") }, singleLine = true)
-            OutlinedTextField(region, { region = it }, Modifier.fillMaxWidth(), label = { Text("주 활동 지역") }, singleLine = true)
+            ServerRegionPicker(api, region) { id, name -> regionId = id; region = name }
             OutlinedTextField(facilityName, { facilityName = it }, Modifier.fillMaxWidth(), label = { Text("이용 헬스장 (선택)") }, singleLine = true)
             OutlinedTextField(bio, { bio = it }, Modifier.fillMaxWidth(), label = { Text("자기소개 (선택)") }, minLines = 2)
         }
@@ -1377,8 +1492,15 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ isEditing = false }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("취소") }
-            Button({ if (nickname.isNotBlank() && (interests.isNotEmpty() || customInterests.isNotEmpty()) && goals.isNotEmpty()) { onSave(profile.copy(nickname = nickname, region = region, displayName = displayName, facilityName = facilityName, bio = bio, interests = interests, customInterests = customInterests, experience = experience, goals = goals, availableTime = availableTime, isPrivate = isPrivate)); isEditing = false } }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("저장") }
+            Button({ if (nickname.isNotBlank() && (interests.isNotEmpty() || customInterests.isNotEmpty()) && goals.isNotEmpty()) {
+                val updated = profile.copy(nickname = nickname, region = region, activityRegionId = regionId, displayName = displayName, facilityName = facilityName, bio = bio, interests = interests, customInterests = customInterests, experience = experience, goals = goals, availableTime = availableTime, isPrivate = isPrivate)
+                saving = true; saveError = null
+                scope.launch { try { onSave(updated); isEditing = false } catch (failure: Exception) { saveError = failure.message } finally { saving = false } }
+            } }, Modifier.weight(1f), enabled = !saving, shape = FitMateShapes.Button) { Text(if (saving) "저장 중…" else "저장") }
         }
+        ErrorText(saveError)
+        if (saveError != null) TextButton({ saving = true; scope.launch { try { onReload(); saveError = null; isEditing = false } catch (failure: Exception) { saveError = failure.message } finally { saving = false } } }, enabled = !saving) { Text("편집 취소하고 서버 최신 정보 불러오기") }
+        if (saving) AlertDialog(onDismissRequest = {}, title = { Text("프로필 저장 중") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
     } else {
         ProfileOverview(profile, social, workouts, runs, { isEditing = true }, onOpenInbody, onSamsungTest, onOpenAdminDemo, onAccount, onHistory, onNotifications, onReports)
     }
