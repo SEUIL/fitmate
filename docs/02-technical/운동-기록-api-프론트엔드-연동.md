@@ -62,6 +62,7 @@
 - `POST /api/v1/workout-sessions/{sessionId}/pause`
 - `POST /api/v1/workout-sessions/{sessionId}/resume`
 - `POST /api/v1/workout-sessions/{sessionId}/complete`
+- `POST /api/v1/workout-sessions/{sessionId}/cancel`
 
 운동 완료에는 완료된 세트가 하나 이상 필요하다.
 
@@ -92,3 +93,40 @@
 `GET /api/v1/exercises/{exerciseId}/previous-record?beforeSessionId={currentSessionId}`
 
 이전 완료 기록이 없으면 `data`가 `null`이다. 비교 화면은 현재 입력값과 `previousRecord.sets`의 같은 `setNo`를 나란히 표시하면 된다.
+
+## 5. 운동 기록 목록과 완료 리포트
+
+운동 기록 화면은 다음 API를 최신순으로 조회한다.
+
+`GET /api/v1/workout-sessions?status=COMPLETED&cursor=0&size=20`
+
+완료 화면에서는 다음 API로 집계 리포트를 조회한다.
+
+`GET /api/v1/workout-sessions/{sessionId}/report`
+
+리포트는 완료 세트만 사용해 운동 수, 완료 세트 수, 총 반복 수와 총 볼륨을 계산한다. 총 볼륨은 각 세트의 `weightKg × repetitions` 합계다. 운동별로 최대 중량과 직전 완료 운동 대비 볼륨 증감도 반환한다.
+
+```json
+{
+  "data": {
+    "workoutSessionId": "7c6c394e-eabb-4e7b-9aaa-5065df3d80b9",
+    "reportStatus": "BASIC_READY",
+    "durationSeconds": 1800,
+    "exerciseCount": 1,
+    "completedSetCount": 3,
+    "totalRepetitions": 30,
+    "totalVolumeKg": 750.0,
+    "exercises": [
+      {
+        "exerciseName": "벤치 프레스",
+        "maxWeightKg": 25.0,
+        "previousComparison": {
+          "previousVolumeKg": 690.0,
+          "currentVolumeKg": 750.0,
+          "volumeChangeKg": 60.0
+        }
+      }
+    ]
+  }
+}
+```

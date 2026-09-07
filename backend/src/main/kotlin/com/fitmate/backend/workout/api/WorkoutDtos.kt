@@ -31,6 +31,7 @@ data class WorkoutExercisePlanRequest(
 data class WorkoutStateRequest(
     @param:JsonProperty(required = true) @param:JsonSetter(nulls = Nulls.FAIL) @field:Min(0) val version: Long,
     val clientUpdatedAt: Instant = Instant.now(),
+    @field:Size(max = 255) val cancelReason: String? = null,
 )
 
 data class UpsertWorkoutSetRequest(
@@ -81,4 +82,16 @@ data class PreviousExerciseRecordResponse(
     val workoutSessionId: UUID,
     val performedAt: Instant,
     val sets: List<WorkoutSetResponse>,
+)
+
+data class WorkoutSessionSummaryResponse(
+    val id: UUID,
+    val routineId: UUID?,
+    val routineName: String?,
+    val status: WorkoutSessionStatus,
+    val startedAt: Instant,
+    val endedAt: Instant?,
+    val exerciseCount: Int,
+    val completedSetCount: Int,
+    val version: Long,
 )

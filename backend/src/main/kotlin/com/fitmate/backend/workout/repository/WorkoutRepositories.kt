@@ -15,6 +15,13 @@ import java.util.UUID
 interface WorkoutSessionRepository : JpaRepository<WorkoutSession, UUID> {
     @EntityGraph(attributePaths = ["routine"])
     fun findByIdAndUserId(id: UUID, userId: UUID): WorkoutSession?
+
+    fun findAllByUserIdOrderByStartedAtDescIdDesc(userId: UUID, pageable: Pageable): List<WorkoutSession>
+    fun findAllByUserIdAndStatusOrderByStartedAtDescIdDesc(
+        userId: UUID,
+        status: WorkoutSessionStatus,
+        pageable: Pageable,
+    ): List<WorkoutSession>
 }
 
 interface WorkoutSessionExerciseRepository : JpaRepository<WorkoutSessionExercise, UUID> {

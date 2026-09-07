@@ -3,6 +3,7 @@ package com.fitmate.backend.workout.application
 import com.fitmate.backend.common.error.ApiErrorCode
 import com.fitmate.backend.common.error.ApiException
 import com.fitmate.backend.common.persistence.UuidBinaryConverter
+import com.fitmate.backend.common.api.CursorPageResponse
 import com.fitmate.backend.fitness.domain.ExerciseCatalog
 import com.fitmate.backend.fitness.domain.SportCode
 import com.fitmate.backend.fitness.repository.ExerciseCatalogRepository
@@ -14,6 +15,7 @@ import com.fitmate.backend.workout.api.UpsertWorkoutSetRequest
 import com.fitmate.backend.workout.api.WorkoutExercisePlanRequest
 import com.fitmate.backend.workout.api.WorkoutSessionExerciseResponse
 import com.fitmate.backend.workout.api.WorkoutSessionResponse
+import com.fitmate.backend.workout.api.WorkoutSessionSummaryResponse
 import com.fitmate.backend.workout.api.WorkoutSetResponse
 import com.fitmate.backend.workout.domain.WorkoutSession
 import com.fitmate.backend.workout.domain.WorkoutSessionExercise
@@ -92,8 +94,37 @@ class WorkoutService(
     @Transactional(readOnly = true)
     fun get(userId: UUID, sessionId: UUID): WorkoutSessionResponse = toResponse(ownedSession(userId, sessionId), userId)
 
+    @Transactional(readOnly = true)
+    fun list(
+        userId: UUID,
+        status: WorkoutSessionStatus?,
+        cursor: Int,
+        size: Int,
+    ): CursorPageResponse<WorkoutSessionSummaryResponse> {
+        if (cursor < 0 || size !in 1..100) invalid("cursor는 0 이상, size는 1부터 100까지 가능합니다.")
+        val pageable = PageRequest.of(cursor, size + 1)
+        val found = if (status == null) {
+            sessions.findAllByUserIdOrderByStartedAtDescIdDesc(userId, pageable)
+        } else {
+            sessions.findAllByUserIdAndStatusOrderByStartedAtDescIdDesc(userId, status, pageable)
+        }
+        val hasNext = found.size > size
+        return CursorPageResponse(
+            items = found.take(size).map(::toSummary),
+            nextCursor = (cursor + 1).toString().takeIf { hasNext },
+            hasNext = hasNext,
+        )
+    }
+
     @Transactional
-    fun changeState(userId: UUID, sessionId: UUID, version: Long, clientUpdatedAt: Instant, action: String): WorkoutSessionResponse {
+    fun changeState(
+        userId: UUID,
+        sessionId: UUID,
+        version: Long,
+        clientUpdatedAt: Instant,
+        action: String,
+        cancelReason: String? = null,
+    ): WorkoutSessionResponse {
         val session = ownedSession(userId, sessionId)
         if (session.version != version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
         val target = when (action) {
@@ -101,6 +132,7 @@ class WorkoutService(
             "pause" -> if (session.status == WorkoutSessionStatus.IN_PROGRESS) WorkoutSessionStatus.PAUSED else null
             "resume" -> if (session.status == WorkoutSessionStatus.PAUSED) WorkoutSessionStatus.IN_PROGRESS else null
             "complete" -> if (session.status == WorkoutSessionStatus.IN_PROGRESS || session.status == WorkoutSessionStatus.PAUSED) WorkoutSessionStatus.COMPLETED else null
+            "cancel" -> if (session.status in setOf(WorkoutSessionStatus.READY, WorkoutSessionStatus.IN_PROGRESS, WorkoutSessionStatus.PAUSED)) WorkoutSessionStatus.CANCELED else null
             else -> null
         } ?: throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION)
         if (target == WorkoutSessionStatus.COMPLETED && !hasCompletedSet(session)) {
@@ -109,8 +141,12 @@ class WorkoutService(
         session.status = target
         session.clientUpdatedAt = clientUpdatedAt
         if (action == "start") session.startedAt = Instant.now()
+        if (target == WorkoutSessionStatus.CANCELED) {
+            session.cancelReason = cancelReason?.trim()?.ifEmpty { null }
+            session.endedAt = endTime(session)
+        }
         if (target == WorkoutSessionStatus.COMPLETED) {
-            val endedAt = Instant.now().let { if (it.isAfter(session.startedAt)) it else session.startedAt.plusMillis(1) }
+            val endedAt = endTime(session)
             session.endedAt = endedAt
             sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id)).forEach {
                 if (sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(it.id)).any(WorkoutSet::isCompleted)) {
@@ -195,6 +231,22 @@ class WorkoutService(
         sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id)).any { exercise ->
             sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(exercise.id)).any(WorkoutSet::isCompleted)
         }
+
+    private fun toSummary(session: WorkoutSession): WorkoutSessionSummaryResponse {
+        val workoutExercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
+        return WorkoutSessionSummaryResponse(
+            id = apiId(session.id), routineId = session.routine?.id?.let(::apiId), routineName = session.routine?.name,
+            status = session.status, startedAt = session.startedAt, endedAt = session.endedAt,
+            exerciseCount = workoutExercises.size,
+            completedSetCount = workoutExercises.sumOf { exercise ->
+                sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(exercise.id)).count { it.isCompleted }
+            },
+            version = session.version,
+        )
+    }
+
+    private fun endTime(session: WorkoutSession): Instant =
+        Instant.now().let { if (it.isAfter(session.startedAt)) it else session.startedAt.plusMillis(1) }
 
     private fun ownedSession(userId: UUID, sessionId: UUID): WorkoutSession =
         sessions.findByIdAndUserId(dbId(sessionId), userId)

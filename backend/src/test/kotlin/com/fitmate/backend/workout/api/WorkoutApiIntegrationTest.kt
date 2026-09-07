@@ -90,6 +90,43 @@ class WorkoutApiIntegrationTest {
         )
         assertEquals(HttpStatus.OK, previousEndpoint.statusCode, previousEndpoint.body.toString())
         assertEquals(sessionId, previousEndpoint.body!!["data"]["workoutSessionId"].asText())
+
+        val nextSessionId = nextData["id"].asText()
+        val nextExerciseId = nextData["exercises"][0]["id"].asText()
+        assertEquals(HttpStatus.OK, command(
+            "/api/v1/workout-sessions/$nextSessionId/start", HttpMethod.POST, owner, mapOf("version" to 0),
+        ).statusCode)
+        assertEquals(HttpStatus.OK, command(
+            "/api/v1/workout-sessions/$nextSessionId/exercises/$nextExerciseId/sets/1", HttpMethod.PUT, owner,
+            mapOf("weightKg" to 25, "repetitions" to 10, "completed" to true, "version" to 0),
+        ).statusCode)
+        assertEquals(HttpStatus.OK, command(
+            "/api/v1/workout-sessions/$nextSessionId/complete", HttpMethod.POST, owner, mapOf("version" to 1),
+        ).statusCode)
+
+        val report = command("/api/v1/workout-sessions/$nextSessionId/report", HttpMethod.GET, owner, null)
+        assertEquals(HttpStatus.OK, report.statusCode, report.body.toString())
+        assertEquals("BASIC_READY", report.body!!["data"]["reportStatus"].asText())
+        assertEquals(1, report.body!!["data"]["completedSetCount"].asInt())
+        assertEquals(10, report.body!!["data"]["totalRepetitions"].asInt())
+        assertEquals(250.0, report.body!!["data"]["totalVolumeKg"].asDouble())
+        val comparison = report.body!!["data"]["exercises"][0]["previousComparison"]
+        assertEquals(270.0, comparison["previousVolumeKg"].asDouble())
+        assertEquals(-20.0, comparison["volumeChangeKg"].asDouble())
+
+        val completedList = command(
+            "/api/v1/workout-sessions?status=COMPLETED&cursor=0&size=20", HttpMethod.GET, owner, null,
+        )
+        assertEquals(HttpStatus.OK, completedList.statusCode, completedList.body.toString())
+        assertEquals(2, completedList.body!!["data"]["items"].size())
+
+        val cancellable = createDirectWorkout(owner).body!!["data"]
+        val canceled = command(
+            "/api/v1/workout-sessions/${cancellable["id"].asText()}/cancel", HttpMethod.POST, owner,
+            mapOf("version" to 0, "cancelReason" to "사용자 취소"),
+        )
+        assertEquals(HttpStatus.OK, canceled.statusCode, canceled.body.toString())
+        assertEquals("CANCELED", canceled.body!!["data"]["status"].asText())
     }
 
     private fun createDirectWorkout(token: String) = command(
