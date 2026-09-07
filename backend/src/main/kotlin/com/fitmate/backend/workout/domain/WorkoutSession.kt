@@ -13,6 +13,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.time.Instant
 import java.util.UUID
 
@@ -23,7 +24,6 @@ class WorkoutSession(
     @Convert(converter = UuidBinaryConverter::class)
     @Column(name = "id", nullable = false, columnDefinition = "BINARY(16)")
     var id: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class)
     @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
     var userId: UUID? = null,
     @ManyToOne(fetch = FetchType.LAZY)
@@ -40,6 +40,7 @@ class WorkoutSession(
     var cancelReason: String? = null,
     @Column(name = "client_updated_at", nullable = false)
     var clientUpdatedAt: Instant = Instant.EPOCH,
+    @Version
     @Column(name = "version", nullable = false)
     var version: Long = 0,
 ) : BaseTimeEntity()

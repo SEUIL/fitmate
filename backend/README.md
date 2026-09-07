@@ -27,6 +27,11 @@
   - `POST /api/v1/routines`
   - `PATCH /api/v1/routines/{routineId}`
   - `DELETE /api/v1/routines/{routineId}`
+  - `POST /api/v1/workout-sessions`
+  - `GET /api/v1/workout-sessions/{sessionId}`
+  - `POST /api/v1/workout-sessions/{sessionId}/start|pause|resume|complete`
+  - `PUT /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}/sets/{setNo}`
+  - `GET /api/v1/exercises/{exerciseId}/previous-record`
 - 회원가입·로그인·JWT 세션 인증
 - 내 프로필 조회 `GET /api/v1/users/me`와 수정 `PATCH /api/v1/users/me/profile`
 - 회원가입·프로필 API의 `customSports: [{ "name": "필라테스" }]` 저장·조회. V4 migration의 사용자 전용 테이블을 사용하며 운영 종목·숙련도는 `sports`로 유지한다.
@@ -39,7 +44,6 @@
 ## 아직 안 넣은 것
 
 - 비밀번호 변경·회원 탈퇴와 약관/지역/시설 전용 API
-- 운동 세션/세트 생성과 상태 전이
 - 리포트 계산
 - idempotency 처리 로직
 
@@ -85,7 +89,7 @@ Flyway는 아래 두 경로를 모두 본다.
 
 ## 다음 추천 작업 순서
 
-1. `workout` 세션 생성 API 구현
-2. 세트 upsert와 version 충돌 처리
-3. report 계산 서비스 구현
+1. 운동 세션 목록과 취소 API 구현
+2. 기본 report 계산 서비스 구현
+3. idempotency 처리 로직 구현
 4. Backend A 인증 계약 연결

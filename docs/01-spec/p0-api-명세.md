@@ -299,6 +299,24 @@ Request:
 }
 ```
 
+루틴 없이 운동을 직접 선택해서 시작할 수도 있다.
+
+```json
+{
+  "exercises": [
+    {
+      "exerciseId": "30000000-0000-0000-0000-000000000001",
+      "sequenceNo": 1,
+      "targetSets": 3,
+      "targetWeightKg": 20,
+      "targetRepetitions": 10
+    }
+  ]
+}
+```
+
+`routineId`와 `exercises` 중 하나만 보낸다. 서버는 목표 세트 수만큼 미완료 세트를 생성하고, 프론트는 각 세트의 무게와 횟수를 수정해 완료 처리한다.
+
 Response `201 Created`:
 
 ```json
@@ -1026,7 +1044,6 @@ Request:
   "weightKg": 20.0,
   "repetitions": 12,
   "durationSeconds": 45,
-  "restSeconds": 60,
   "rpe": 7,
   "completed": true,
   "memo": "마지막 두 회가 힘들었음",
@@ -1045,7 +1062,6 @@ Response:
     "weightKg": 20.0,
     "repetitions": 12,
     "durationSeconds": 45,
-    "restSeconds": 60,
     "rpe": 7,
     "completed": true,
     "memo": "마지막 두 회가 힘들었음",
@@ -1061,6 +1077,7 @@ Response:
 - RPE는 `1..10` 또는 `null`이다.
 - 본인의 진행 중인 세션만 기록할 수 있다.
 - `clientUpdatedAt`과 `version`으로 오프라인 재전송과 동시 수정 충돌을 확인한다.
+- 세트 사이 휴식 타이머는 프론트의 로컬 UI 상태로 처리하며 서버에 저장하지 않는다.
 
 ### 10.7 동일 운동 이전 기록
 
