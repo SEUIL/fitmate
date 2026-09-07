@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonSetter
 import com.fasterxml.jackson.annotation.Nulls
 import com.fitmate.backend.fitness.domain.BodyPart
+import com.fitmate.backend.fitness.domain.SportCode
 import com.fitmate.backend.workout.domain.WorkoutSessionStatus
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMin
@@ -63,6 +64,7 @@ data class UpsertWorkoutSetRequest(
 
 data class WorkoutSessionResponse(
     val id: UUID,
+    val sportCode: SportCode,
     val routineId: UUID?,
     val routineSplitDayNo: Int?,
     val routineSplitCount: Int?,
@@ -106,6 +108,7 @@ data class PreviousExerciseRecordResponse(
 
 data class WorkoutSessionSummaryResponse(
     val id: UUID,
+    val sportCode: SportCode,
     val routineId: UUID?,
     val routineName: String?,
     val routineSplitDayNo: Int?,

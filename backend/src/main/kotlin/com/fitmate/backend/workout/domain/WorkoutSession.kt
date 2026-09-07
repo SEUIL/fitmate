@@ -3,6 +3,7 @@ package com.fitmate.backend.workout.domain
 import com.fitmate.backend.common.persistence.BaseTimeEntity
 import com.fitmate.backend.common.persistence.UuidBinaryConverter
 import com.fitmate.backend.routine.domain.Routine
+import com.fitmate.backend.fitness.domain.SportCode
 import jakarta.persistence.Column
 import jakarta.persistence.Convert
 import jakarta.persistence.Entity
@@ -26,6 +27,9 @@ class WorkoutSession(
     var id: UUID? = null,
     @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
     var userId: UUID? = null,
+    @Enumerated(EnumType.STRING)
+    @Column(name = "sport_code", nullable = false, length = 32)
+    var sportCode: SportCode = SportCode.HEALTH,
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "routine_id")
     var routine: Routine? = null,

@@ -37,10 +37,13 @@
   - `PUT /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}/sets/{setNo}`
   - `GET /api/v1/exercises/{exerciseId}/previous-record`
   - `GET /api/v1/workout-sessions/{sessionId}/report`
+  - `POST /api/v1/running-records`
+  - `GET /api/v1/running-records`
+  - `GET /api/v1/running-records/{recordId}`
 - 회원가입·로그인·JWT 세션 인증
 - 내 프로필 조회 `GET /api/v1/users/me`와 수정 `PATCH /api/v1/users/me/profile`
 - 회원가입·프로필 API의 `customSports: [{ "name": "필라테스" }]` 저장·조회. V4 migration의 사용자 전용 테이블을 사용하며 운영 종목·숙련도는 `sports`로 유지한다.
-- V5 migration부터 `GET /api/v1/sports`는 혼자 운동 기본 진입 종목인 `HEALTH`, `RUNNING`을 표시한다. 현재 추천 루틴과 세트 기반 서버 기록은 `HEALTH`만 지원하며 러닝 기록 서버 저장은 후속 범위다.
+- V5 migration부터 `GET /api/v1/sports`는 혼자 운동 기본 진입 종목인 `HEALTH`, `RUNNING`을 표시한다. 추천 루틴과 세트 기반 기록은 `HEALTH`를 사용하고, V8부터 종료한 러닝의 목표·거리·시간·랩·선택 경로·컨디션·메모를 별도 API로 저장한다.
 - V6 migration부터 사용자는 헬스 루틴을 1~10분할로 구성할 수 있다. 완료한 운동만 누적해 `3일차 · 1/2분할`처럼 다음 운동일과 순환 분할을 계산하고, 해당 분할의 운동과 부위를 세션 생성 응답에 반환한다.
 
 루틴 추천은 로그인 사용자의 주 목표와 해당 운영 종목 숙련도를 사용한다. 정확히 일치하는 템플릿, 같은 목표의 숙련도 공통 템플릿, 헬스 초급 전신 fallback 순서로 선택한다. 시스템 템플릿은 모든 로그인 사용자가 조회할 수 있고 사용자 루틴은 소유자만 조회할 수 있다.
