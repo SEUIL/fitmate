@@ -85,7 +85,7 @@ class RoutineQueryService(
         version = routine.version,
     )
 
-    private fun toDetail(routine: Routine): RoutineDetail {
+    internal fun toDetail(routine: Routine): RoutineDetail {
         val summary = toSummary(routine)
         val items = routineItemRepository.findAllByRoutineIdOrderBySequenceNoAsc(requireNotNull(routine.id)).map { item ->
             val exercise = requireNotNull(item.exercise)

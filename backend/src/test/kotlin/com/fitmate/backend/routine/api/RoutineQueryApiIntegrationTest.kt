@@ -130,6 +130,102 @@ class RoutineQueryApiIntegrationTest {
         assertEquals("추천 루틴은 헬스 종목만 지원합니다.", running.body!!["error"]["message"].asText())
     }
 
+    @Test
+    fun `owner can create update and delete a manual routine`() {
+        val owner = signup(GoalCode.FITNESS, SkillLevel.BEGINNER)
+        val stranger = signup(GoalCode.FITNESS, SkillLevel.BEGINNER)
+        val createBody = mapOf(
+            "name" to "나의 전신 루틴",
+            "sourceType" to "MANUAL",
+            "sportCode" to "HEALTH",
+            "items" to listOf(
+                mapOf(
+                    "exerciseId" to "30000000-0000-0000-0000-000000000001",
+                    "sequenceNo" to 1,
+                    "targetSets" to 3,
+                    "targetRepsMin" to 8,
+                    "targetRepsMax" to 12,
+                    "restSeconds" to 60,
+                ),
+                mapOf(
+                    "exerciseId" to "30000000-0000-0000-0000-000000000002",
+                    "sequenceNo" to 2,
+                    "targetSets" to 3,
+                ),
+            ),
+        )
+        val created = command("/api/v1/routines", HttpMethod.POST, owner.token, createBody)
+        assertEquals(HttpStatus.CREATED, created.statusCode, created.body.toString())
+        val routineId = created.body!!["data"]["id"].asText()
+        assertEquals("MANUAL", created.body!!["data"]["sourceType"].asText())
+        assertEquals(2, created.body!!["data"]["items"].size())
+
+        val forbidden = command(
+            "/api/v1/routines/$routineId", HttpMethod.PATCH, stranger.token,
+            mapOf("version" to 0, "name" to "가로채기"),
+        )
+        assertEquals(HttpStatus.NOT_FOUND, forbidden.statusCode)
+
+        val updated = command(
+            "/api/v1/routines/$routineId", HttpMethod.PATCH, owner.token,
+            mapOf(
+                "version" to 0,
+                "name" to "수정한 루틴",
+                "items" to listOf(mapOf(
+                    "exerciseId" to "30000000-0000-0000-0000-000000000003",
+                    "sequenceNo" to 1,
+                    "targetSets" to 4,
+                )),
+            ),
+        )
+        assertEquals(HttpStatus.OK, updated.statusCode, updated.body.toString())
+        assertEquals("수정한 루틴", updated.body!!["data"]["name"].asText())
+        assertEquals(1, updated.body!!["data"]["items"].size())
+        assertEquals(1, updated.body!!["data"]["version"].asInt())
+
+        val itemsOnly = command(
+            "/api/v1/routines/$routineId", HttpMethod.PATCH, owner.token,
+            mapOf(
+                "version" to 1,
+                "items" to listOf(mapOf(
+                    "exerciseId" to "30000000-0000-0000-0000-000000000004",
+                    "sequenceNo" to 1,
+                    "targetSets" to 3,
+                )),
+            ),
+        )
+        assertEquals(HttpStatus.OK, itemsOnly.statusCode, itemsOnly.body.toString())
+        assertEquals(2, itemsOnly.body!!["data"]["version"].asInt())
+
+        val stale = command(
+            "/api/v1/routines/$routineId", HttpMethod.PATCH, owner.token,
+            mapOf("version" to 1, "name" to "오래된 수정"),
+        )
+        assertEquals(HttpStatus.CONFLICT, stale.statusCode)
+        assertEquals("VERSION_CONFLICT", stale.body!!["error"]["code"].asText())
+
+        val deleted = command(
+            "/api/v1/routines/$routineId?version=2", HttpMethod.DELETE, owner.token, null,
+        )
+        assertEquals(HttpStatus.NO_CONTENT, deleted.statusCode)
+        assertEquals(HttpStatus.NOT_FOUND, exchange("/api/v1/routines/$routineId", owner.token).statusCode)
+    }
+
+    @Test
+    fun `owner can copy a system template`() {
+        val account = signup(GoalCode.FITNESS, SkillLevel.BEGINNER)
+        val body = mapOf(
+            "name" to "내 초급 루틴",
+            "sourceType" to "USER_COPY",
+            "sourceRoutineId" to "40000000-0000-0000-0000-000000000001",
+        )
+        val copied = command("/api/v1/routines", HttpMethod.POST, account.token, body)
+        assertEquals(HttpStatus.CREATED, copied.statusCode, copied.body.toString())
+        assertEquals("USER_COPY", copied.body!!["data"]["sourceType"].asText())
+        assertEquals(4, copied.body!!["data"]["items"].size())
+        assertFalse(copied.body!!["data"]["template"].asBoolean())
+    }
+
     private fun signup(goal: GoalCode, skill: SkillLevel): Account {
         val body = mapOf(
             "email" to "routine-${UUID.randomUUID()}@example.com",
@@ -153,6 +249,13 @@ class RoutineQueryApiIntegrationTest {
 
     private fun exchange(path: String, token: String) = http.exchange(
         path, HttpMethod.GET, HttpEntity<Void>(HttpHeaders().also { it.setBearerAuth(token) }), JsonNode::class.java,
+    )
+
+    private fun command(path: String, method: HttpMethod, token: String, body: Any?) = http.exchange(
+        path,
+        method,
+        HttpEntity(body, HttpHeaders().also { it.setBearerAuth(token) }),
+        JsonNode::class.java,
     )
 
     private data class Account(val userId: UUID, val token: String)

@@ -850,7 +850,35 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
 - 사용자 루틴은 소유자만 수정하고 삭제할 수 있다.
 - 운동 순서는 루틴 안에서 중복될 수 없다.
 - 목표 중량, 반복 수, RPE와 휴식 시간의 허용 범위를 검증한다.
-- 수정 요청은 루틴과 항목의 `version`을 포함한다.
+- 직접 구성은 `sourceType=MANUAL`, `sportCode=HEALTH`, 하나 이상의 `items`를 사용한다.
+- 템플릿 복사는 `sourceType=USER_COPY`, `sourceRoutineId`를 사용하며 원본 항목을 사용자 루틴으로 복제한다.
+
+수정은 루틴 전체의 `version`으로 동시 변경을 검사한다. `items`를 보내면 기존 항목 목록 전체를 새 목록으로 교체한다.
+
+`PATCH /api/v1/routines/{routineId}`
+
+```json
+{
+  "version": 0,
+  "name": "수정한 전신 루틴",
+  "items": [
+    {
+      "exerciseId": "bf7a5460-854d-481c-9786-ed224a1a3db0",
+      "sequenceNo": 1,
+      "targetSets": 4,
+      "targetRepsMin": 8,
+      "targetRepsMax": 12,
+      "targetWeightKg": 25,
+      "targetRpe": 8,
+      "restSeconds": 90
+    }
+  ]
+}
+```
+
+삭제도 현재 루틴 `version`을 사용한다.
+
+`DELETE /api/v1/routines/{routineId}?version=1`
 
 ## 10. 운동 세션 API
 
