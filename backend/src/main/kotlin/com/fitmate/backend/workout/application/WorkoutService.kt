@@ -291,7 +291,7 @@ class WorkoutService(
     private fun toResponse(session: WorkoutSession, userId: UUID): WorkoutSessionResponse {
         val workoutExercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
         return WorkoutSessionResponse(
-            id = apiId(session.id), routineId = session.routine?.id?.let(::apiId),
+            id = apiId(session.id), sportCode = session.sportCode, routineId = session.routine?.id?.let(::apiId),
             routineSplitDayNo = session.routineSplitDayNo, routineSplitCount = session.routineSplitCount,
             routineWorkoutDayNumber = session.routineWorkoutDayNumber,
             focusBodyParts = workoutExercises.mapNotNull { it.bodyPartSnapshot }.distinct(),
@@ -334,7 +334,8 @@ class WorkoutService(
     private fun toSummary(session: WorkoutSession): WorkoutSessionSummaryResponse {
         val workoutExercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
         return WorkoutSessionSummaryResponse(
-            id = apiId(session.id), routineId = session.routine?.id?.let(::apiId), routineName = session.routine?.name,
+            id = apiId(session.id), sportCode = session.sportCode,
+            routineId = session.routine?.id?.let(::apiId), routineName = session.routine?.name,
             routineSplitDayNo = session.routineSplitDayNo, routineSplitCount = session.routineSplitCount,
             routineWorkoutDayNumber = session.routineWorkoutDayNumber,
             status = session.status, startedAt = session.startedAt, endedAt = session.endedAt,
