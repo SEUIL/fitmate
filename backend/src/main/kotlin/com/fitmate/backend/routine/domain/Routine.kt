@@ -44,6 +44,8 @@ class Routine(
     @Enumerated(EnumType.STRING)
     @Column(name = "difficulty", nullable = false, length = 32)
     var difficulty: DifficultyLevel = DifficultyLevel.BEGINNER,
+    @Column(name = "split_count", nullable = false)
+    var splitCount: Int = 1,
     @Column(name = "is_template", nullable = false)
     var isTemplate: Boolean = false,
     @Column(name = "is_active", nullable = false)

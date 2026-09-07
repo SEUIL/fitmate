@@ -2,7 +2,7 @@
 
 - 작성일: 2026-09-07
 - 최종 수정일: 2026-09-07
-- 버전: v0.1
+- 버전: v0.2
 - 상태: 검토 중
 - 대상: Android Client, Kotlin Spring Boot Backend
 
@@ -27,25 +27,35 @@
 
 ```json
 {
-  "name": "나의 전신 루틴",
+  "name": "나의 2분할 루틴",
   "sourceType": "MANUAL",
   "sportCode": "HEALTH",
+  "splitCount": 2,
   "items": [
     {
       "exerciseId": "30000000-0000-0000-0000-000000000001",
       "sequenceNo": 1,
+      "splitDayNo": 1,
       "targetSets": 3,
       "targetRepsMin": 8,
       "targetRepsMax": 12,
       "targetWeightKg": 20,
       "targetRpe": 7,
       "restSeconds": 60
+    },
+    {
+      "exerciseId": "30000000-0000-0000-0000-000000000004",
+      "sequenceNo": 2,
+      "splitDayNo": 2,
+      "targetSets": 3,
+      "targetRepsMin": 8,
+      "targetRepsMax": 10
     }
   ]
 }
 ```
 
-성공하면 `201 Created`와 저장된 루틴 상세를 반환한다. `items`는 한 개 이상이어야 하고 `sequenceNo`는 루틴 안에서 중복될 수 없다.
+성공하면 `201 Created`와 저장된 루틴 상세를 반환한다. `splitCount`는 `1..10`, 각 `splitDayNo`는 `1..splitCount` 범위다. 모든 분할에는 운동이 하나 이상 있어야 하며 `sequenceNo`는 루틴 안에서 중복될 수 없다. 분할하지 않는 루틴은 두 필드를 생략하면 각각 `1`이 적용된다.
 
 ## 4. 템플릿 복사
 
@@ -69,17 +79,25 @@
 {
   "version": 0,
   "name": "수정한 루틴",
+  "splitCount": 2,
   "items": [
     {
       "exerciseId": "30000000-0000-0000-0000-000000000003",
       "sequenceNo": 1,
+      "splitDayNo": 1,
       "targetSets": 4
+    },
+    {
+      "exerciseId": "30000000-0000-0000-0000-000000000004",
+      "sequenceNo": 2,
+      "splitDayNo": 2,
+      "targetSets": 3
     }
   ]
 }
 ```
 
-`name`과 `items` 중 하나 이상을 보낸다. `items`를 보내면 기존 운동 항목 전체가 요청 목록으로 교체된다. 성공 응답의 새 `version`을 로컬 상태에 저장한다. 오래된 버전을 보내면 `409 VERSION_CONFLICT`가 반환되므로 최신 상세를 다시 조회한다.
+`name`, `splitCount`, `items` 중 하나 이상을 보낸다. `items`를 보내면 기존 운동 항목 전체가 요청 목록으로 교체된다. 분할 수를 실제로 바꿀 때는 새 분할에 맞는 전체 `items`도 함께 보낸다. 성공 응답의 새 `version`을 로컬 상태에 저장한다. 오래된 버전을 보내면 `409 VERSION_CONFLICT`가 반환되므로 최신 상세를 다시 조회한다.
 
 `DELETE /api/v1/routines/{routineId}?version={currentVersion}`
 
@@ -91,3 +109,15 @@
 2. 템플릿 선택은 상세를 조회한 뒤 그대로 시작하거나 사용자 루틴으로 복사한다.
 3. 직접 구성은 운동 사전에서 항목을 고른 뒤 `MANUAL`로 저장한다.
 4. 편집 화면은 상세 응답의 `version`을 보관하고 수정·삭제 요청에 사용한다.
+
+## 7. 다음 분할 표시
+
+루틴으로 `POST /api/v1/workout-sessions`를 호출하면 서버가 완료된 같은 루틴 세션 수를 기준으로 다음 일차를 정한다. 예를 들어 2분할은 아래처럼 보인다.
+
+| 누적 운동일 | 현재 분할 | 표시 예시 |
+|---:|---:|---|
+| 1 | 1/2 | `1일차 · 1/2분할` |
+| 2 | 2/2 | `2일차 · 2/2분할` |
+| 3 | 1/2 | `3일차 · 1/2분할` |
+
+취소한 세션은 누적 운동일과 분할 순번을 진행시키지 않는다. 세션 생성 응답의 `routineWorkoutDayNumber`, `routineSplitDayNo`, `routineSplitCount`, `focusBodyParts`로 시작 화면의 일차와 오늘 운동 부위를 표시한다.

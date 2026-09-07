@@ -81,6 +81,7 @@ class RoutineQueryService(
         targetGoalCode = routine.targetGoalCode,
         targetLevel = routine.targetLevel,
         difficulty = routine.difficulty,
+        splitCount = routine.splitCount,
         template = routine.isTemplate,
         version = routine.version,
     )
@@ -95,6 +96,7 @@ class RoutineQueryService(
                 exerciseName = exercise.name,
                 bodyPart = exercise.bodyPart,
                 sequenceNo = item.sequenceNo,
+                splitDayNo = item.splitDayNo,
                 targetSets = item.targetSets,
                 targetRepsMin = item.targetRepsMin,
                 targetRepsMax = item.targetRepsMax,
@@ -113,6 +115,7 @@ class RoutineQueryService(
             targetGoalCode = summary.targetGoalCode,
             targetLevel = summary.targetLevel,
             difficulty = summary.difficulty,
+            splitCount = summary.splitCount,
             template = summary.template,
             version = summary.version,
             items = items,

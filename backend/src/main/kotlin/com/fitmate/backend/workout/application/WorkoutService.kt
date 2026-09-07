@@ -3,17 +3,21 @@ package com.fitmate.backend.workout.application
 import com.fitmate.backend.common.error.ApiErrorCode
 import com.fitmate.backend.common.error.ApiException
 import com.fitmate.backend.common.persistence.UuidBinaryConverter
+import com.fitmate.backend.common.api.CursorPageResponse
 import com.fitmate.backend.fitness.domain.ExerciseCatalog
 import com.fitmate.backend.fitness.domain.SportCode
 import com.fitmate.backend.fitness.repository.ExerciseCatalogRepository
 import com.fitmate.backend.routine.repository.RoutineItemRepository
 import com.fitmate.backend.routine.repository.RoutineRepository
 import com.fitmate.backend.workout.api.CreateWorkoutSessionRequest
+import com.fitmate.backend.workout.api.AddWorkoutSessionExerciseRequest
 import com.fitmate.backend.workout.api.PreviousExerciseRecordResponse
 import com.fitmate.backend.workout.api.UpsertWorkoutSetRequest
+import com.fitmate.backend.workout.api.UpdateWorkoutSessionExerciseRequest
 import com.fitmate.backend.workout.api.WorkoutExercisePlanRequest
 import com.fitmate.backend.workout.api.WorkoutSessionExerciseResponse
 import com.fitmate.backend.workout.api.WorkoutSessionResponse
+import com.fitmate.backend.workout.api.WorkoutSessionSummaryResponse
 import com.fitmate.backend.workout.api.WorkoutSetResponse
 import com.fitmate.backend.workout.domain.WorkoutSession
 import com.fitmate.backend.workout.domain.WorkoutSessionExercise
@@ -49,8 +53,17 @@ class WorkoutService(
                 ?.takeIf { it.isTemplate || it.ownerUserId == userId }
                 ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "루틴을 찾을 수 없습니다.")
         }
+        val completedRoutineSessionCount = routine?.let {
+            sessions.countByUserIdAndRoutineIdAndStatus(
+                userId, requireNotNull(it.id), WorkoutSessionStatus.COMPLETED,
+            )
+        }
+        val workoutDayNumber = completedRoutineSessionCount?.let { Math.toIntExact(it + 1) }
+        val splitDayNo = routine?.let { ((workoutDayNumber!! - 1) % it.splitCount) + 1 }
         val plans = if (routine != null) {
-            routineItems.findAllByRoutineIdOrderBySequenceNoAsc(requireNotNull(routine.id)).map { item ->
+            routineItems.findAllByRoutineIdOrderBySequenceNoAsc(requireNotNull(routine.id))
+                .filter { it.splitDayNo == splitDayNo }
+                .map { item ->
                 val exercise = requireNotNull(item.exercise)
                 Plan(
                     exercise, item.sequenceNo, item.targetSets ?: 1, item.targetWeightKg,
@@ -70,6 +83,8 @@ class WorkoutService(
 
         val session = sessions.saveAndFlush(WorkoutSession(
             id = dbId(UUID.randomUUID()), userId = userId, routine = routine,
+            routineSplitDayNo = splitDayNo, routineSplitCount = routine?.splitCount,
+            routineWorkoutDayNumber = workoutDayNumber,
             status = WorkoutSessionStatus.READY, startedAt = now, clientUpdatedAt = request.clientUpdatedAt,
         ))
         plans.sortedBy { it.sequenceNo }.forEach { plan ->
@@ -92,8 +107,36 @@ class WorkoutService(
     @Transactional(readOnly = true)
     fun get(userId: UUID, sessionId: UUID): WorkoutSessionResponse = toResponse(ownedSession(userId, sessionId), userId)
 
+    @Transactional(readOnly = true)
+    fun list(
+        userId: UUID,
+        status: WorkoutSessionStatus?,
+        cursor: Int,
+        size: Int,
+    ): CursorPageResponse<WorkoutSessionSummaryResponse> {
+        if (cursor < 0 || size !in 1..100) invalid("cursor는 0 이상, size는 1부터 100까지 가능합니다.")
+        val pageable = PageRequest.of(cursor, size)
+        val found = if (status == null) {
+            sessions.findAllByUserIdOrderByStartedAtDescIdDesc(userId, pageable)
+        } else {
+            sessions.findAllByUserIdAndStatusOrderByStartedAtDescIdDesc(userId, status, pageable)
+        }
+        return CursorPageResponse(
+            items = found.content.map(::toSummary),
+            nextCursor = (cursor + 1).toString().takeIf { found.hasNext() },
+            hasNext = found.hasNext(),
+        )
+    }
+
     @Transactional
-    fun changeState(userId: UUID, sessionId: UUID, version: Long, clientUpdatedAt: Instant, action: String): WorkoutSessionResponse {
+    fun changeState(
+        userId: UUID,
+        sessionId: UUID,
+        version: Long,
+        clientUpdatedAt: Instant,
+        action: String,
+        cancelReason: String? = null,
+    ): WorkoutSessionResponse {
         val session = ownedSession(userId, sessionId)
         if (session.version != version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
         val target = when (action) {
@@ -101,6 +144,7 @@ class WorkoutService(
             "pause" -> if (session.status == WorkoutSessionStatus.IN_PROGRESS) WorkoutSessionStatus.PAUSED else null
             "resume" -> if (session.status == WorkoutSessionStatus.PAUSED) WorkoutSessionStatus.IN_PROGRESS else null
             "complete" -> if (session.status == WorkoutSessionStatus.IN_PROGRESS || session.status == WorkoutSessionStatus.PAUSED) WorkoutSessionStatus.COMPLETED else null
+            "cancel" -> if (session.status in setOf(WorkoutSessionStatus.READY, WorkoutSessionStatus.IN_PROGRESS, WorkoutSessionStatus.PAUSED)) WorkoutSessionStatus.CANCELED else null
             else -> null
         } ?: throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION)
         if (target == WorkoutSessionStatus.COMPLETED && !hasCompletedSet(session)) {
@@ -109,8 +153,12 @@ class WorkoutService(
         session.status = target
         session.clientUpdatedAt = clientUpdatedAt
         if (action == "start") session.startedAt = Instant.now()
+        if (target == WorkoutSessionStatus.CANCELED) {
+            session.cancelReason = cancelReason?.trim()?.ifEmpty { null }
+            session.endedAt = endTime(session)
+        }
         if (target == WorkoutSessionStatus.COMPLETED) {
-            val endedAt = Instant.now().let { if (it.isAfter(session.startedAt)) it else session.startedAt.plusMillis(1) }
+            val endedAt = endTime(session)
             session.endedAt = endedAt
             sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id)).forEach {
                 if (sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(it.id)).any(WorkoutSet::isCompleted)) {
@@ -120,6 +168,85 @@ class WorkoutService(
         }
         sessions.saveAndFlush(session)
         return toResponse(session, userId)
+    }
+
+    @Transactional
+    fun addExercise(
+        userId: UUID,
+        sessionId: UUID,
+        request: AddWorkoutSessionExerciseRequest,
+    ): WorkoutSessionExerciseResponse {
+        val session = mutableSession(userId, sessionId)
+        val current = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
+        if (current.size >= 100) invalid("세션 운동은 최대 100개까지 추가할 수 있습니다.")
+        if (request.sequenceNo > current.size + 1) invalid("추가할 운동 순서는 현재 운동 수보다 한 칸 뒤까지만 가능합니다.")
+        val exercise = activeExercise(request.exerciseId)
+        if (exercise.sport?.code != SportCode.HEALTH) invalid("현재 운동 기록은 헬스만 지원합니다.")
+        val added = sessionExercises.saveAndFlush(WorkoutSessionExercise(
+            id = dbId(UUID.randomUUID()), workoutSession = session, exercise = exercise,
+            displayNameSnapshot = exercise.name, bodyPartSnapshot = exercise.bodyPart,
+            sequenceNo = 2000, clientUpdatedAt = request.clientUpdatedAt,
+        ))
+        sets.saveAllAndFlush((1..request.targetSets).map { setNo ->
+            WorkoutSet(
+                id = dbId(UUID.randomUUID()), sessionExercise = added, setNo = setNo,
+                weightKg = request.targetWeightKg, repetitions = request.targetRepetitions,
+                isCompleted = false, clientUpdatedAt = request.clientUpdatedAt,
+            )
+        })
+        reorder(current.toMutableList().also { it.add(request.sequenceNo - 1, added) }, request.clientUpdatedAt)
+        return toExerciseResponse(added, userId, session.startedAt)
+    }
+
+    @Transactional
+    fun updateExercise(
+        userId: UUID,
+        sessionId: UUID,
+        sessionExerciseId: UUID,
+        request: UpdateWorkoutSessionExerciseRequest,
+    ): WorkoutSessionExerciseResponse {
+        val session = mutableSession(userId, sessionId)
+        val target = ownedExercise(session, userId, sessionExerciseId)
+        if (target.version != request.version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
+        if (request.exerciseId == null && request.sequenceNo == null) invalid("수정할 값을 하나 이상 보내야 합니다.")
+
+        request.exerciseId?.let { exerciseId ->
+            val replacement = activeExercise(exerciseId)
+            if (replacement.sport?.id != target.exercise?.sport?.id) invalid("대체 운동은 기존 운동과 같은 종목이어야 합니다.")
+            target.exercise = replacement
+            target.displayNameSnapshot = replacement.name
+            target.bodyPartSnapshot = replacement.bodyPart
+        }
+        target.clientUpdatedAt = request.clientUpdatedAt
+
+        val ordered = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
+            .toMutableList()
+        val changedOrder = request.sequenceNo != null && request.sequenceNo != target.sequenceNo
+        request.sequenceNo?.takeIf { changedOrder }?.let { sequenceNo ->
+            if (sequenceNo > ordered.size) invalid("운동 순서는 현재 운동 수 안에서 선택해야 합니다.")
+            ordered.remove(target)
+            ordered.add(sequenceNo - 1, target)
+        }
+        if (changedOrder) {
+            reorder(ordered, request.clientUpdatedAt)
+        } else {
+            sessionExercises.saveAndFlush(target)
+        }
+        return toExerciseResponse(target, userId, session.startedAt)
+    }
+
+    @Transactional
+    fun deleteExercise(userId: UUID, sessionId: UUID, sessionExerciseId: UUID, version: Long) {
+        val session = mutableSession(userId, sessionId)
+        val target = ownedExercise(session, userId, sessionExerciseId)
+        if (target.version != version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
+        val remaining = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
+            .filterNot { it.id == target.id }
+        if (remaining.isEmpty()) invalid("세션에는 운동이 하나 이상 필요합니다.")
+        sets.deleteAllBySessionExerciseId(requireNotNull(target.id))
+        sessionExercises.delete(target)
+        sessionExercises.flush()
+        reorder(remaining, Instant.now())
     }
 
     @Transactional
@@ -161,23 +288,31 @@ class WorkoutService(
         return previousRecord(userId, dbId(exerciseId), before)
     }
 
-    private fun toResponse(session: WorkoutSession, userId: UUID): WorkoutSessionResponse = WorkoutSessionResponse(
-        id = apiId(session.id),
-        routineId = session.routine?.id?.let(::apiId),
-        status = session.status,
-        startedAt = session.startedAt,
-        endedAt = session.endedAt,
-        version = session.version,
-        exercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id)).map { item ->
-            val exercise = requireNotNull(item.exercise)
-            WorkoutSessionExerciseResponse(
-                id = apiId(item.id), exerciseId = apiId(exercise.id), exerciseName = item.displayNameSnapshot,
-                bodyPart = item.bodyPartSnapshot, sequenceNo = item.sequenceNo, version = item.version,
-                sets = sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(item.id)).map(::toSetResponse),
-                previousRecord = previousRecord(userId, requireNotNull(exercise.id), session.startedAt),
-            )
-        },
-    )
+    private fun toResponse(session: WorkoutSession, userId: UUID): WorkoutSessionResponse {
+        val workoutExercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
+        return WorkoutSessionResponse(
+            id = apiId(session.id), routineId = session.routine?.id?.let(::apiId),
+            routineSplitDayNo = session.routineSplitDayNo, routineSplitCount = session.routineSplitCount,
+            routineWorkoutDayNumber = session.routineWorkoutDayNumber,
+            focusBodyParts = workoutExercises.mapNotNull { it.bodyPartSnapshot }.distinct(),
+            status = session.status, startedAt = session.startedAt, endedAt = session.endedAt, version = session.version,
+            exercises = workoutExercises.map { toExerciseResponse(it, userId, session.startedAt) },
+        )
+    }
+
+    private fun toExerciseResponse(
+        item: WorkoutSessionExercise,
+        userId: UUID,
+        before: Instant,
+    ): WorkoutSessionExerciseResponse {
+        val exercise = requireNotNull(item.exercise)
+        return WorkoutSessionExerciseResponse(
+            id = apiId(item.id), exerciseId = apiId(exercise.id), exerciseName = item.displayNameSnapshot,
+            bodyPart = item.bodyPartSnapshot, sequenceNo = item.sequenceNo, version = item.version,
+            sets = sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(item.id)).map(::toSetResponse),
+            previousRecord = previousRecord(userId, requireNotNull(exercise.id), before),
+        )
+    }
 
     private fun previousRecord(userId: UUID, exerciseId: UUID, before: Instant): PreviousExerciseRecordResponse? {
         val previous = sessionExercises.findPreviousCompleted(
@@ -196,9 +331,52 @@ class WorkoutService(
             sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(exercise.id)).any(WorkoutSet::isCompleted)
         }
 
+    private fun toSummary(session: WorkoutSession): WorkoutSessionSummaryResponse {
+        val workoutExercises = sessionExercises.findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))
+        return WorkoutSessionSummaryResponse(
+            id = apiId(session.id), routineId = session.routine?.id?.let(::apiId), routineName = session.routine?.name,
+            routineSplitDayNo = session.routineSplitDayNo, routineSplitCount = session.routineSplitCount,
+            routineWorkoutDayNumber = session.routineWorkoutDayNumber,
+            status = session.status, startedAt = session.startedAt, endedAt = session.endedAt,
+            exerciseCount = workoutExercises.size,
+            completedSetCount = workoutExercises.sumOf { exercise ->
+                sets.findAllBySessionExerciseIdOrderBySetNoAsc(requireNotNull(exercise.id)).count { it.isCompleted }
+            },
+            version = session.version,
+        )
+    }
+
+    private fun endTime(session: WorkoutSession): Instant =
+        Instant.now().let { if (it.isAfter(session.startedAt)) it else session.startedAt.plusMillis(1) }
+
     private fun ownedSession(userId: UUID, sessionId: UUID): WorkoutSession =
         sessions.findByIdAndUserId(dbId(sessionId), userId)
             ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "운동 세션을 찾을 수 없습니다.")
+
+    private fun mutableSession(userId: UUID, sessionId: UUID): WorkoutSession =
+        ownedSession(userId, sessionId).also {
+            if (it.status !in setOf(WorkoutSessionStatus.READY, WorkoutSessionStatus.IN_PROGRESS, WorkoutSessionStatus.PAUSED)) {
+                throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION, "진행 가능한 세션에서만 운동을 편집할 수 있습니다.")
+            }
+        }
+
+    private fun ownedExercise(
+        session: WorkoutSession,
+        userId: UUID,
+        sessionExerciseId: UUID,
+    ): WorkoutSessionExercise = sessionExercises.findByIdAndWorkoutSessionUserId(dbId(sessionExerciseId), userId)
+        ?.takeIf { it.workoutSession?.id == session.id }
+        ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "세션 운동을 찾을 수 없습니다.")
+
+    private fun reorder(items: List<WorkoutSessionExercise>, clientUpdatedAt: Instant) {
+        items.forEachIndexed { index, item -> item.sequenceNo = 1000 + index }
+        sessionExercises.saveAllAndFlush(items)
+        items.forEachIndexed { index, item ->
+            item.sequenceNo = index + 1
+            item.clientUpdatedAt = clientUpdatedAt
+        }
+        sessionExercises.saveAllAndFlush(items)
+    }
 
     private fun activeExercise(exerciseId: UUID): ExerciseCatalog =
         exercises.findActiveExerciseById(dbId(exerciseId))

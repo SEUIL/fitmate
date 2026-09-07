@@ -29,6 +29,12 @@ class WorkoutSession(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "routine_id")
     var routine: Routine? = null,
+    @Column(name = "routine_split_day_no")
+    var routineSplitDayNo: Int? = null,
+    @Column(name = "routine_split_count")
+    var routineSplitCount: Int? = null,
+    @Column(name = "routine_workout_day_number")
+    var routineWorkoutDayNumber: Int? = null,
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 32)
     var status: WorkoutSessionStatus = WorkoutSessionStatus.READY,

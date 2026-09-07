@@ -5,6 +5,7 @@ import com.fitmate.backend.workout.domain.WorkoutSessionExercise
 import com.fitmate.backend.workout.domain.WorkoutSessionStatus
 import com.fitmate.backend.workout.domain.WorkoutSet
 import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Slice
 import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
@@ -15,6 +16,19 @@ import java.util.UUID
 interface WorkoutSessionRepository : JpaRepository<WorkoutSession, UUID> {
     @EntityGraph(attributePaths = ["routine"])
     fun findByIdAndUserId(id: UUID, userId: UUID): WorkoutSession?
+
+    fun findAllByUserIdOrderByStartedAtDescIdDesc(userId: UUID, pageable: Pageable): Slice<WorkoutSession>
+    fun findAllByUserIdAndStatusOrderByStartedAtDescIdDesc(
+        userId: UUID,
+        status: WorkoutSessionStatus,
+        pageable: Pageable,
+    ): Slice<WorkoutSession>
+
+    fun countByUserIdAndRoutineIdAndStatus(
+        userId: UUID,
+        routineId: UUID,
+        status: WorkoutSessionStatus,
+    ): Long
 }
 
 interface WorkoutSessionExerciseRepository : JpaRepository<WorkoutSessionExercise, UUID> {
@@ -49,4 +63,5 @@ interface WorkoutSessionExerciseRepository : JpaRepository<WorkoutSessionExercis
 interface WorkoutSetRepository : JpaRepository<WorkoutSet, UUID> {
     fun findAllBySessionExerciseIdOrderBySetNoAsc(sessionExerciseId: UUID): List<WorkoutSet>
     fun findBySessionExerciseIdAndSetNo(sessionExerciseId: UUID, setNo: Int): WorkoutSet?
+    fun deleteAllBySessionExerciseId(sessionExerciseId: UUID)
 }
