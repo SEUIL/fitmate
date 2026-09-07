@@ -23,7 +23,7 @@ import com.fitmate.backend.member.api.FacilityResponse
 import com.fitmate.backend.member.api.MeResponse
 import com.fitmate.backend.member.api.NotificationSettingsResponse
 import com.fitmate.backend.member.api.NotificationSettingsUpdateRequest
-import com.fitmate.backend.member.api.ProfileResponse
+import com.fitmate.backend.member.api.MemberProfileResponse
 import com.fitmate.backend.member.api.ProfileUpdateRequest
 import com.fitmate.backend.member.api.RegionResponse
 import com.fitmate.backend.member.api.TermsResponse
@@ -112,7 +112,7 @@ class MemberService(
             id = currentUser.userId,
             email = user.email,
             accountStatus = user.accountStatus.name,
-            profile = ProfileResponse(profile.nickname, profile.displayName, profile.birthDate, profile.gender, profile.visibility, profile.bio, profile.weightUnit, profile.timezoneId, profile.version),
+            profile = MemberProfileResponse(profile.nickname, profile.displayName, profile.birthDate, profile.gender, profile.visibility, profile.bio, profile.weightUnit, profile.timezoneId, profile.version),
             activityRegions = regions.mapNotNull { relation -> regionById[relation.id.regionId]?.let { ActivityRegionResponse(toApiReferenceId(requireNotNull(it.id)), it.name, relation.isPrimary) } },
             facilities = facilities.mapNotNull { relation -> facilityById[relation.id.facilityId]?.let { UserFacilityResponse(requireNotNull(it.id), toApiReferenceId(requireNotNull(it.regionId)), it.name, relation.isPrimary) } },
             availableTimes = userAvailableTimeRepository.findAllByUserIdOrderByWeekdayLocalAscStartLocalTimeAsc(currentUser.userId).map { AvailableTimeResponse(requireNotNull(it.id), it.weekdayLocal, it.startLocalTime, it.endLocalTime, it.timezoneId) },
@@ -123,7 +123,7 @@ class MemberService(
     }
 
     @Transactional
-    fun updateProfile(currentUser: AuthenticatedUser, request: ProfileUpdateRequest): ProfileResponse {
+    fun updateProfile(currentUser: AuthenticatedUser, request: ProfileUpdateRequest): MemberProfileResponse {
         val profile = userProfileRepository.findById(currentUser.userId).orElseThrow { ApiException(ApiErrorCode.RESOURCE_NOT_FOUND) }
         if (profile.version != request.version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
         request.nickname?.trim()?.let { nickname ->
@@ -145,7 +145,7 @@ class MemberService(
         request.sports?.let { replaceSports(currentUser.userId, it) }
         request.goals?.let { replaceGoals(currentUser.userId, it) }
         val updated = userProfileRepository.saveAndFlush(profile)
-        return ProfileResponse(updated.nickname, updated.displayName, updated.birthDate, updated.gender, updated.visibility, updated.bio, updated.weightUnit, updated.timezoneId, updated.version)
+        return MemberProfileResponse(updated.nickname, updated.displayName, updated.birthDate, updated.gender, updated.visibility, updated.bio, updated.weightUnit, updated.timezoneId, updated.version)
     }
 
     @Transactional

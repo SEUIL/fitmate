@@ -21,7 +21,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".dev"
+            buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:8080/api/v1\"")
+        }
         release {
+            buildConfigField("String", "API_BASE_URL", "\"\"")
             optimization {
                 enable = false
             }

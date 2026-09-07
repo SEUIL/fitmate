@@ -33,12 +33,6 @@ class MemberController(private val memberService: MemberService) {
     @GetMapping("/facilities")
     fun facilities(@RequestParam(required = false) regionId: UUID?, @RequestParam(required = false) name: String?): ApiResponse<ItemListResponse<FacilityResponse>> = ApiResponse.success(ItemListResponse(memberService.getFacilities(regionId, name)))
 
-    @GetMapping("/users/me")
-    fun me(@AuthenticationPrincipal currentUser: AuthenticatedUser): ApiResponse<MeResponse> = ApiResponse.success(memberService.me(currentUser))
-
-    @PatchMapping("/users/me/profile")
-    fun updateProfile(@AuthenticationPrincipal currentUser: AuthenticatedUser, @Valid @RequestBody request: ProfileUpdateRequest): ApiResponse<ProfileResponse> = ApiResponse.success(memberService.updateProfile(currentUser, request))
-
     @PatchMapping("/users/me/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun changePassword(@AuthenticationPrincipal currentUser: AuthenticatedUser, @Valid @RequestBody request: ChangePasswordRequest) {
