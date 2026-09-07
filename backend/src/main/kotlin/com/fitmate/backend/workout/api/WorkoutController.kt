@@ -10,6 +10,8 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -70,6 +72,37 @@ class WorkoutController(
     ): ApiResponse<WorkoutSetResponse> = ApiResponse.success(
         workoutService.upsertSet(user.userId, sessionId, sessionExerciseId, setNo, request),
     )
+
+    @PostMapping("/workout-sessions/{sessionId}/exercises")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun addExercise(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable sessionId: UUID,
+        @Valid @RequestBody request: AddWorkoutSessionExerciseRequest,
+    ): ApiResponse<WorkoutSessionExerciseResponse> = ApiResponse.success(
+        workoutService.addExercise(user.userId, sessionId, request),
+    )
+
+    @PatchMapping("/workout-sessions/{sessionId}/exercises/{sessionExerciseId}")
+    fun updateExercise(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable sessionId: UUID,
+        @PathVariable sessionExerciseId: UUID,
+        @Valid @RequestBody request: UpdateWorkoutSessionExerciseRequest,
+    ): ApiResponse<WorkoutSessionExerciseResponse> = ApiResponse.success(
+        workoutService.updateExercise(user.userId, sessionId, sessionExerciseId, request),
+    )
+
+    @DeleteMapping("/workout-sessions/{sessionId}/exercises/{sessionExerciseId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteExercise(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable sessionId: UUID,
+        @PathVariable sessionExerciseId: UUID,
+        @RequestParam version: Long,
+    ) {
+        workoutService.deleteExercise(user.userId, sessionId, sessionExerciseId, version)
+    }
 
     @GetMapping("/exercises/{exerciseId}/previous-record")
     fun previous(

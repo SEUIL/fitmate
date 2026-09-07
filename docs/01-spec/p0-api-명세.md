@@ -1018,11 +1018,14 @@ P0에서는 Samsung Health 서버 동기화를 하지 않으므로 `SYNC_WAITING
 {
   "exerciseId": "bf7a5460-854d-481c-9786-ed224a1a3db0",
   "sequenceNo": 3,
+  "targetSets": 3,
+  "targetWeightKg": 20,
+  "targetRepetitions": 12,
   "clientUpdatedAt": "2026-09-03T10:35:00.000Z"
 }
 ```
 
-Response는 운동 사전에서 복사한 `displayNameSnapshot`, `bodyPartSnapshot`, `sequenceNo`와 `version`을 반환한다.
+Response `201 Created`는 운동 사전에서 복사한 운동명·부위, `sequenceNo`, `version`과 생성된 미완료 세트를 반환한다. 기존 위치에 추가하면 뒤의 운동 순서를 자동으로 조정한다.
 
 ### 10.5 세션 운동 순서 또는 대체 운동 변경
 
@@ -1038,8 +1041,13 @@ Response는 운동 사전에서 복사한 `displayNameSnapshot`, `bodyPartSnapsh
 ```
 
 - 대체 운동은 원래 운동과 같은 종목이어야 한다.
-- 세션 안에서 `sequenceNo`는 중복될 수 없다.
+- 순서를 변경하면 사이에 있는 운동 순서를 자동으로 조정한다.
+- 대체 운동으로 변경해도 기존 세트 기록은 유지한다.
 - 완료된 세션은 수정할 수 없다.
+
+세션 운동 삭제는 현재 운동 `version`을 사용한다. 연결된 세트를 함께 삭제하고 남은 순서를 다시 정렬한다. 마지막 운동은 삭제할 수 없다.
+
+`DELETE /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}?version=1`
 
 ### 10.6 세트 기록
 

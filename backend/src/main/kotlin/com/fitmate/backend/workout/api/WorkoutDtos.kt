@@ -34,6 +34,22 @@ data class WorkoutStateRequest(
     @field:Size(max = 255) val cancelReason: String? = null,
 )
 
+data class AddWorkoutSessionExerciseRequest(
+    val exerciseId: UUID,
+    @field:Min(1) @field:Max(100) val sequenceNo: Int,
+    @field:Min(1) @field:Max(100) val targetSets: Int = 1,
+    @field:DecimalMin("0.0") val targetWeightKg: BigDecimal? = null,
+    @field:Min(1) @field:Max(10000) val targetRepetitions: Int? = null,
+    val clientUpdatedAt: Instant = Instant.now(),
+)
+
+data class UpdateWorkoutSessionExerciseRequest(
+    val exerciseId: UUID? = null,
+    @field:Min(1) @field:Max(100) val sequenceNo: Int? = null,
+    @param:JsonProperty(required = true) @param:JsonSetter(nulls = Nulls.FAIL) @field:Min(0) val version: Long,
+    val clientUpdatedAt: Instant = Instant.now(),
+)
+
 data class UpsertWorkoutSetRequest(
     val weightKg: BigDecimal? = null,
     val repetitions: Int? = null,

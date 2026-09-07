@@ -29,6 +29,9 @@ Content-Type: application/json
 | 재시작 | `POST` | `/api/v1/workout-sessions/{sessionId}/resume` |
 | 운동 완료 | `POST` | `/api/v1/workout-sessions/{sessionId}/complete` |
 | 운동 취소 | `POST` | `/api/v1/workout-sessions/{sessionId}/cancel` |
+| 세션에 운동 추가 | `POST` | `/api/v1/workout-sessions/{sessionId}/exercises` |
+| 운동 순서 또는 대체 운동 변경 | `PATCH` | `/api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}` |
+| 세션 운동 삭제 | `DELETE` | `/api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}?version={version}` |
 | 세트 입력 또는 수정 | `PUT` | `/api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}/sets/{setNo}` |
 | 같은 운동의 직전 기록 | `GET` | `/api/v1/exercises/{exerciseId}/previous-record?beforeSessionId={sessionId}` |
 | 완료 운동 리포트 | `GET` | `/api/v1/workout-sessions/{sessionId}/report` |
@@ -123,7 +126,43 @@ Content-Type: application/json
 
 상태 전이는 `READY → IN_PROGRESS → PAUSED → IN_PROGRESS → COMPLETED` 순서다. `READY`, `IN_PROGRESS`, `PAUSED`에서는 취소할 수 있다. 상태 변경 성공 응답의 새 세션 `version`을 다음 요청에 사용한다.
 
-## 4. 과거 기록 비교
+## 4. 세션 운동 편집
+
+운동 시작 전이나 진행 중, 일시정지 상태에서 운동을 추가할 수 있다.
+
+`POST /api/v1/workout-sessions/{sessionId}/exercises`
+
+```json
+{
+  "exerciseId": "30000000-0000-0000-0000-000000000004",
+  "sequenceNo": 2,
+  "targetSets": 3,
+  "targetWeightKg": 30,
+  "targetRepetitions": 8
+}
+```
+
+성공하면 `201 Created`와 추가된 운동, 미완료 세트 목록을 반환한다. `sequenceNo`에 기존 운동이 있으면 그 운동부터 한 칸씩 뒤로 이동한다.
+
+운동 순서를 옮기거나 다른 헬스 운동으로 교체할 때는 다음 요청을 사용한다. 두 필드 중 하나만 보내도 된다.
+
+`PATCH /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}`
+
+```json
+{
+  "exerciseId": "30000000-0000-0000-0000-000000000002",
+  "sequenceNo": 1,
+  "version": 2
+}
+```
+
+순서를 옮기면 사이에 있던 운동 순서가 자동으로 당겨지거나 밀린다. 운동 교체 시 기존 세트 입력값은 유지되고 운동명과 부위 스냅샷만 새 운동으로 바뀐다.
+
+`DELETE /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}?version={currentVersion}`
+
+삭제 성공은 `204 No Content`다. 해당 운동의 세트도 함께 삭제되고 남은 운동 순서는 `1`부터 다시 정렬된다. 세션의 마지막 운동은 삭제할 수 없다. 완료 또는 취소한 세션은 편집할 수 없다.
+
+## 5. 과거 기록 비교
 
 새 세션 생성 응답의 각 `exercises[]`에는 같은 운동의 직전 완료 기록인 `previousRecord`가 포함된다.
 
@@ -151,7 +190,7 @@ Content-Type: application/json
 
 이전 완료 기록이 없으면 `data`가 `null`이다. 비교 화면은 현재 입력값과 `previousRecord.sets`의 같은 `setNo`를 나란히 표시하면 된다.
 
-## 5. 운동 기록 목록과 완료 리포트
+## 6. 운동 기록 목록과 완료 리포트
 
 운동 기록 화면은 다음 API를 최신순으로 조회한다.
 
@@ -218,12 +257,13 @@ Content-Type: application/json
 }
 ```
 
-## 6. 프론트 구현 순서
+## 7. 프론트 구현 순서
 
 1. 루틴 시작 화면에서는 생성 응답의 누적 운동일, 분할 순번과 부위를 표시한다. 직접 운동 화면에서는 `exerciseId`, 목표 세트 수, 초기 무게와 횟수를 받아 세션을 생성한다.
 2. 생성 응답의 `exercises[].sets[]`로 세트 입력 행을 구성한다.
-3. 시작 API 호출 후 각 세트를 `PUT`으로 저장한다.
-4. 세트 저장 성공 시에만 프론트 로컬 휴식 타이머를 시작한다.
-5. 마지막 세트 저장 후 완료 API를 호출한다.
-6. 완료 응답을 받은 뒤 리포트 API를 호출해 결과 화면을 표시한다.
-7. 다음 운동 생성 응답의 `previousRecord`를 현재 세트 옆에 비교값으로 표시한다.
+3. 운동 추가·순서 변경·대체·삭제 응답으로 세션 운동 목록을 갱신한다.
+4. 시작 API 호출 후 각 세트를 `PUT`으로 저장한다.
+5. 세트 저장 성공 시에만 프론트 로컬 휴식 타이머를 시작한다.
+6. 마지막 세트 저장 후 완료 API를 호출한다.
+7. 완료 응답을 받은 뒤 리포트 API를 호출해 결과 화면을 표시한다.
+8. 다음 운동 생성 응답의 `previousRecord`를 현재 세트 옆에 비교값으로 표시한다.

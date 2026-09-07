@@ -31,6 +31,9 @@
   - `GET /api/v1/workout-sessions`
   - `GET /api/v1/workout-sessions/{sessionId}`
   - `POST /api/v1/workout-sessions/{sessionId}/start|pause|resume|complete|cancel`
+  - `POST /api/v1/workout-sessions/{sessionId}/exercises`
+  - `PATCH /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}`
+  - `DELETE /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}`
   - `PUT /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}/sets/{setNo}`
   - `GET /api/v1/exercises/{exerciseId}/previous-record`
   - `GET /api/v1/workout-sessions/{sessionId}/report`
@@ -91,7 +94,6 @@ Flyway는 아래 두 경로를 모두 본다.
 
 ## 다음 추천 작업 순서
 
-1. 운동 세션 항목 추가·변경·삭제 API 구현
-2. idempotency 처리 로직 구현
-3. 운동 기록 목록을 운영용 keyset cursor로 변경
-4. Android Mock 운동 데이터를 실제 API에 연결
+1. idempotency 처리 로직 구현
+2. 운동 기록 목록을 운영용 keyset cursor로 변경
+3. Android Mock 운동 데이터를 실제 API에 연결

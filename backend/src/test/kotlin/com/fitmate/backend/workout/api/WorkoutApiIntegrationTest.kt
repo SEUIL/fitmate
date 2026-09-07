@@ -180,6 +180,74 @@ class WorkoutApiIntegrationTest {
         assertEquals(1, retryDay3["routineSplitDayNo"].asInt())
     }
 
+    @Test
+    fun `session exercises can be added reordered replaced and deleted`() {
+        val token = signup()
+        val created = createDirectWorkout(token).body!!["data"]
+        val sessionId = created["id"].asText()
+        val originalId = created["exercises"][0]["id"].asText()
+
+        val added = command(
+            "/api/v1/workout-sessions/$sessionId/exercises", HttpMethod.POST, token,
+            mapOf(
+                "exerciseId" to "30000000-0000-0000-0000-000000000004",
+                "sequenceNo" to 2,
+                "targetSets" to 3,
+                "targetWeightKg" to 30,
+                "targetRepetitions" to 8,
+            ),
+        )
+        assertEquals(HttpStatus.CREATED, added.statusCode, added.body.toString())
+        assertEquals(2, added.body!!["data"]["sequenceNo"].asInt())
+        assertEquals(3, added.body!!["data"]["sets"].size())
+
+        val beforeUpdate = command(
+            "/api/v1/workout-sessions/$sessionId", HttpMethod.GET, token, null,
+        ).body!!["data"]
+        val originalVersion = beforeUpdate["exercises"].first { it["id"].asText() == originalId }["version"].asLong()
+        val updated = command(
+            "/api/v1/workout-sessions/$sessionId/exercises/$originalId", HttpMethod.PATCH, token,
+            mapOf(
+                "exerciseId" to "30000000-0000-0000-0000-000000000002",
+                "sequenceNo" to 2,
+                "version" to originalVersion,
+            ),
+        )
+        assertEquals(HttpStatus.OK, updated.statusCode, updated.body.toString())
+        assertEquals("30000000-0000-0000-0000-000000000002", updated.body!!["data"]["exerciseId"].asText())
+        assertEquals(2, updated.body!!["data"]["sequenceNo"].asInt())
+
+        val reordered = command(
+            "/api/v1/workout-sessions/$sessionId", HttpMethod.GET, token, null,
+        ).body!!["data"]["exercises"]
+        assertEquals(2, reordered.size())
+        assertEquals(1, reordered[0]["sequenceNo"].asInt())
+        assertEquals(originalId, reordered[1]["id"].asText())
+        val addedId = reordered[0]["id"].asText()
+        val addedVersion = reordered[0]["version"].asLong()
+
+        val deleted = command(
+            "/api/v1/workout-sessions/$sessionId/exercises/$addedId?version=$addedVersion",
+            HttpMethod.DELETE,
+            token,
+            null,
+        )
+        assertEquals(HttpStatus.NO_CONTENT, deleted.statusCode, deleted.body.toString())
+        val remaining = command(
+            "/api/v1/workout-sessions/$sessionId", HttpMethod.GET, token, null,
+        ).body!!["data"]["exercises"]
+        assertEquals(1, remaining.size())
+        assertEquals(1, remaining[0]["sequenceNo"].asInt())
+
+        val deleteLast = command(
+            "/api/v1/workout-sessions/$sessionId/exercises/$originalId?version=${remaining[0]["version"].asLong()}",
+            HttpMethod.DELETE,
+            token,
+            null,
+        )
+        assertEquals(HttpStatus.BAD_REQUEST, deleteLast.statusCode)
+    }
+
     private fun createRoutineWorkout(token: String, routineId: String): JsonNode {
         val response = command(
             "/api/v1/workout-sessions", HttpMethod.POST, token, mapOf("routineId" to routineId),

@@ -63,4 +63,5 @@ interface WorkoutSessionExerciseRepository : JpaRepository<WorkoutSessionExercis
 interface WorkoutSetRepository : JpaRepository<WorkoutSet, UUID> {
     fun findAllBySessionExerciseIdOrderBySetNoAsc(sessionExerciseId: UUID): List<WorkoutSet>
     fun findBySessionExerciseIdAndSetNo(sessionExerciseId: UUID, setNo: Int): WorkoutSet?
+    fun deleteAllBySessionExerciseId(sessionExerciseId: UUID)
 }
