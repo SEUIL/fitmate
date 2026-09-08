@@ -28,15 +28,24 @@
   - `PATCH /api/v1/routines/{routineId}`
   - `DELETE /api/v1/routines/{routineId}`
   - `POST /api/v1/workout-sessions`
+  - `GET /api/v1/workout-sessions`
   - `GET /api/v1/workout-sessions/{sessionId}`
-  - `POST /api/v1/workout-sessions/{sessionId}/start|pause|resume|complete`
+  - `POST /api/v1/workout-sessions/{sessionId}/start|pause|resume|complete|cancel`
+  - `POST /api/v1/workout-sessions/{sessionId}/exercises`
+  - `PATCH /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}`
+  - `DELETE /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}`
   - `PUT /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}/sets/{setNo}`
   - `GET /api/v1/exercises/{exerciseId}/previous-record`
+  - `GET /api/v1/workout-sessions/{sessionId}/report`
+  - `POST /api/v1/running-records`
+  - `GET /api/v1/running-records`
+  - `GET /api/v1/running-records/{recordId}`
 - 회원가입·로그인·JWT 세션 인증
 - 내 프로필 조회 `GET /api/v1/users/me`와 수정 `PATCH /api/v1/users/me/profile`
 - 회원가입·프로필 API의 `customSports: [{ "name": "필라테스" }]` 저장·조회. V4 migration의 사용자 전용 테이블을 사용하며 운영 종목·숙련도는 `sports`로 유지한다.
-- V5 migration부터 `GET /api/v1/sports`는 혼자 운동 기본 진입 종목인 `HEALTH`, `RUNNING`을 표시한다. 현재 추천 루틴과 세트 기반 서버 기록은 `HEALTH`만 지원하며 러닝 기록 서버 저장은 후속 범위다.
-- P1 메이트 MVP: 모집글 목록·상세·생성·수정·마감·취소, 문의방·메시지·읽음, 참가 신청·수락·거절·취소, 앱 내 메이트 알림을 포함한다. 상세 계약은 `docs/01-spec/p1-mate-api-명세.md`를 따른다.
+- V5 migration부터 `GET /api/v1/sports`는 혼자 운동 기본 진입 종목인 `HEALTH`, `RUNNING`을 표시한다. 추천 루틴과 세트 기반 기록은 `HEALTH`를 사용하고, V8부터 종료한 러닝의 목표·거리·시간·랩·선택 경로·컨디션·메모를 별도 API로 저장한다.
+- V6 migration부터 사용자는 헬스 루틴을 1~10분할로 구성할 수 있다. 완료한 운동만 누적해 `3일차 · 1/2분할`처럼 다음 운동일과 순환 분할을 계산하고, 해당 분할의 운동과 부위를 세션 생성 응답에 반환한다.
+- P1 메이트 MVP: 모집글 목록·상세·생성·수정·마감·취소, 문의방·메시지·읽음, 참가 신청·수락·거절·취소, 기존 `user_notifications` 기반 앱 내 메이트 알림을 포함한다. 상세 계약은 `docs/01-spec/p1-mate-api-명세.md`를 따른다.
 
 루틴 추천은 로그인 사용자의 주 목표와 해당 운영 종목 숙련도를 사용한다. 정확히 일치하는 템플릿, 같은 목표의 숙련도 공통 템플릿, 헬스 초급 전신 fallback 순서로 선택한다. 시스템 템플릿은 모든 로그인 사용자가 조회할 수 있고 사용자 루틴은 소유자만 조회할 수 있다.
 
@@ -45,8 +54,7 @@
 ## 아직 안 넣은 것
 
 - 비밀번호 변경·회원 탈퇴와 약관/지역/시설 전용 API
-- 리포트 계산
-- 일반 DM·Push 전달·메이트 운동 세션 생성
+- Push 전달과 메이트 운동 세션 생성
 
 위 항목은 역할분담 문서 기준으로 Backend A 계약 또는 Backend B 상세 구현 단계에서 이어서 붙이면 된다.
 
@@ -85,7 +93,6 @@ Flyway는 `../db/migration` 경로를 읽는다. 따라서 `backend/`를 작업 
 
 ## 다음 추천 작업 순서
 
-1. 운동 세션 목록과 취소 API 구현
-2. 기본 report 계산 서비스 구현
-3. idempotency 처리 로직 구현
-4. Backend A 인증 계약 연결
+1. idempotency 처리 로직 구현
+2. 운동 기록 목록을 운영용 keyset cursor로 변경
+3. Android Mock 운동 데이터를 실제 API에 연결

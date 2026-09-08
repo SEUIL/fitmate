@@ -15,6 +15,7 @@ import com.fitmate.backend.member.domain.UserProfile
 import com.fitmate.backend.member.domain.UserSport
 import com.fitmate.backend.member.domain.UserSportId
 import com.fitmate.backend.member.repository.*
+import com.fitmate.backend.media.application.MediaAssetService
 import com.fitmate.backend.terms.repository.UserConsentRepository
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -39,9 +40,10 @@ class ProfileServiceTest {
     private val goals = mock(UserGoalRepository::class.java)
     private val consents = mock(UserConsentRepository::class.java)
     private val customSports = mock(CustomSportService::class.java)
+    private val mediaAssets = mock(MediaAssetService::class.java)
     private val now = Instant.parse("2026-09-06T00:00:00Z")
     private val service = ProfileService(users, profiles, regions, facilities, userRegions, userFacilities,
-        times, userSports, sports, goals, consents, customSports, Clock.fixed(now, ZoneOffset.UTC))
+        times, userSports, sports, goals, consents, customSports, mediaAssets, Clock.fixed(now, ZoneOffset.UTC))
     private val userId = UUID.randomUUID()
     private val profile = UserProfile(userId = userId, nickname = "fitmate", version = 3)
 
@@ -70,6 +72,9 @@ class ProfileServiceTest {
 
     @Test
     fun `omitted custom sports are preserved and empty array clears them`() {
+        val sportId = UUID.randomUUID()
+        `when`(userSports.findAllByIdUserId(userId)).thenReturn(listOf(UserSport(UserSportId(userId, sportId), SkillLevel.BEGINNER)))
+        `when`(sports.findById(sportId)).thenReturn(Optional.of(Sport(id = sportId, code = SportCode.RUNNING)))
         service.update(userId, UpdateProfileRequest(version = 3, bio = "소개"))
         verify(customSports, never()).replace(eq(userId) ?: userId, anyList())
 
@@ -109,12 +114,22 @@ class ProfileServiceTest {
     }
 
     @Test
-    fun `custom interests cannot replace mandatory HEALTH proficiency`() {
+    fun `removing all managed and custom interests is rejected`() {
         val error = assertThrows(ApiException::class.java) {
-            service.update(userId, UpdateProfileRequest(version = 3, sports = emptyList(), customSports = listOf(CustomSportDto("필라테스"))))
+            service.update(userId, UpdateProfileRequest(version = 3, sports = emptyList(), customSports = emptyList()))
         }
         assertEquals(ApiErrorCode.VALIDATION_ERROR, error.errorCode)
         verify(customSports, never()).replace(eq(userId) ?: userId, anyList())
         verify(userSports, never()).deleteAllByIdUserId(userId)
+    }
+
+    @Test
+    fun `custom interests can replace managed interests without HEALTH`() {
+        val selected = listOf(CustomSportDto("필라테스"))
+        `when`(customSports.get(userId)).thenReturn(selected)
+        val result = service.update(userId, UpdateProfileRequest(version = 3, sports = emptyList(), customSports = selected))
+        assertEquals(selected, result.customSports)
+        verify(userSports).deleteAllByIdUserId(userId)
+        verify(customSports).replace(userId, selected)
     }
 }

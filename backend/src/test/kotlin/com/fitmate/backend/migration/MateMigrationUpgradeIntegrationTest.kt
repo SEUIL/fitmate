@@ -11,7 +11,7 @@ import java.util.UUID
 @EnabledIfEnvironmentVariable(named = "FITMATE_TEST_DB_URL", matches = ".+")
 class MateMigrationUpgradeIntegrationTest {
     @Test
-    fun `V5 database upgrades through mate migrations without losing existing seed data`() {
+    fun `V13 database upgrades through mate migrations without losing existing seed data`() {
         val sourceUrl = System.getenv("FITMATE_TEST_DB_URL")
         val database = "fitmate_upgrade_${UUID.randomUUID().toString().replace("-", "").take(12)}"
         val serverUrl = sourceUrl.substringBeforeLast("/") + "/mysql"
@@ -22,15 +22,15 @@ class MateMigrationUpgradeIntegrationTest {
         }
         val url = sourceUrl.substringBeforeLast("/") + "/$database" + sourceUrl.substringAfter("?", "").let { if (it.isEmpty()) "" else "?$it" }
         try {
-            val v5 = flyway(url, user, password, "5")
-            assertEquals(5, v5.migrate().migrationsExecuted)
+            val v13 = flyway(url, user, password, "13")
+            assertEquals(13, v13.migrate().migrationsExecuted)
             val sportsBefore = count(url, user, password, "fitness_sports")
             assertTrue(sportsBefore > 0)
 
             val latest = flyway(url, user, password)
             assertEquals(4, latest.migrate().migrationsExecuted)
             assertEquals(sportsBefore, count(url, user, password, "fitness_sports"))
-            listOf("fitness_mate_posts", "fitness_mate_participations", "core_notifications", "fitness_mate_chat_rooms", "fitness_mate_chat_messages").forEach {
+            listOf("fitness_mate_posts", "fitness_mate_participations", "user_notifications", "fitness_mate_chat_rooms", "fitness_mate_chat_messages").forEach {
                 assertEquals(1, tableExists(url, user, password, it))
             }
             assertEquals(0, latest.migrate().migrationsExecuted)

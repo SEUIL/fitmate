@@ -20,7 +20,9 @@ data class UserProfile(
     val goals: Set<String> = emptySet(),
     val availableTime: String = "",
     val bio: String = "",
-    val isAdultVerified: Boolean = false
+    val profileImageUrl: String? = null,
+    val isAdultVerified: Boolean = false,
+    val activityRegionId: String = ""
 )
 
 data class MatePost(
@@ -72,7 +74,8 @@ data class WorkoutSummary(
     val sets: List<WorkoutSet>,
     val usedSamsungHealth: Boolean,
     val targetSetCount: Int = 0,
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    val serverId: String? = null
 ) {
     val totalVolumeKg: Double get() = sets.sumOf { it.weightKg * it.repetitions }
 }

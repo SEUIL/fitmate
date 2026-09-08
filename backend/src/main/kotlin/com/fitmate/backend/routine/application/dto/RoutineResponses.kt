@@ -18,6 +18,7 @@ data class RoutineSummary(
     val targetGoalCode: GoalCode?,
     val targetLevel: SkillLevel?,
     val difficulty: DifficultyLevel,
+    val splitCount: Int,
     val template: Boolean,
     val version: Long,
 )
@@ -31,6 +32,7 @@ data class RoutineDetail(
     val targetGoalCode: GoalCode?,
     val targetLevel: SkillLevel?,
     val difficulty: DifficultyLevel,
+    val splitCount: Int,
     val template: Boolean,
     val version: Long,
     val items: List<RoutineItemResponse>,
@@ -42,6 +44,7 @@ data class RoutineItemResponse(
     val exerciseName: String,
     val bodyPart: BodyPart,
     val sequenceNo: Int,
+    val splitDayNo: Int,
     val targetSets: Int?,
     val targetRepsMin: Int?,
     val targetRepsMax: Int?,

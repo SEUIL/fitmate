@@ -32,6 +32,8 @@ import com.fitmate.backend.member.repository.UserFacilityRepository
 import com.fitmate.backend.member.repository.UserGoalRepository
 import com.fitmate.backend.member.repository.UserProfileRepository
 import com.fitmate.backend.member.repository.UserSportRepository
+import com.fitmate.backend.media.application.MediaAssetService
+import com.fitmate.backend.media.domain.MediaPurpose
 import com.fitmate.backend.terms.repository.UserConsentRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -53,6 +55,7 @@ class ProfileService(
     private val goalRepository: UserGoalRepository,
     private val consentRepository: UserConsentRepository,
     private val customSportService: CustomSportService,
+    private val mediaAssets: MediaAssetService,
     private val clock: Clock,
 ) {
     @Transactional(readOnly = true)
@@ -63,7 +66,7 @@ class ProfileService(
         return MyProfileResponse(
             userId, user.email, user.accountStatus,
             ProfileResponse(profile.nickname, profile.displayName, profile.birthDate, profile.gender, profile.visibility,
-                profile.bio, profile.weightUnit, profile.timezoneId, profile.version),
+                profile.bio, profile.profileImageMediaId?.let { "/api/v1/users/$userId/profile-image" }, profile.weightUnit, profile.timezoneId, profile.version),
             activityRegionRepository.findAllByIdUserId(userId).map { selection ->
                 val region = regionRepository.findById(requireNotNull(selection.id.regionId)).orElseThrow()
                 ProfilePlaceResponse(UuidBinaryConverter.fromMysqlOrderedUuid(requireNotNull(region.id)), region.name, selection.isPrimary)
@@ -86,11 +89,20 @@ class ProfileService(
         )
     }
 
+    @Transactional(readOnly = true)
+    fun profileImageMediaId(userId: UUID): UUID? = profileRepository.findById(userId).orElseThrow { ApiException(ApiErrorCode.RESOURCE_NOT_FOUND) }
+        .takeIf { it.deletedAt == null }?.profileImageMediaId
+
     @Transactional
     fun update(userId: UUID, request: UpdateProfileRequest): MyProfileResponse {
         val profile = profileRepository.findForUpdateByUserId(userId) ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND)
         if (request.version != profile.version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
         request.customSports?.let(customSportService::validate)
+        if (request.sports != null || request.customSports != null) {
+            val effectiveSports = request.sports?.isNotEmpty() ?: userSportRepository.findAllByIdUserId(userId).isNotEmpty()
+            val effectiveCustomSports = request.customSports?.isNotEmpty() ?: customSportService.get(userId).isNotEmpty()
+            if (!effectiveSports && !effectiveCustomSports) invalid("관심 운동을 하나 이상 선택해야 합니다.")
+        }
         request.nickname?.let {
             val nickname = it.trim()
             if (nickname.isEmpty()) invalid("닉네임을 입력해야 합니다.")
@@ -108,6 +120,7 @@ class ProfileService(
         request.gender?.let { profile.gender = it }
         request.visibility?.let { profile.visibility = it }
         request.bio?.let { profile.bio = it.trim().takeIf(String::isNotEmpty) }
+        request.profileImageMediaId?.let { profile.profileImageMediaId = mediaAssets.requireOwnedActive(userId, it, MediaPurpose.PROFILE).id }
         request.weightUnit?.let { profile.weightUnit = it }
         request.timezoneId?.let { profile.timezoneId = validZoneId(it) }
         updatePlaces(userId, request)
@@ -121,8 +134,8 @@ class ProfileService(
             availableTimeRepository.saveAll(times.map { UserAvailableTime(UUID.randomUUID(), userId, it.weekdayLocal, it.startLocalTime, it.endLocalTime, it.timezoneId) })
         }
         request.sports?.let { selections ->
-            if (selections.map { it.sportCode }.distinct().size != selections.size || selections.count { it.sportCode == SportCode.HEALTH } != 1) {
-                invalid("HEALTH 숙련도를 하나 선택해야 합니다.")
+            if (selections.map { it.sportCode }.distinct().size != selections.size) {
+                invalid("관심 운동은 중복 선택할 수 없습니다.")
             }
             val sports = selections.map { selection ->
                 val sport = sportRepository.findByCodeAndIsActiveTrue(selection.sportCode) ?: invalid("활성 운동 종목만 선택할 수 있습니다.")

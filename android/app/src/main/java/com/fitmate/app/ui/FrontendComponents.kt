@@ -29,9 +29,11 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.core.content.FileProvider
 import com.fitmate.app.BuildConfig
+import com.fitmate.app.data.remote.ServerSocialApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.ByteBuffer
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun Choices(options: List<String>, selected: String, onSelect: (String) -> Unit) {
@@ -119,6 +121,34 @@ import java.io.File
     when {
         bitmap != null -> Image(bitmap!!, "선택한 사진", if (square) modifier.fillMaxWidth().aspectRatio(1f) else modifier.fillMaxWidth().heightIn(min = 100.dp, max = 240.dp), contentScale = if (square) ContentScale.Crop else ContentScale.Fit)
         failed -> Text("사진을 불러올 수 없어요. 다시 선택해 주세요.", color = MaterialTheme.colorScheme.error)
+        else -> LinearProgressIndicator(modifier.fillMaxWidth())
+    }
+}
+
+/** Renders both device picker URIs and authenticated media paths returned by the server. */
+@Composable internal fun FitMatePhoto(uri: String, server: ServerSocialApi?, modifier: Modifier = Modifier, square: Boolean = false) {
+    if (uri.startsWith("content:") || uri.startsWith("file:")) LocalPhoto(uri, modifier, square)
+    else if (server != null) ServerPhoto(uri, server, modifier, square)
+    else Text("사진을 불러올 수 없어요.", color = MaterialTheme.colorScheme.error)
+}
+
+@Composable private fun ServerPhoto(path: String, server: ServerSocialApi, modifier: Modifier, square: Boolean) {
+    var failed by remember(path) { mutableStateOf(false) }
+    val bitmap by produceState<ImageBitmap?>(null, path) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val source = ImageDecoder.createSource(ByteBuffer.wrap(server.imageBytes(path)))
+                ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                    val scale = (info.size.width.coerceAtLeast(info.size.height) / 1024f).coerceAtLeast(1f)
+                    decoder.setTargetSize((info.size.width / scale).toInt().coerceAtLeast(1), (info.size.height / scale).toInt().coerceAtLeast(1))
+                }.asImageBitmap()
+            }.getOrNull()
+        }
+        failed = value == null
+    }
+    when {
+        bitmap != null -> Image(bitmap!!, "업로드한 사진", if (square) modifier.fillMaxWidth().aspectRatio(1f) else modifier.fillMaxWidth().heightIn(min = 100.dp, max = 240.dp), contentScale = if (square) ContentScale.Crop else ContentScale.Fit)
+        failed -> Text("사진을 불러올 수 없어요.", color = MaterialTheme.colorScheme.error)
         else -> LinearProgressIndicator(modifier.fillMaxWidth())
     }
 }

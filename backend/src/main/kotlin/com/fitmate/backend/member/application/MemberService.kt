@@ -88,8 +88,10 @@ class MemberService(
         return resolved.map { TermsResponse(toApiReferenceId(requireNotNull(it.id)), it.type, it.version, it.contentUri, it.effectiveAt, it.isRequired) }
     }
 
-    fun getRegions(parentId: UUID?): List<RegionResponse> = regionRepository.findAllByIsActiveTrueAndParentIdOrderByNameAsc(parentId?.let(::toStoredReferenceId)).map {
-        RegionResponse(toApiReferenceId(requireNotNull(it.id)), it.parentId?.let(::toApiReferenceId), it.name, if (it.level == 1) "PROVINCE" else "CITY", it.code)
+    // Unlike entity identifiers, parentId is a basic attribute whose converter runs in Hibernate.
+    fun getRegions(parentId: UUID?, code: String? = null): List<RegionResponse> = (if (code != null)
+        regionRepository.findAllByIsActiveTrueAndCode(code) else regionRepository.findAllByIsActiveTrueAndParentIdOrderByNameAsc(parentId)).map {
+        RegionResponse(toApiReferenceId(requireNotNull(it.id)), it.parentId, it.name, when (it.level) { 1 -> "PROVINCE"; 2 -> "CITY"; else -> "TOWN" }, it.code)
     }
 
     fun getFacilities(regionId: UUID?, name: String?): List<FacilityResponse> = facilityRepository.searchActive(regionId?.let(::toStoredReferenceId), name?.trim()?.takeIf { it.isNotEmpty() }).map {

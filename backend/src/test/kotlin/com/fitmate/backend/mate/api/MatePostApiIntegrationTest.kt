@@ -90,10 +90,10 @@ class MatePostApiIntegrationTest {
             "clientMessageId" to UUID.randomUUID().toString(), "body" to "마감 후에도 대화합니다.",
         ))
         assertEquals(HttpStatus.CREATED, messageAfterClose.statusCode, messageAfterClose.body.toString())
-        val notifications = command("/api/v1/notifications?unreadOnly=true", HttpMethod.GET, host, null)
+        val notifications = command("/api/v1/notifications", HttpMethod.GET, host, null)
         assertEquals(HttpStatus.OK, notifications.statusCode, notifications.body.toString())
         assertEquals(true, notifications.body!!["data"]["items"].isArray)
-        val notificationId = notifications.body!!["data"]["items"][0]["id"].asText()
+        val notificationId = notifications.body!!["data"]["items"][0]["notificationId"].asText()
         val foreignNotification = command("/api/v1/notifications/$notificationId/read", HttpMethod.PATCH, stranger, null)
         assertEquals(HttpStatus.NOT_FOUND, foreignNotification.statusCode, foreignNotification.body.toString())
         val readNotification = command("/api/v1/notifications/$notificationId/read", HttpMethod.PATCH, host, null)
@@ -265,10 +265,10 @@ class MatePostApiIntegrationTest {
         val detail = command("/api/v1/mate-posts/$postId", HttpMethod.GET, host, null)
         val close = command("/api/v1/mate-posts/$postId/close", HttpMethod.POST, host, mapOf("version" to detail.body!!["data"]["version"].asLong()))
         assertEquals(HttpStatus.OK, close.statusCode, close.body.toString())
-        val notifications = command("/api/v1/notifications?unreadOnly=true", HttpMethod.GET, inquirer, null)
+        val notifications = command("/api/v1/notifications", HttpMethod.GET, inquirer, null)
         assertEquals(HttpStatus.OK, notifications.statusCode, notifications.body.toString())
         assertEquals(1, notifications.body!!["data"]["items"].count { it["type"].asText() == "MATE_POST_CLOSED" })
-        assertEquals("MATE_POST", notifications.body!!["data"]["items"].first { it["type"].asText() == "MATE_POST_CLOSED" }["target"]["type"].asText())
+        assertEquals("MATE_POST", notifications.body!!["data"]["items"].first { it["type"].asText() == "MATE_POST_CLOSED" }["resourceType"].asText())
     }
 
     @Test
@@ -298,7 +298,7 @@ class MatePostApiIntegrationTest {
         val version = command("/api/v1/mate-posts/$postId", HttpMethod.GET, host, null).body!!["data"]["version"].asLong()
         val canceled = command("/api/v1/mate-posts/$postId/cancel", HttpMethod.POST, host, mapOf("version" to version))
         assertEquals(HttpStatus.OK, canceled.statusCode, canceled.body.toString())
-        val notifications = command("/api/v1/notifications?unreadOnly=true", HttpMethod.GET, inquirer, null)
+        val notifications = command("/api/v1/notifications", HttpMethod.GET, inquirer, null)
         assertEquals(1, notifications.body!!["data"]["items"].count { it["type"].asText() == "MATE_POST_CANCELED" })
     }
 

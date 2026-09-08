@@ -42,13 +42,18 @@ class RoutineCommandService(
         val routine = ownedRoutine(userId, routineId)
         if (routine.version != request.version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
         val previousName = routine.name
+        val previousSplitCount = routine.splitCount
         request.name?.let { routine.name = validName(it) }
+        if (request.splitCount != null && request.splitCount != routine.splitCount && request.items == null) {
+            invalid("분할 수를 바꿀 때는 전체 운동 항목을 함께 보내야 합니다.")
+        }
+        request.splitCount?.let { routine.splitCount = it }
         request.items?.let {
-            validateItems(it)
+            validateItems(it, routine.splitCount)
             replaceItems(routine, it)
         }
-        if (request.name == null && request.items == null) invalid("수정할 값을 하나 이상 보내야 합니다.")
-        if (request.items != null && routine.name == previousName) {
+        if (request.name == null && request.splitCount == null && request.items == null) invalid("수정할 값을 하나 이상 보내야 합니다.")
+        if (request.items != null && routine.name == previousName && routine.splitCount == previousSplitCount) {
             val updated = routines.incrementVersion(requireNotNull(routine.id), request.version, Instant.now())
             if (updated != 1) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
             return queryService.toDetail(ownedRoutine(userId, routineId))
@@ -69,12 +74,13 @@ class RoutineCommandService(
         if (request.sourceRoutineId != null) invalid("직접 구성에는 sourceRoutineId를 보낼 수 없습니다.")
         if (request.sportCode != SportCode.HEALTH) invalid("직접 구성 루틴은 헬스 종목만 지원합니다.")
         val requestedItems = request.items ?: invalid("직접 구성에는 운동 항목이 필요합니다.")
-        validateItems(requestedItems)
+        validateItems(requestedItems, request.splitCount)
         val sport = sports.findByCodeAndIsActiveTrue(SportCode.HEALTH)
             ?: invalid("활성 헬스 종목을 찾을 수 없습니다.")
         val routine = routines.saveAndFlush(Routine(
             id = dbId(UUID.randomUUID()), ownerUserId = userId, sport = sport, name = validName(request.name),
             sourceType = RoutineSourceType.MANUAL, difficulty = DifficultyLevel.BEGINNER,
+            splitCount = request.splitCount,
             isTemplate = false, isActive = true,
         ))
         saveItems(routine, requestedItems)
@@ -90,12 +96,14 @@ class RoutineCommandService(
         val copy = routines.saveAndFlush(Routine(
             id = dbId(UUID.randomUUID()), ownerUserId = userId, sport = source.sport, name = validName(request.name),
             sourceType = RoutineSourceType.USER_COPY, difficulty = source.difficulty,
+            splitCount = source.splitCount,
             isTemplate = false, isActive = true,
         ))
         val sourceItems = routineItems.findAllByRoutineIdOrderBySequenceNoAsc(requireNotNull(source.id))
         routineItems.saveAllAndFlush(sourceItems.map { item ->
             RoutineItem(
                 id = dbId(UUID.randomUUID()), routine = copy, exercise = item.exercise, sequenceNo = item.sequenceNo,
+                splitDayNo = item.splitDayNo,
                 targetSets = item.targetSets, targetRepsMin = item.targetRepsMin, targetRepsMax = item.targetRepsMax,
                 targetWeightKg = item.targetWeightKg, targetRpe = item.targetRpe, restSeconds = item.restSeconds,
             )
@@ -130,9 +138,11 @@ class RoutineCommandService(
         return routine
     }
 
-    private fun validateItems(items: List<RoutineItemWriteRequest>) {
+    private fun validateItems(items: List<RoutineItemWriteRequest>, splitCount: Int) {
         if (items.isEmpty()) invalid("운동 항목을 하나 이상 보내야 합니다.")
         if (items.map { it.sequenceNo }.toSet().size != items.size) invalid("운동 순서는 중복될 수 없습니다.")
+        if (items.any { it.splitDayNo !in 1..splitCount }) invalid("운동의 분할 번호는 전체 분할 수 안에 있어야 합니다.")
+        if (items.map { it.splitDayNo }.toSet() != (1..splitCount).toSet()) invalid("모든 분할에 운동이 하나 이상 필요합니다.")
         if (items.any { it.targetRepsMin != null && it.targetRepsMax != null && it.targetRepsMin > it.targetRepsMax }) {
             invalid("최소 반복 수는 최대 반복 수보다 클 수 없습니다.")
         }
@@ -140,6 +150,7 @@ class RoutineCommandService(
 
     private fun RoutineItemWriteRequest.toEntity(routine: Routine, exercise: ExerciseCatalog) = RoutineItem(
         id = dbId(UUID.randomUUID()), routine = routine, exercise = exercise, sequenceNo = sequenceNo,
+        splitDayNo = splitDayNo,
         targetSets = targetSets, targetRepsMin = targetRepsMin, targetRepsMax = targetRepsMax,
         targetWeightKg = targetWeightKg, targetRpe = targetRpe, restSeconds = restSeconds,
     )

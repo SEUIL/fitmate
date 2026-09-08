@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonSetter
 import com.fasterxml.jackson.annotation.Nulls
 import com.fitmate.backend.fitness.domain.BodyPart
+import com.fitmate.backend.fitness.domain.SportCode
 import com.fitmate.backend.workout.domain.WorkoutSessionStatus
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMin
@@ -31,6 +32,23 @@ data class WorkoutExercisePlanRequest(
 data class WorkoutStateRequest(
     @param:JsonProperty(required = true) @param:JsonSetter(nulls = Nulls.FAIL) @field:Min(0) val version: Long,
     val clientUpdatedAt: Instant = Instant.now(),
+    @field:Size(max = 255) val cancelReason: String? = null,
+)
+
+data class AddWorkoutSessionExerciseRequest(
+    val exerciseId: UUID,
+    @field:Min(1) @field:Max(100) val sequenceNo: Int,
+    @field:Min(1) @field:Max(100) val targetSets: Int = 1,
+    @field:DecimalMin("0.0") val targetWeightKg: BigDecimal? = null,
+    @field:Min(1) @field:Max(10000) val targetRepetitions: Int? = null,
+    val clientUpdatedAt: Instant = Instant.now(),
+)
+
+data class UpdateWorkoutSessionExerciseRequest(
+    val exerciseId: UUID? = null,
+    @field:Min(1) @field:Max(100) val sequenceNo: Int? = null,
+    @param:JsonProperty(required = true) @param:JsonSetter(nulls = Nulls.FAIL) @field:Min(0) val version: Long,
+    val clientUpdatedAt: Instant = Instant.now(),
 )
 
 data class UpsertWorkoutSetRequest(
@@ -46,7 +64,12 @@ data class UpsertWorkoutSetRequest(
 
 data class WorkoutSessionResponse(
     val id: UUID,
+    val sportCode: SportCode,
     val routineId: UUID?,
+    val routineSplitDayNo: Int?,
+    val routineSplitCount: Int?,
+    val routineWorkoutDayNumber: Int?,
+    val focusBodyParts: List<BodyPart>,
     val status: WorkoutSessionStatus,
     val startedAt: Instant,
     val endedAt: Instant?,
@@ -81,4 +104,20 @@ data class PreviousExerciseRecordResponse(
     val workoutSessionId: UUID,
     val performedAt: Instant,
     val sets: List<WorkoutSetResponse>,
+)
+
+data class WorkoutSessionSummaryResponse(
+    val id: UUID,
+    val sportCode: SportCode,
+    val routineId: UUID?,
+    val routineName: String?,
+    val routineSplitDayNo: Int?,
+    val routineSplitCount: Int?,
+    val routineWorkoutDayNumber: Int?,
+    val status: WorkoutSessionStatus,
+    val startedAt: Instant,
+    val endedAt: Instant?,
+    val exerciseCount: Int,
+    val completedSetCount: Int,
+    val version: Long,
 )

@@ -18,9 +18,14 @@ import com.fitmate.app.BuildConfig
 import com.fitmate.app.running.RunTrackingService
 import com.fitmate.app.running.RunTrackingStore
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import com.fitmate.app.data.remote.FitMateApiClient
 
 internal data class RunLap(val number: Int, val meters: Int, val seconds: Int)
-internal data class RunResult(val meters: Int, val seconds: Int, val laps: List<RunLap>, val goal: String, val target: Int, val rpe: Int, val condition: Int, val memo: String, val completedAt: Long? = null)
+internal data class RunResult(val meters: Int, val seconds: Int, val laps: List<RunLap>, val goal: String, val target: Int, val rpe: Int, val condition: Int, val memo: String, val completedAt: Long? = null, val serverId: String? = null)
 internal class RunningState {
     var phase by mutableStateOf("설정")
     var goal by mutableStateOf("거리")
@@ -46,6 +51,8 @@ internal class RunningState {
     var memo by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
     var deviceTracking by mutableStateOf(false)
+    var pendingUpload by mutableStateOf<String?>(null)
+    var completedAt by mutableStateOf<Long?>(null)
     val history = mutableStateListOf<RunResult>()
 
     fun tick(secondsToAdd: Int, metersToAdd: Int) {
@@ -76,7 +83,7 @@ internal class RunningState {
     }
     fun reset() {
         phase = "설정"; paused = false; stationary = false; seconds = 0; meters = 0; laps = emptyList()
-        error = null; memo = ""; rpe = "5"; condition = "3"; exitDialog = false; deviceTracking = false
+        error = null; memo = ""; rpe = "5"; condition = "3"; exitDialog = false; deviceTracking = false; pendingUpload = null; completedAt = null
     }
 }
 
@@ -91,9 +98,12 @@ internal fun runPace(seconds: Int, meters: Int): String {
     state: RunningState,
     locationConsent: Boolean,
     setLocationConsent: (Boolean) -> Unit,
+    api: FitMateApiClient,
     home: (Boolean) -> Unit
 ) = with(state) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
     val tracking by RunTrackingStore.updates.collectAsState()
     var consentDialog by remember { mutableStateOf(false) }
     fun startDeviceTracking() {
@@ -111,7 +121,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
             signal = tracking.message ?: "정상"; stationary = tracking.currentSpeedMps?.let { it < 0.5f } ?: false
         } else if (deviceTracking && tracking.message != null) error = tracking.message
     }
-    BackHandler(phase != "설정") { exitDialog = true }
+    BackHandler(phase != "설정") { if (!saving) exitDialog = true }
     val autoPaused = autoPause && stationary && !deviceTracking
     LaunchedEffect(phase, paused, autoPaused, demo, signal, deviceTracking) {
         while (phase == "진행" && !paused && !autoPaused && !deviceTracking) {
@@ -197,7 +207,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     if (samsung) Text("심박수 — · Samsung Health 수신 대기")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton({ if (deviceTracking) { if (paused) RunTrackingService.resume(context) else RunTrackingService.pause(context) } else paused = !paused }) { Text(if (paused) "재개" else "일시정지") }
-                        Button({ RunTrackingService.stop(context); deviceTracking = false; phase = "리포트" }) { Text("종료") }
+                        Button({ RunTrackingService.stop(context); deviceTracking = false; completedAt = System.currentTimeMillis(); phase = "리포트" }) { Text("종료") }
                     }
                 }
                 SoftCard {
@@ -240,16 +250,34 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     val best = history.filter { it.meters == meters && meters > 0 }.minOfOrNull { it.seconds }
                     if (best != null && seconds < best) Text("동일 거리 개인 최고 기록!")
                 }
-                SoftCard {
+                if (pendingUpload == null) SoftCard {
                     Text("RPE (1~10)"); Choices((1..10).map(Int::toString), rpe) { rpe = it }
                     Text("컨디션 (1 나쁨 ~ 5 좋음)"); Choices((1..5).map(Int::toString), condition) { condition = it }
                     OutlinedTextField(memo, { memo = it.take(500) }, label = { Text("메모") }, modifier = Modifier.fillMaxWidth())
                     Text("가볍게 걷고 수분을 보충하며 마무리하세요.")
                 }
-                PrimaryAction("기록 저장하고 홈으로") {
-                    history.add(0, RunResult(meters, seconds, laps.toList(), goal, target, rpe.toInt(), condition.toInt(), memo, System.currentTimeMillis()))
-                    reset(); home(true)
-                }
+                if (pendingUpload != null) Text("저장 요청한 기록을 확인 중입니다. 다시 시도해도 같은 기록으로 저장됩니다.", style = MaterialTheme.typography.bodySmall)
+                ErrorText(error)
+                Button(onClick = {
+                    if (!saving) {
+                        saving = true; error = null
+                        scope.launch {
+                            try {
+                                val finishedAt = completedAt ?: System.currentTimeMillis().also { completedAt = it }
+                                val body = pendingUpload?.let { com.google.gson.JsonParser.parseString(it).asJsonObject }
+                                    ?: com.google.gson.Gson().toJsonTree(runningPayload(state, finishedAt) + ("clientRecordId" to java.util.UUID.randomUUID().toString())).asJsonObject.also { pendingUpload = it.toString() }
+                                val saved = withContext(Dispatchers.IO) { ServerRecordApi(api).saveRun(body) }
+                                history.add(0, RunResult(saved.recordInt("distanceMeters") ?: 0, saved.recordInt("activeDurationSeconds") ?: 0,
+                                    saved.rows("laps").map { RunLap(requireNotNull(it.recordInt("lapNo")), requireNotNull(it.recordInt("distanceMeters")), requireNotNull(it.recordInt("durationSeconds"))) },
+                                    goal, target, saved.recordInt("rpe") ?: 5, saved.recordInt("conditionScore") ?: 3, saved.text("memo"), saved.recordTime("completedAt"), saved.text("id")))
+                                reset(); home(true)
+                            } catch (failure: Exception) {
+                                if (failure is CancellationException) throw failure
+                                error = "${failure.message ?: "저장하지 못했어요."} 입력한 기록은 유지됩니다."
+                            } finally { saving = false }
+                        }
+                    }
+                }, enabled = !saving, modifier = Modifier.fillMaxWidth()) { Text(if (saving) "서버에 저장 중…" else "기록 저장하고 홈으로") }
             }
         }
     }

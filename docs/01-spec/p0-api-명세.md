@@ -2,7 +2,7 @@
 
 - 작성일: 2026-09-03
 - 최종 수정일: 2026-09-07
-- 버전: v0.5
+- 버전: v0.6
 - 상태: 검토 중
 - 대상: Kotlin Spring Boot Backend, Android Client
 - 기준 문서:
@@ -783,6 +783,7 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
         "targetGoalCode": "FITNESS",
         "targetLevel": "BEGINNER",
         "difficulty": "BEGINNER",
+        "splitCount": 1,
         "template": true,
         "version": 0
       }
@@ -806,6 +807,7 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
     "targetGoalCode": "HABIT",
     "targetLevel": "BEGINNER",
     "difficulty": "BEGINNER",
+    "splitCount": 1,
     "template": true,
     "version": 0,
     "items": [
@@ -815,6 +817,7 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
         "exerciseName": "체스트 프레스",
         "bodyPart": "CHEST",
         "sequenceNo": 1,
+        "splitDayNo": 1,
         "targetSets": 3,
         "targetRepsMin": 8,
         "targetRepsMax": 12,
@@ -839,10 +842,12 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
   "sportCode": "HEALTH",
   "name": "나의 전신 루틴",
   "sourceType": "MANUAL",
+  "splitCount": 1,
   "items": [
     {
       "exerciseId": "bf7a5460-854d-481c-9786-ed224a1a3db0",
       "sequenceNo": 1,
+      "splitDayNo": 1,
       "targetSets": 3,
       "targetRepsMin": 8,
       "targetRepsMax": 12,
@@ -867,6 +872,7 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
 - 시스템 템플릿은 수정하거나 삭제할 수 없다.
 - 사용자 루틴은 소유자만 수정하고 삭제할 수 있다.
 - 운동 순서는 루틴 안에서 중복될 수 없다.
+- `splitCount`는 `1..10`, 각 항목의 `splitDayNo`는 `1..splitCount`이며 모든 분할에 운동이 하나 이상 필요하다.
 - 목표 중량, 반복 수, RPE와 휴식 시간의 허용 범위를 검증한다.
 - 직접 구성은 `sourceType=MANUAL`, `sportCode=HEALTH`, 하나 이상의 `items`를 사용한다.
 - 템플릿 복사는 `sourceType=USER_COPY`, `sourceRoutineId`를 사용하며 원본 항목을 사용자 루틴으로 복제한다.
@@ -879,10 +885,12 @@ Android의 혼자 러닝 화면 진입은 이 활성 종목을 사용한다. 러
 {
   "version": 0,
   "name": "수정한 전신 루틴",
+  "splitCount": 1,
   "items": [
     {
       "exerciseId": "bf7a5460-854d-481c-9786-ed224a1a3db0",
       "sequenceNo": 1,
+      "splitDayNo": 1,
       "targetSets": 4,
       "targetRepsMin": 8,
       "targetRepsMax": 12,
@@ -948,6 +956,10 @@ Response `201 Created`:
     "id": "6c070701-88ca-434f-99b1-3c330d0a6f12",
     "entryType": "SOLO",
     "routineId": "6fb84380-a9f9-4641-95a2-76525a723610",
+    "routineWorkoutDayNumber": 3,
+    "routineSplitDayNo": 1,
+    "routineSplitCount": 2,
+    "focusBodyParts": ["CHEST", "BACK", "SHOULDERS"],
     "status": "READY",
     "startedAt": null,
     "endedAt": null,
@@ -960,6 +972,8 @@ Response `201 Created`:
 
 - `SOLO` 세션의 `mateParticipationId`는 `null`이다.
 - 선택한 루틴의 운동을 세션 운동 스냅샷으로 생성한다.
+- 같은 루틴의 완료 세션 수를 기준으로 누적 운동일을 계산하고, 분할 순번을 `1..splitCount` 안에서 순환한다. 취소 세션은 진행 횟수에서 제외한다.
+- 세션에는 현재 분할의 운동만 복사하며 `routineWorkoutDayNumber`, `routineSplitDayNo`, `routineSplitCount`, `focusBodyParts`를 반환한다.
 - 카탈로그나 루틴이 나중에 변경되어도 진행 중인 세션의 운동명과 부위를 유지한다.
 - Samsung Health 사용 여부는 P0에서 Android 화면 내부 선택이며 서버에 외부 데이터를 저장하지 않는다.
 
@@ -1004,11 +1018,14 @@ P0에서는 Samsung Health 서버 동기화를 하지 않으므로 `SYNC_WAITING
 {
   "exerciseId": "bf7a5460-854d-481c-9786-ed224a1a3db0",
   "sequenceNo": 3,
+  "targetSets": 3,
+  "targetWeightKg": 20,
+  "targetRepetitions": 12,
   "clientUpdatedAt": "2026-09-03T10:35:00.000Z"
 }
 ```
 
-Response는 운동 사전에서 복사한 `displayNameSnapshot`, `bodyPartSnapshot`, `sequenceNo`와 `version`을 반환한다.
+Response `201 Created`는 운동 사전에서 복사한 운동명·부위, `sequenceNo`, `version`과 생성된 미완료 세트를 반환한다. 기존 위치에 추가하면 뒤의 운동 순서를 자동으로 조정한다.
 
 ### 10.5 세션 운동 순서 또는 대체 운동 변경
 
@@ -1024,8 +1041,13 @@ Response는 운동 사전에서 복사한 `displayNameSnapshot`, `bodyPartSnapsh
 ```
 
 - 대체 운동은 원래 운동과 같은 종목이어야 한다.
-- 세션 안에서 `sequenceNo`는 중복될 수 없다.
+- 순서를 변경하면 사이에 있는 운동 순서를 자동으로 조정한다.
+- 대체 운동으로 변경해도 기존 세트 기록은 유지한다.
 - 완료된 세션은 수정할 수 없다.
+
+세션 운동 삭제는 현재 운동 `version`을 사용한다. 연결된 세트를 함께 삭제하고 남은 순서를 다시 정렬한다. 마지막 운동은 삭제할 수 없다.
+
+`DELETE /api/v1/workout-sessions/{sessionId}/exercises/{sessionExerciseId}?version=1`
 
 ### 10.6 세트 기록
 
