@@ -13,6 +13,7 @@ import java.time.Instant
 import java.util.UUID
 
 data class CreateRunningRecordRequest(
+    val clientRecordId: UUID? = null,
     val runType: RunType = RunType.FREE,
     @field:Min(1) @field:Max(1_000_000) val targetDistanceMeters: Int? = null,
     @field:Min(1) @field:Max(604_800) val targetDurationSeconds: Int? = null,
