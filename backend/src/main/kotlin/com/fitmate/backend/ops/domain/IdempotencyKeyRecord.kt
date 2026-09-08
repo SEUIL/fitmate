@@ -17,7 +17,6 @@ class IdempotencyKeyRecord(
     @Convert(converter = UuidBinaryConverter::class)
     @Column(name = "id", nullable = false, columnDefinition = "BINARY(16)")
     var id: UUID? = null,
-    @Convert(converter = UuidBinaryConverter::class)
     @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)")
     var userId: UUID? = null,
     @Convert(converter = UuidBinaryConverter::class)

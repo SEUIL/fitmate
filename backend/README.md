@@ -13,7 +13,7 @@
   - `routine`
   - `workout`
   - `report`
-  - `ops`
+- `ops`, `mate`, `matechat`, `notification`
 - 조회 시작점 API
   - `GET /api/v1/health`
   - `GET /api/v1/sports`
@@ -36,6 +36,7 @@
 - 내 프로필 조회 `GET /api/v1/users/me`와 수정 `PATCH /api/v1/users/me/profile`
 - 회원가입·프로필 API의 `customSports: [{ "name": "필라테스" }]` 저장·조회. V4 migration의 사용자 전용 테이블을 사용하며 운영 종목·숙련도는 `sports`로 유지한다.
 - V5 migration부터 `GET /api/v1/sports`는 혼자 운동 기본 진입 종목인 `HEALTH`, `RUNNING`을 표시한다. 현재 추천 루틴과 세트 기반 서버 기록은 `HEALTH`만 지원하며 러닝 기록 서버 저장은 후속 범위다.
+- P1 메이트 MVP: 모집글 목록·상세·생성·수정·마감·취소, 문의방·메시지·읽음, 참가 신청·수락·거절·취소, 앱 내 메이트 알림을 포함한다. 상세 계약은 `docs/01-spec/p1-mate-api-명세.md`를 따른다.
 
 루틴 추천은 로그인 사용자의 주 목표와 해당 운영 종목 숙련도를 사용한다. 정확히 일치하는 템플릿, 같은 목표의 숙련도 공통 템플릿, 헬스 초급 전신 fallback 순서로 선택한다. 시스템 템플릿은 모든 로그인 사용자가 조회할 수 있고 사용자 루틴은 소유자만 조회할 수 있다.
 
@@ -45,7 +46,7 @@
 
 - 비밀번호 변경·회원 탈퇴와 약관/지역/시설 전용 API
 - 리포트 계산
-- idempotency 처리 로직
+- 일반 DM·Push 전달·메이트 운동 세션 생성
 
 위 항목은 역할분담 문서 기준으로 Backend A 계약 또는 Backend B 상세 구현 단계에서 이어서 붙이면 된다.
 
@@ -74,18 +75,13 @@ FITMATE_DB_PASSWORD=fitmate
 
 ## Flyway 경로
 
-Flyway는 아래 두 경로를 모두 본다.
-
-- `../db/migration`
-- `db/migration`
-
-즉, `backend/`에서 실행하든 저장소 루트에서 실행하든 기존 SQL을 재사용할 수 있게 맞춰 두었다.
+Flyway는 `../db/migration` 경로를 읽는다. 따라서 `backend/`를 작업 디렉터리로 실행한다.
 
 ## 커스텀 관심 운동 검증
 
 `gradlew.bat test`는 단위 테스트를 실행한다. 실제 MySQL 마이그레이션과 회원가입·프로필 HTTP 통합 테스트는 별도 임시 DB를 준비한 뒤 `FITMATE_TEST_DB_URL`을 해당 JDBC URL로 설정하고 `gradlew.bat test --rerun-tasks`로 실행한다. 통합 테스트는 임시 DB의 로컬 `root` 계정과 빈 비밀번호를 사용하며 테스트 사용자를 생성하므로 개발 공용·운영 DB를 지정하지 않는다. 해당 환경변수가 없으면 MySQL 통합 테스트는 건너뛴다.
 
-검증 범위는 가입 후 재조회, 기존 클라이언트의 필드 생략, 수정 시 유지·교체·삭제, 이름 정규화와 중복 거절, 사용자별 분리, 실패 시 트랜잭션 롤백, 동시 수정의 version 충돌이다. Android의 Mock 관심 운동을 이 API에 연결하는 작업은 별도다.
+검증 범위는 가입 후 재조회, 기존 클라이언트의 필드 생략, 수정 시 유지·교체·삭제, 이름 정규화와 중복 거절, 사용자별 분리, 실패 시 트랜잭션 롤백, 동시 수정의 version 충돌이다. 메이트 범위는 V5→V8 업그레이드, 생성 멱등성, 마지막 자리 수락, 채팅 재전송·읽음·종료 경쟁, 알림 권한과 원자성을 실제 MySQL HTTP 통합 테스트로 확인한다. Android 연동은 별도다.
 
 ## 다음 추천 작업 순서
 
