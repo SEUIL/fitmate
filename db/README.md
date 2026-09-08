@@ -11,10 +11,11 @@
 7. Run `V7__add_routine_split_cycle.sql` to add user-defined 1-10 day split routines and session split snapshots.
 8. Run `V8__create_running_records.sql` to store completed running summaries, laps, optional route points, goals, condition, and memo.
 9. Run `V9` through `V13` for social relationships, media, community, direct messages, notifications, reports, and profile images.
-10. Run `V14__create_mate_posts_and_participations.sql` to create mate posts and participation history.
-11. Run `V15__extend_user_notifications_for_mate.sql` to add idempotent mate events to the existing in-app notification table.
-12. Run `V16__create_mate_inquiry_chat.sql` to create one-to-one mate inquiry rooms and messages.
-13. Run `V17__add_mate_post_list_index.sql` to add the status, creation-time, and ID list index used by cursor pagination.
+10. Run `V14__create_inbody_analysis_and_records.sql` to create InBody analysis requests and normalized records.
+11. Run `V15__create_mate_posts_and_participations.sql` to create mate posts and participation history.
+12. Run `V16__extend_user_notifications_for_mate.sql` to add idempotent mate events to the existing in-app notification table.
+13. Run `V17__create_mate_inquiry_chat.sql` to create one-to-one mate inquiry rooms and messages.
+14. Run `V18__add_mate_post_list_index.sql` to add the status, creation-time, and ID list index used by cursor pagination.
 
 Regenerate V6 only before it is deployed: `./generate-region-migration.ps1 -Archive <official-code-export.zip> -Output migration/V6__seed_legal_dong_regions.sql`. Its header records the source checksum. After deployment, use a new migration for code changes.
 

@@ -28,7 +28,7 @@ class MateMigrationUpgradeIntegrationTest {
             assertTrue(sportsBefore > 0)
 
             val latest = flyway(url, user, password)
-            assertEquals(4, latest.migrate().migrationsExecuted)
+            assertEquals(5, latest.migrate().migrationsExecuted)
             assertEquals(sportsBefore, count(url, user, password, "fitness_sports"))
             listOf("fitness_mate_posts", "fitness_mate_participations", "user_notifications", "fitness_mate_chat_rooms", "fitness_mate_chat_messages").forEach {
                 assertEquals(1, tableExists(url, user, password, it))
