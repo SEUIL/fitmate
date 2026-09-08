@@ -256,12 +256,11 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     TextButton(community, Modifier.fillMaxWidth()) { Text("커뮤니티에서 더 보기", color = FitMateColors.TextPrimary) }
 }
 
-@Composable internal fun ProfileOverview(profile: UserProfile, social: SocialState, workouts: List<WorkoutSummary>, runs: List<RunResult>, edit: () -> Unit, inbody: () -> Unit, samsung: () -> Unit, admin: () -> Unit, account: () -> Unit, history: () -> Unit, notifications: () -> Unit, reports: () -> Unit, server: ServerSocialApi? = null, profileImageSelected: (String) -> Unit = {}) {
+@Composable internal fun ProfileOverview(profile: UserProfile, social: SocialState, workouts: List<WorkoutSummary>, runs: List<RunResult>, edit: () -> Unit, inbody: () -> Unit, samsung: () -> Unit, admin: () -> Unit, account: () -> Unit, history: () -> Unit, notifications: () -> Unit, reports: () -> Unit, openSettings: () -> Unit, server: ServerSocialApi? = null, recordApi: com.fitmate.app.data.remote.FitMateApiClient? = null) {
     var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("게시물") }
-    var settings by remember { mutableStateOf(false) }
     var opened by remember { mutableStateOf<FeedEntry?>(null) }
     val mine = social.feed.filter { it.mine }
-    SocialTitle(profile.nickname, Icons.Outlined.Menu, "프로필 설정") { settings = true }
+    SocialTitle(profile.nickname, Icons.Outlined.Menu, "프로필 설정", openSettings)
     ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo, listOf((workouts.size + runs.size).toString(), social.accounts.followers.size.toString(), social.following.size.toString()), server) {
         if (it == "운동 기록") tab = it else social.accounts.directory = it
     }
@@ -282,7 +281,8 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         }
         ProfilePostGrid(mine, server) { opened = it }
     } else {
-        WorkoutRecordBrowser(workouts, runs)
+        if (recordApi != null) ServerRecordList(recordApi)
+        else WorkoutRecordBrowser(workouts, runs)
     }
     }
     opened?.let { entry -> SocialSheet({ opened = null }) {
@@ -293,26 +293,60 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         Text("${entry.visibility} · ${entry.comments.size}개의 댓글", color = FitMateColors.TextSecondary)
         entry.comments.forEach { Text("${it.author}: ${it.text}") }
     } }
-    if (settings) SocialSheet({ settings = false }) {
-        Text("설정 및 운동 정보", style = MaterialTheme.typography.titleLarge)
-        Text("${if (profile.isPrivate) "비공개" else "공개"} 계정 · ${profile.experience}")
-        Text("${profile.goals.joinToString()} · ${profile.availableTime}")
-        if (profile.facilityName.isNotBlank()) Text(profile.facilityName)
-        TextButton({ settings = false; edit() }) { Text("운동 프로필 · 공개 범위 수정") }
-        TextButton({ settings = false; samsung() }) { Text("Samsung Health 연결 관리") }
-        TextButton({ settings = false; account() }) { Text("계정·개인정보 관리") }
-        com.fitmate.app.ui.theme.AppearanceSettings()
-        TextButton({ settings = false; notifications() }) { Text("알림·알림 설정") }
-        TextButton({ settings = false; reports() }) { Text("내 신고 내역") }
-        TextButton({ settings = false; social.accounts.directory = "팔로우 요청" }) { Text("팔로우 요청 관리") }
-        TextButton({ settings = false; social.accounts.directory = "사용자" }) { Text("사용자 둘러보기") }
-        Text("프로필 사진", style = MaterialTheme.typography.titleMedium)
-        PhotoActions(profileImageSelected)
-        if (profile.profileImageUrl != null) Text("새 사진을 선택하면 즉시 변경됩니다.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-        DebugOnly {
-            var tools by remember { mutableStateOf(false) }
-            TextButton({ tools = !tools }) { Text("개발 및 테스트 도구") }
-            if (tools) TextButton({ settings = false; admin() }) { Text("운영자 데모") }
-        }
+}
+
+@Composable internal fun SettingsScreen(
+    modifier: Modifier,
+    profile: UserProfile,
+    onProfileEdit: () -> Unit,
+    onSamsungHealth: () -> Unit,
+    onAccount: () -> Unit,
+    onAppearance: () -> Unit,
+    onNotifications: () -> Unit,
+    onFollowRequests: () -> Unit,
+    onReports: () -> Unit,
+    onOpenAdmin: () -> Unit,
+) = Screen(modifier) {
+    SettingsGroup("계정 및 프로필") {
+        SettingsRow(Icons.Outlined.PersonOutline, "프로필 편집", "이름, 활동 지역, 소개를 관리해요", onProfileEdit)
+        SettingsRow(Icons.Outlined.Lock, "공개 범위", if (profile.isPrivate) "현재 비공개 계정" else "현재 공개 계정", onProfileEdit)
+        SettingsRow(Icons.Outlined.Image, "프로필 사진", "프로필 편집에서 사진을 변경해요", onProfileEdit)
     }
+    SettingsGroup("운동 및 기기") {
+        SettingsRow(Icons.Outlined.FitnessCenter, "운동 프로필", "관심 운동, 목표, 가능 시간을 설정해요", onProfileEdit)
+        SettingsRow(Icons.Outlined.FavoriteBorder, "Samsung Health", "연결 상태와 운동 기록 동기화를 관리해요", onSamsungHealth, trailing = "연결 관리")
+    }
+    SettingsGroup("앱 환경") {
+        SettingsRow(Icons.Outlined.LightMode, "화면 모드", "시스템 설정, 라이트, 다크", onAppearance, trailing = "변경")
+        SettingsRow(Icons.Outlined.NotificationsNone, "알림 설정", "메이트, DM, 커뮤니티 알림을 관리해요", onNotifications)
+    }
+    SettingsGroup("지원") {
+        SettingsRow(Icons.Outlined.GroupAdd, "팔로우 요청", "승인 대기 중인 요청을 확인해요", onFollowRequests)
+        SettingsRow(Icons.Outlined.GppMaybe, "내 신고 내역", "신고 처리 상태를 확인해요", onReports)
+    }
+    DebugOnly { SettingsGroup("개발") { SettingsRow(Icons.Outlined.AdminPanelSettings, "운영자 데모", "개발 환경에서만 표시됩니다", onOpenAdmin) } }
+}
+
+@Composable private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, Modifier.padding(top = 12.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = FitMateColors.TextSecondary)
+        content()
+    }
+}
+
+@Composable private fun SettingsRow(icon: ImageVector, title: String, description: String, onClick: () -> Unit, trailing: String? = null) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(icon, null, Modifier.size(22.dp), tint = FitMateColors.TextPrimary)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
+        }
+        trailing?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = FitMateColors.Primary) }
+        Icon(Icons.Outlined.ChevronRight, null, Modifier.size(20.dp), tint = FitMateColors.TextSecondary)
+    }
+    HorizontalDivider(color = FitMateColors.Outline)
 }

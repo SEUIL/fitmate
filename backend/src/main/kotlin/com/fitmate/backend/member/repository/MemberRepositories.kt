@@ -35,6 +35,7 @@ interface UserCustomSportRepository : JpaRepository<UserCustomSport, UserCustomS
 }
 
 interface RegionRepository : JpaRepository<Region, UUID> {
+    fun findAllByIsActiveTrueAndCode(code: String): List<Region>
     fun findAllByIsActiveTrueAndParentIdOrderByNameAsc(parentId: UUID?): List<Region>
 }
 

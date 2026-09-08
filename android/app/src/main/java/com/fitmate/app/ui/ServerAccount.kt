@@ -23,39 +23,7 @@ internal val skillCodes = linkedMapOf("입문" to "BEGINNER", "6개월 미만" t
 internal fun Sport.apiCode() = if (this == Sport.FITNESS) "HEALTH" else name
 
 @Composable internal fun ServerRegionPicker(api: FitMateApiClient, label: String, choose: (String, String) -> Unit) {
-    var path by remember { mutableStateOf(emptyList<JsonObject>()) }
-    var regions by remember { mutableStateOf(emptyList<JsonObject>()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(false) }
-    var retry by remember { mutableStateOf(0) }
-    val parent = path.lastOrNull()
-    LaunchedEffect(path, retry) {
-        if (parent?.text("level") == "TOWN") return@LaunchedEffect
-        loading = true; error = null; regions = emptyList()
-        try { regions = withContext(Dispatchers.IO) { api.items("regions" + (parent?.let { "?parentId=${it.text("id")}" } ?: ""), false) } }
-        catch (failure: Exception) { error = failure.message }
-        finally { loading = false }
-    }
-    Text("활동 지역 · 읍/면/동", style = MaterialTheme.typography.labelLarge)
-    if (label.isBlank() && parent != null) Text(parent.text("name"))
-    if (label.isNotBlank()) Text(label)
-    Row {
-        if (path.isNotEmpty()) TextButton({ path = path.dropLast(1); choose("", "") }) { Text("상위 지역") }
-        Box {
-            OutlinedButton({ expanded = true }, enabled = !loading && regions.isNotEmpty() && parent?.text("level") != "TOWN") {
-                Text(if (loading) "지역 불러오는 중…" else "지역 선택")
-            }
-            DropdownMenu(expanded, { expanded = false }) {
-                regions.forEach { region -> DropdownMenuItem(text = { Text(region.text("name")) }, onClick = {
-                    path = path + region; expanded = false
-                    if (region.text("level") == "TOWN") choose(region.text("id"), region.text("name")) else choose("", "")
-                }) }
-            }
-        }
-    }
-    if (!loading && regions.isEmpty() && parent?.text("level") != "TOWN") Text("선택 가능한 하위 지역이 없습니다.")
-    error?.let { ErrorText(it); TextButton({ retry++ }) { Text("지역 다시 불러오기") } }
+    KakaoRegionPicker(api, label, choose)
 }
 
 /** 서버에 등록된 시설을 지역 기준으로 찾아 제안하되, 등록되지 않은 시설명 직접 입력도 보존한다. */

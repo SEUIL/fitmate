@@ -26,6 +26,21 @@ import java.util.UUID
 class RunningRecordApiIntegrationTest {
     @Autowired private lateinit var http: TestRestTemplate
 
+    @Test
+    fun `retry with same client record id creates one owned record`() {
+        val owner = signup()
+        val body = mapOf("clientRecordId" to UUID.randomUUID().toString(), "runType" to "FREE",
+            "completedAt" to "2026-09-08T12:00:00Z", "activeDurationSeconds" to 60, "distanceMeters" to 0)
+        val first = command("/api/v1/running-records", HttpMethod.POST, owner, body)
+        val retry = command("/api/v1/running-records", HttpMethod.POST, owner, body)
+        assertEquals(HttpStatus.CREATED, first.statusCode)
+        assertEquals(HttpStatus.CREATED, retry.statusCode)
+        assertEquals(first.body!!["data"]["id"], retry.body!!["data"]["id"])
+        val list = command("/api/v1/running-records?cursor=0&size=20", HttpMethod.GET, owner, null)
+        assertEquals(1, list.body!!["data"]["items"].size())
+        assertEquals(HttpStatus.NOT_FOUND, command("/api/v1/running-records", HttpMethod.POST, signup(), body).statusCode)
+    }
+
     companion object {
         @JvmStatic
         @DynamicPropertySource
