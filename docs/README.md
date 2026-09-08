@@ -28,3 +28,4 @@ FitMate 프로젝트 문서 보관 위치입니다.
 - [루틴 API 프론트엔드 연동](./02-technical/루틴-api-프론트엔드-연동.md)
 - [운동 기록 API 프론트엔드 연동](./02-technical/운동-기록-api-프론트엔드-연동.md)
 - [러닝 기록 API 프론트엔드 연동](./02-technical/러닝-기록-api-프론트엔드-연동.md)
+- [인바디 AI 판독 API 프론트엔드 연동](./02-technical/인바디-ai-api-프론트엔드-연동.md)

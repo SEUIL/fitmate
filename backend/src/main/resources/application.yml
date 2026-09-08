@@ -1,6 +1,8 @@
 spring:
   application:
     name: fitmate-backend
+  config:
+    import: optional:file:./local.properties
   datasource:
     url: ${FITMATE_DB_URL:jdbc:mysql://localhost:3307/fitmate?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${FITMATE_DB_USERNAME:fitmate}
@@ -28,6 +30,14 @@ server:
   port: 8080
 
 fitmate:
+  inbody-ai:
+    provider: ${FITMATE_INBODY_AI_PROVIDER:MOCK}
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      model: ${GEMINI_MODEL:gemini-3.7-flash}
+      base-url: https://generativelanguage.googleapis.com
+      timeout-seconds: 30
+      direct-connection: ${GEMINI_DIRECT_CONNECTION:false}
   media:
     storage-dir: ${FITMATE_MEDIA_STORAGE_DIR:./data/media}
     max-image-bytes: 10485760

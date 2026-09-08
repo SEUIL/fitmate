@@ -76,6 +76,7 @@ signing.properties
 /backend/build/
 /backend/out/
 /backend/.idea/
+/backend/local.properties
 /backend/src/main/resources/application-local.yml
 /backend/data/
 

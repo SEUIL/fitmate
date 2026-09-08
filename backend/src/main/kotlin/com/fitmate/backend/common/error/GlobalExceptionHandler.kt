@@ -13,6 +13,7 @@ import org.springframework.validation.FieldError
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.multipart.support.MissingServletRequestPartException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 
 @RestControllerAdvice
@@ -75,7 +76,11 @@ class GlobalExceptionHandler {
         )
     }
 
-    @ExceptionHandler(MethodArgumentTypeMismatchException::class, HttpMessageNotReadableException::class)
+    @ExceptionHandler(
+        MethodArgumentTypeMismatchException::class,
+        HttpMessageNotReadableException::class,
+        MissingServletRequestPartException::class,
+    )
     fun handleBadRequest(exception: Exception): ResponseEntity<ErrorResponse> {
         return ResponseEntity.badRequest().body(
             ErrorResponse(
