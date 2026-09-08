@@ -46,12 +46,13 @@ internal class FitMateApiClient(
     @Synchronized fun clearSession() { tokenStore?.write(null); tokens = null; tokensLoaded = true }
 
     @Synchronized fun request(method: String, path: String, body: Any? = null,
-        authenticated: Boolean = true, retryAuth: Boolean = true): JsonElement {
+        authenticated: Boolean = true, retryAuth: Boolean = true, headers: Map<String, String> = emptyMap()): JsonElement {
+        require(headers.keys.all { it == "Idempotency-Key" }) { "지원하지 않는 추가 헤더입니다." }
         require(baseUrl.isNotBlank()) { "연결할 서버 주소가 설정되지 않았습니다." }
         if (authenticated) loadSession()
         if (authenticated && tokens == null) throw ApiFailure(401, "로그인이 필요합니다.")
         try {
-            val response = exchange(method, "$baseUrl/$path", body, if (authenticated) tokens?.accessToken else null)
+            val response = exchange(method, "$baseUrl/$path", body, if (authenticated) tokens?.accessToken else null, headers)
             return response.get("data") ?: JsonNull.INSTANCE
         } catch (error: ApiFailure) {
             if (error.status != 401 || !authenticated || !retryAuth) throw error
@@ -64,7 +65,7 @@ internal class FitMateApiClient(
                 throw refreshError
             }
             tokenStore?.write(refreshed); tokens = refreshed
-            return request(method, path, body, authenticated, retryAuth = false)
+            return request(method, path, body, authenticated, retryAuth = false, headers = headers)
         }
     }
 
@@ -120,7 +121,7 @@ internal class FitMateApiClient(
 
     private fun get(url: String): JsonObject = exchange("GET", url, null, null)
 
-    private fun exchange(method: String, url: String, payload: Any?, token: String?): JsonObject {
+    private fun exchange(method: String, url: String, payload: Any?, token: String?, headers: Map<String, String> = emptyMap()): JsonObject {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = REQUEST_TIMEOUT_MS
@@ -128,6 +129,7 @@ internal class FitMateApiClient(
             setRequestProperty("Accept", "application/json")
             instanceFollowRedirects = false
             token?.let { setRequestProperty("Authorization", "Bearer $it") }
+            headers.forEach { (name, value) -> setRequestProperty(name, value) }
         }
         return try {
             if (payload != null) {

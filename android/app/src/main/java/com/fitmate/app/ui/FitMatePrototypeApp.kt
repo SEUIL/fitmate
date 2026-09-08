@@ -97,6 +97,7 @@ import com.fitmate.app.data.model.WorkoutSet
 import com.fitmate.app.data.model.WorkoutSummary
 import com.fitmate.app.data.remote.FitMateApiClient
 import com.fitmate.app.data.remote.ServerMateApi
+import com.fitmate.app.data.remote.ServerInbodyApi
 import com.fitmate.app.data.remote.ServerSocialApi
 import com.fitmate.app.data.repository.MockFitMateRepository
 import com.fitmate.app.running.RunTrackingService
@@ -182,13 +183,15 @@ fun FitMatePrototypeApp(
     var storageError by remember { mutableStateOf(localStore.readFailed) }
     val exerciseCatalog = rememberExerciseCatalog(apiClient)
     val serverMate = remember(apiClient) { ServerMateApi(apiClient) }
+    val serverInbody = remember(apiClient) { ServerInbodyApi(apiClient) }
     val serverSocial = remember(apiClient) { ServerSocialApi(apiClient) }
     val repository = remember { MockFitMateRepository }
     val screenStates = rememberSaveableStateHolder()
     var route by remember { mutableStateOf(if (signedIn) PrototypeRoute.HOME else PrototypeRoute.LOGIN) }
     var profile by remember { mutableStateOf(serverAccount.toUserProfile()) }
     var profileVersion by remember { mutableStateOf(serverAccount.getAsJsonObject("profile").get("version").asLong) }
-    var matePosts by remember { mutableStateOf(initial.mates?.posts ?: repository.matePosts()) }
+    var matePosts by remember { mutableStateOf(emptyList<MatePost>()) }
+    val mateServerState = remember { MateServerState() }
     var selectedMatePost by remember { mutableStateOf(matePosts.firstOrNull() ?: repository.matePosts().first()) }
     var latestWorkoutSummary by remember { mutableStateOf(WorkoutSummary(0, emptyList(), false)) }
     var latestServerSessionId by remember { mutableStateOf<String?>(null) }
@@ -214,7 +217,7 @@ fun FitMatePrototypeApp(
     var cancelError by remember { mutableStateOf<String?>(null) }
     var inbodyOrigin by remember { mutableStateOf(PrototypeRoute.HOME) }
     val runningState = remember { initial.running?.restore() ?: RunningState() }
-    val inbodyState = remember { InbodyState().also { state -> initial.body?.let { rows -> state.records.clear(); state.records.addAll(rows.map { it.restore() }) } } }
+    val inbodyState = remember { InbodyState() }
     val mateState = remember { MateFeatureState().also { initial.mates?.restore(it) } }
     val socialState = remember { SocialState(repository.communityPosts(), repository.dmConversations()).also { it.accounts.photo = initial.photo; initial.social?.restore(it) } }
     var currentChat by remember { mutableStateOf<ChatRoom?>(null) }
@@ -228,19 +231,15 @@ fun FitMatePrototypeApp(
     LaunchedEffect(exerciseCatalog) { exerciseCatalog.refresh() }
     LaunchedEffect(signedIn, apiClient) {
         if (!signedIn) return@LaunchedEffect
-        runCatching { withContext(Dispatchers.IO) { serverMate.posts() } }
-            .getOrNull()
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { remotePosts ->
-                matePosts = remotePosts
-                selectedMatePost = remotePosts.first()
-            }
+        try { matePosts = withContext(Dispatchers.IO) { serverMate.posts() } }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { startError = "메이트 목록을 불러오지 못했습니다. 같이 운동하기에서 다시 확인해 주세요." }
     }
     val currentSnapshot by rememberUpdatedState {
         FrontendSnapshot(profile = if (registered) profile else null, signedIn = signedIn,
             workout = workoutSession?.snapshot(), history = workoutHistory, routines = savedRoutines,
             photo = socialState.accounts.photo, healthConsent = healthConsent, locationConsent = locationConsent, running = runningState.snapshot(),
-            social = socialState.snapshot(), body = inbodyState.records.map { it.snapshot() }, mates = mateState.snapshot(matePosts))
+            social = socialState.snapshot(), body = if (inbodyState.loaded) inbodyState.records.map { it.snapshot() } else initial.body, mates = mateState.snapshot(matePosts))
     }
     LaunchedEffect(localStore) {
         snapshotFlow { currentSnapshot() }.conflate().collect { snapshot ->
@@ -302,7 +301,7 @@ fun FitMatePrototypeApp(
         route = when (route) {
             PrototypeRoute.INBODY -> inbodyOrigin
             PrototypeRoute.DM_DETAIL -> if (socialState.accounts.opened != null) PrototypeRoute.PERSON else PrototypeRoute.DM
-            PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE -> PrototypeRoute.MATE_LIST
+            PrototypeRoute.MATE_LIST, PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE -> if (mateServerState.back()) PrototypeRoute.MATE_LIST else PrototypeRoute.HOME
             PrototypeRoute.HEALTH_ROUTINE, PrototypeRoute.RUNNING -> PrototypeRoute.SOLO
             PrototypeRoute.WORKOUT_PREP -> PrototypeRoute.HEALTH_ROUTINE
             PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.FOLLOW_REQUESTS, PrototypeRoute.ACCOUNT, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
@@ -313,7 +312,7 @@ fun FitMatePrototypeApp(
         topBar = {
             if (route !in setOf(PrototypeRoute.HOME, PrototypeRoute.ONBOARDING, PrototypeRoute.COMMUNITY, PrototypeRoute.PROFILE, PrototypeRoute.PERSON, PrototypeRoute.MATE_LIST, PrototypeRoute.DM)) {
                 TopAppBar(
-                    title = { Text(if (route == PrototypeRoute.DM_DETAIL) currentChat?.name.orEmpty() else if (route == PrototypeRoute.PERSON) socialState.accounts.opened.orEmpty() else route.title) },
+                    title = { Text(if (route == PrototypeRoute.INBODY && inbodyState.phase in setOf("상세", "기록 상세")) "신체 구성 상세" else if (route == PrototypeRoute.DM_DETAIL) currentChat?.name.orEmpty() else if (route == PrototypeRoute.PERSON) socialState.accounts.opened.orEmpty() else route.title) },
                     navigationIcon = {
                         Text("‹", modifier = Modifier.padding(horizontal = 20.dp).clickable {
                             if (route == PrototypeRoute.PERSON) { socialState.accounts.opened = null; route = personOrigin; return@clickable }
@@ -323,13 +322,13 @@ fun FitMatePrototypeApp(
                                 return@clickable
                             }
                             if (route == PrototypeRoute.INBODY && inbodyState.phase != "목록") {
-                                inbodyState.phase = "목록"
+                                if (!inbodyState.busy) inbodyState.phase = if (inbodyState.phase == "상세") "검수" else "목록"
                                 return@clickable
                             }
                             route = when (route) {
                                 PrototypeRoute.INBODY -> inbodyOrigin
                                 PrototypeRoute.DM_DETAIL -> if (socialState.accounts.opened != null) PrototypeRoute.PERSON else PrototypeRoute.DM
-                                PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE -> PrototypeRoute.MATE_LIST
+                                PrototypeRoute.MATE_LIST, PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE -> if (mateServerState.back()) PrototypeRoute.MATE_LIST else PrototypeRoute.HOME
                                 PrototypeRoute.HEALTH_ROUTINE -> PrototypeRoute.SOLO
                                 PrototypeRoute.WORKOUT_PREP -> PrototypeRoute.HEALTH_ROUTINE
                                 PrototypeRoute.WORKOUT -> PrototypeRoute.WORKOUT_PREP
@@ -405,6 +404,17 @@ fun FitMatePrototypeApp(
                         socialState.serverChat(notice.target)?.let { currentChat = it; route = PrototypeRoute.DM_DETAIL }
                             ?: run { route = PrototypeRoute.DM }
                     }
+                    "MATE_POST" -> {
+                        mateServerState.postId = notice.target
+                        mateServerState.page = if (notice.target.isNullOrBlank()) "목록" else "상세"
+                        route = PrototypeRoute.MATE_LIST
+                    }
+                    "MATE_CHAT_ROOM" -> {
+                        mateServerState.roomId = notice.target
+                        mateServerState.chatOrigin = "문의 목록"
+                        mateServerState.page = if (notice.target.isNullOrBlank()) "문의 목록" else "채팅"
+                        route = PrototypeRoute.MATE_LIST
+                    }
                     "NOTICE" -> socialState.notice = "공지사항 예시 · 실제 운영 공지는 서버 연결 후 제공됩니다."
                     else -> route = runCatching { PrototypeRoute.valueOf(notice.destination) }.getOrDefault(PrototypeRoute.HOME)
                 }
@@ -461,54 +471,9 @@ fun FitMatePrototypeApp(
                 if (saved) mateState.completeWorkout() else mateState.activeWorkoutId = null
                 route = PrototypeRoute.HOME
             }
-            PrototypeRoute.MATE_LIST -> MateListFlow(Modifier.padding(padding), matePosts.filter {
-                it.authorName !in socialState.blocked &&
-                    (it.authorName == profile.nickname || it.details.visibility == "전체 공개" || it.authorName in socialState.mutual)
-            }, mateState, { post ->
-                selectedMatePost = post
-                route = PrototypeRoute.MATE_DETAIL
-            }, { route = PrototypeRoute.MATE_WRITE })
-            PrototypeRoute.MATE_DETAIL -> MateDetailFlow(
-                modifier = Modifier.padding(padding),
-                post = selectedMatePost,
-                nickname = profile.nickname,
-                room = mateState.room(selectedMatePost.id),
-                blocked = selectedMatePost.authorName in socialState.blocked,
-                start = {
-                    if (workoutSession != null) {
-                        route = PrototypeRoute.WORKOUT
-                    } else if (runningState.phase != "설정") {
-                        route = PrototypeRoute.RUNNING
-                    } else {
-                    mateState.activeWorkoutId = selectedMatePost.id
-                    route = if (selectedMatePost.sport == Sport.RUNNING) PrototypeRoute.RUNNING else PrototypeRoute.HEALTH_ROUTINE
-                    }
-                },
-                dm = { name -> currentChat = socialState.chat(name); route = PrototypeRoute.DM_DETAIL },
-                onBlock = { blocked ->
-                    socialState.blocked = if (blocked) socialState.blocked + selectedMatePost.authorName else socialState.blocked - selectedMatePost.authorName
-                }
-            )
-            PrototypeRoute.MATE_WRITE -> MateWriteScreen(Modifier.padding(padding)) { draft ->
-                val newPost = MatePost(
-                    id = (matePosts.maxOfOrNull { it.id } ?: 0) + 1,
-                    title = draft.title,
-                    sport = draft.sport,
-                    region = profile.region,
-                    dateTime = draft.dateTime,
-                    duration = draft.duration,
-                    capacity = draft.capacity,
-                    participantCount = 1,
-                    difficulty = draft.difficulty,
-                    description = draft.description,
-                    authorName = profile.nickname,
-                    isBeginnerWelcome = draft.isBeginnerWelcome,
-                    details = draft.details
-                )
-                matePosts = listOf(newPost) + matePosts
-                selectedMatePost = newPost
-                route = PrototypeRoute.MATE_DETAIL
-            }
+            PrototypeRoute.MATE_LIST, PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE -> ServerMateFlow(
+                Modifier.padding(padding), apiClient, mateServerState, profile, serverAccount.text("id")
+            ) { matePosts = it }
             PrototypeRoute.WORKOUT -> WorkoutScreen(
                 modifier = Modifier.padding(padding),
                 session = requireNotNull(workoutSession),
@@ -539,9 +504,9 @@ fun FitMatePrototypeApp(
                 refreshSamsungHealth = onRefreshSamsungHealth,
                 openSamsungHealth = onOpenSamsungTest
             ) { route = PrototypeRoute.HOME }
-            PrototypeRoute.INBODY -> if (healthConsent) InbodyFlow(Modifier.padding(padding), inbodyState) else Screen(Modifier.padding(padding)) {
+            PrototypeRoute.INBODY -> if (healthConsent) InbodyFlow(Modifier.padding(padding), inbodyState, serverInbody) else Screen(Modifier.padding(padding)) {
                 Text("건강정보 처리 동의가 필요해요.", style = MaterialTheme.typography.titleLarge)
-                Text("인바디 수치와 사진은 민감한 정보입니다. 현재는 서버 전송 없는 로컬 데모이며, 동의하지 않아도 기본 운동 기록은 사용할 수 있어요.")
+                Text("인바디 수치와 사진은 민감한 정보입니다. 동의하면 서버로 전송해 기록하며, 사진 판독 시 외부 AI 서비스에서 처리될 수 있습니다. 동의하지 않아도 기본 운동 기록은 사용할 수 있어요.")
                 PrimaryAction("건강정보 처리에 동의하고 계속") { healthConsent = true }
                 TextButton({ route = inbodyOrigin }) { Text("나중에") }
             }
@@ -1060,9 +1025,28 @@ private fun FitMatePrototypePreview() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun MateWriteScreen(modifier: Modifier, done: (RecruitmentDraft) -> Unit) = Screen(modifier) {
+@Composable internal fun MateWriteScreen(modifier: Modifier, api: FitMateApiClient, initialRegionId: String, initialRegion: String, done: suspend (RecruitmentDraft, String, String) -> Unit) = Screen(modifier) {
+    val scope = rememberCoroutineScope()
+    var submitting by remember { mutableStateOf(false) }
+    var regionId by remember { mutableStateOf(initialRegionId) }
+    var region by remember { mutableStateOf(initialRegion) }
+    var attempt by remember { mutableStateOf<Pair<RecruitmentDraft, String>?>(null) }
+    var attemptedRegion by remember { mutableStateOf("") }
+    var idempotencyKey by remember { mutableStateOf(java.util.UUID.randomUUID().toString()) }
     var title by remember { mutableStateOf("") }
     var selectedSport by remember { mutableStateOf(Sport.FITNESS) }
+    var activeSports by remember { mutableStateOf(emptyList<Sport>()) }
+    var sportLoadError by remember { mutableStateOf<String?>(null) }
+    var sportReload by remember { mutableStateOf(0) }
+    LaunchedEffect(api, sportReload) {
+        sportLoadError = null
+        try {
+            val codes = withContext(Dispatchers.IO) { api.fetchSports().map { it.code }.toSet() }
+            activeSports = Sport.entries.filter { it.apiCode() in codes }
+            if (selectedSport !in activeSports && activeSports.isNotEmpty()) selectedSport = activeSports.first()
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { sportLoadError = e.message ?: "운동 종목을 불러오지 못했습니다." }
+    }
     var details by remember(selectedSport) { mutableStateOf(MateDetails(sportFields = mateFields(selectedSport).mapValues { it.value.firstOrNull().orEmpty() })) }
     var selectedDate by remember { mutableStateOf("오늘") }
     var startHour by remember { mutableStateOf(19) }
@@ -1108,10 +1092,13 @@ private fun FitMatePrototypePreview() {
     }
 
     Text("카테고리에 맞는 조건을 입력하세요.", color = FitMateColors.TextSecondary)
+    ErrorText(sportLoadError)
+    if (sportLoadError != null) TextButton({ sportReload++ }) { Text("운동 종목 다시 불러오기") }
+    ServerRegionPicker(api, region) { id, label -> regionId = id; region = label }
     OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("모집 제목") }, supportingText = { Text("예: 오늘 저녁 성수동에서 하체 운동 같이 해요") })
     SoftCard {
         Text("운동 종목", fontWeight = FontWeight.Bold)
-        Sport.entries.chunked(3).forEach { sports ->
+        activeSports.chunked(3).forEach { sports ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 sports.forEach { sport -> FilterChip(selectedSport == sport, { selectedSport = sport }, { Text(sport.label) }) }
             }
@@ -1144,9 +1131,13 @@ private fun FitMatePrototypePreview() {
     }
     MateDetailsEditor(selectedSport, details) { details = it }
     validationError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-    PrimaryAction("모집 게시") {
+    if (submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
+    PrimaryAction(if (submitting) "게시 중…" else "모집 게시") {
+        if (submitting) return@PrimaryAction
         val capacity = capacityText.toIntOrNull()
         validationError = when {
+            selectedSport !in activeSports -> "서버에서 사용할 수 있는 운동 종목을 불러온 뒤 선택하세요."
+            regionId.isBlank() -> "활동 지역을 선택하세요."
             title.isBlank() -> "모집 제목을 입력하세요."
             capacity == null || capacity !in 2..20 -> "모집 인원은 2명에서 20명 사이로 입력하세요."
             description.isBlank() -> "운동 내용 또는 준비물을 입력하세요."
@@ -1156,7 +1147,17 @@ private fun FitMatePrototypePreview() {
             else -> null
         }
         if (validationError == null && capacity != null) {
-            done(RecruitmentDraft(title, selectedSport, "$selectedDate $selectedStartTime", selectedDuration, capacity, difficulty, description, isBeginnerWelcome, details))
+            val draft = RecruitmentDraft(title, selectedSport, "$selectedDate $selectedStartTime", selectedDuration, capacity, difficulty, description, isBeginnerWelcome, details)
+            if (attempt?.first != draft || attemptedRegion != regionId) idempotencyKey = java.util.UUID.randomUUID().toString()
+            attempt = draft to idempotencyKey; attemptedRegion = regionId
+            val submittedRegion = regionId
+            submitting = true
+            scope.launch {
+                try { done(draft, submittedRegion, idempotencyKey) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) { validationError = e.message ?: "모집 글을 저장하지 못했습니다." }
+                finally { submitting = false }
+            }
         }
     }
 }

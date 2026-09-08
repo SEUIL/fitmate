@@ -327,7 +327,7 @@ internal class CommunityAccounts {
                 Text("공개된 운동 기록", style = MaterialTheme.typography.titleSmall)
                 if (entries.none { it.workout != null }) Text("공개 게시물에 첨부된 운동 기록이 없어요.", Modifier.padding(vertical = 24.dp), color = FitMateColors.TextSecondary)
                 entries.filter { it.workout != null }.forEach { entry -> OutlinedCard(onClick = { selected = entry }, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(entry.workout.orEmpty()); Text(entry.post.createdAt, style = MaterialTheme.typography.bodySmall) }
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(entry.workout.orEmpty()); Text(formatPostTime(entry.post.createdAt), style = MaterialTheme.typography.bodySmall) }
                 } }
             }
         }

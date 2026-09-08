@@ -12,6 +12,7 @@ enum class MatePostStatus { RECRUITING, FULL, CLOSED, CANCELED }
 enum class MateParticipationStatus { PENDING, ACCEPTED, REJECTED, CANCELED, WITHDRAWN }
 enum class MateParticipantRole { HOST, MEMBER }
 enum class MateDifficulty { BEGINNER, INTERMEDIATE, ADVANCED }
+enum class MateVisibility { PUBLIC, MUTUAL }
 
 @Entity @Table(name = "fitness_mate_posts")
 class MatePost(
@@ -27,6 +28,10 @@ class MatePost(
     @Column(name = "estimated_cost_krw") var estimatedCostKrw: Int? = null,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: MatePostStatus = MatePostStatus.RECRUITING,
     @Version @Column(nullable = false) var version: Long = 0, @Column(name = "closed_at") var closedAt: Instant? = null, @Column(name = "canceled_at") var canceledAt: Instant? = null,
+    @Column(name = "meeting_point", length = 500) var meetingPoint: String? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) var visibility: MateVisibility = MateVisibility.PUBLIC,
+    @Column(name = "sport_fields", nullable = false, columnDefinition = "TEXT") var sportFields: String = "{}",
+    @Column(name = "beginner_welcome", nullable = false) var beginnerWelcome: Boolean = false,
 ) : BaseTimeEntity()
 
 @Entity @Table(name = "fitness_mate_participations")
