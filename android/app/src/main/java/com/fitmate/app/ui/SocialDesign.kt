@@ -119,7 +119,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
             Column(Modifier.weight(1f).padding(start = 10.dp).then(if (onAuthor != null) Modifier.clickable(onClick = onAuthor) else Modifier)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(entry.post.authorName, modifier = Modifier.weight(1f, fill = false), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(entry.post.createdAt, style = MaterialTheme.typography.labelSmall, color = FitMateColors.TextSecondary)
+                    Text(formatPostTime(entry.post.createdAt), style = MaterialTheme.typography.labelSmall, color = FitMateColors.TextSecondary)
                 }
                 Text(entry.visibility, style = MaterialTheme.typography.labelSmall, color = FitMateColors.TextSecondary)
             }

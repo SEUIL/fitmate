@@ -50,10 +50,8 @@ class GeminiInbodyAnalyzer(
                 .retrieve()
                 .onStatus(HttpStatusCode::isError) { _, providerResponse ->
                     val status = providerResponse.statusCode.value()
-                    val providerMessage = providerResponse.body.bufferedReader().use { it.readText() }
-                        .replace(Regex("\\s+"), " ")
-                        .take(1_000)
-                    logger.warn("Gemini request rejected: status={}, response={}", status, providerMessage)
+                    // Provider error bodies may echo credentials or sensitive input. Log only the status.
+                    logger.warn("Gemini request rejected: status={}", status)
                     throw InbodyProviderException(
                         failureCode = when (status) {
                             429 -> "PROVIDER_RATE_LIMITED"

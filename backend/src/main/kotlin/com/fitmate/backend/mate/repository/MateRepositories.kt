@@ -13,6 +13,14 @@ interface MatePostRepository : JpaRepository<MatePost, UUID> {
     @EntityGraph(attributePaths = ["sport", "region"])
     @Query("""select p from MatePost p
         where (:sportCode is null or p.sport.code = :sportCode)
+          and (p.authorId = :viewer or (
+            not exists (select b from Block b where
+              (b.id.blockerUserId = :viewer and b.id.blockedUserId = p.authorId) or
+              (b.id.blockerUserId = p.authorId and b.id.blockedUserId = :viewer))
+            and (p.visibility = com.fitmate.backend.mate.domain.MateVisibility.PUBLIC or (
+              exists (select f from Follow f where f.id.followerUserId = :viewer and f.id.followingUserId = p.authorId and f.status = com.fitmate.backend.social.domain.FollowStatus.ACCEPTED)
+              and exists (select f from Follow f where f.id.followerUserId = p.authorId and f.id.followingUserId = :viewer and f.status = com.fitmate.backend.social.domain.FollowStatus.ACCEPTED)
+            ))))
           and (:regionId is null or p.region.id = :regionId)
           and (:fromAt is null or p.scheduledStartAt >= :fromAt)
           and (:toAt is null or p.scheduledStartAt <= :toAt)
@@ -25,6 +33,7 @@ interface MatePostRepository : JpaRepository<MatePost, UUID> {
         @Param("fromAt") fromAt: Instant?, @Param("toAt") toAt: Instant?,
         @Param("difficulty") difficulty: MateDifficulty?, @Param("status") status: MatePostStatus?,
         @Param("cursorAt") cursorAt: Instant?, @Param("cursorId") cursorId: UUID?, pageable: Pageable,
+        @Param("viewer") viewer: UUID,
     ): List<MatePost>
 }
 interface MateParticipationRepository : JpaRepository<MateParticipation, UUID> {

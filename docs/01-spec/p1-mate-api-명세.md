@@ -1,8 +1,8 @@
 # P1 메이트 API 명세
 
 - 작성일: 2026-09-07
-- 최종 수정일: 2026-09-08
-- 버전: v0.2
+- 최종 수정일: 2026-09-09
+- 버전: v0.3
 - 상태: 검토 중
 
 ## 범위와 정책
@@ -62,6 +62,22 @@
 | `NotificationResponse` | `id`, `category:MATE`, `type`, 표시 `message`, 선택 `target:{type,id}`, `status:UNREAD|READ`, `readAt`, `createdAt` |
 
 ## 중복·동시성·알림
+
+### Android 입력 항목 확장 (V19)
+
+- 생성·수정 요청은 선택 필드 meetingPoint, visibility, sportFields, beginnerWelcome를 추가로 받는다.
+- meetingPoint: 최대 500자. 상세 응답에서 작성자 또는 ACCEPTED 참가자에게만 반환한다. 취소된 모임에서는 반환하지 않는다. 목록·생성·수정 응답에는 포함하지 않는다.
+- visibility: PUBLIC(기본값) 또는 MUTUAL. 맞팔은 양방향 ACCEPTED 팔로우가 모두 존재하는 상태다.
+- sportFields: 문자열 항목명→문자열 값. 최대 20개, 항목명 1~80자, 값 최대 500자. 목록·상세에 반환한다.
+- beginnerWelcome: 생성 기본값 false. 난이도와 독립적인 초보자 환영 여부이며 목록·상세에 반환한다.
+- 추가 필드는 첫 MEMBER 신청 전까지만 수정할 수 있다. PATCH에서 생략하면 유지한다. 집결 위치를 빈 문자열로 보내면 비운다.
+- 목록은 페이지를 자르기 전에 맞팔·양방향 차단 조건을 적용한다. 상세·신청·새 문의방에도 동일한 접근 조건을 검사하며 비허용 사용자에게 404를 반환한다.
+- 기존 문의방의 이력은 참여자가 열람할 수 있지만, 차단 또는 맞팔 공개 조건 상실 시 전송은 ACCESS_RESTRICTED 사유로 읽기 전용이 된다.
+- 생성 멱등 hash에 추가 항목을 포함한다. 상세 조건의 map 순서는 정렬해 동일 요청으로 취급한다.
+- 기존 행은 PUBLIC, 빈 상세 조건으로 이관한다. 기존 초보 난이도 행은 초보 환영을 켠다.
+- 변경 후 응답의 version은 flush 이후 값을 반환한다.
+
+### 멱등·동시성
 
 - 생성의 `Idempotency-Key`는 UUID 필수다. 같은 유효 키와 같은 정규화 요청 hash는 최초 성공 응답(`201`)을 그대로 재생한다. hash가 다르면 `409 IDEMPOTENCY_KEY_CONFLICT`다. 키 유효기간은 24시간이며, 만료 키는 새 생성 요청으로 처리한다.
 - 모집글 쓰기는 모집글 행 `PESSIMISTIC_WRITE` 잠금으로 직렬화한다. 마지막 자리 수락과 `FULL` 변경은 한 트랜잭션에서 커밋한다.

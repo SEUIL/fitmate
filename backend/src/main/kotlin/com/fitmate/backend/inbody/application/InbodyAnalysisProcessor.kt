@@ -29,7 +29,7 @@ class InbodyAnalysisProcessor(
             runCatching { mediaAssets.delete(work.userId, work.mediaId) }
                 .onFailure { logger.warn("Completed InBody analysis but failed to delete source image: {}", work.analysisId, it) }
         } catch (exception: InbodyProviderException) {
-            logger.warn("InBody provider failed: analysisId={}, code={}", work.analysisId, exception.failureCode, exception)
+            logger.warn("InBody provider failed: analysisId={}, code={}", work.analysisId, exception.failureCode)
             analysisService.fail(work.analysisId, exception.failureCode, exception.message ?: "AI 판독에 실패했습니다.")
         } catch (exception: Exception) {
             logger.error("Unexpected InBody analysis failure: analysisId={}", work.analysisId, exception)
