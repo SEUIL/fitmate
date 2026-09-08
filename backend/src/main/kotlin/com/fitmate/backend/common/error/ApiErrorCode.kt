@@ -21,5 +21,10 @@ enum class ApiErrorCode(
     VERSION_CONFLICT(HttpStatus.CONFLICT, "수정 버전이 일치하지 않습니다."),
     INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서는 처리할 수 없습니다."),
     FORBIDDEN_RESOURCE(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
+    MATE_POST_NOT_RECRUITING(HttpStatus.CONFLICT, "모집 중인 글이 아닙니다."),
+    MATE_CAPACITY_EXCEEDED(HttpStatus.CONFLICT, "모집 정원이 가득 찼습니다."),
+    MATE_APPLICATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 참가 신청 이력이 있습니다."),
+    MATE_CHAT_READ_ONLY(HttpStatus.CONFLICT, "읽기 전용 대화방입니다."),
+    IDEMPOTENCY_KEY_CONFLICT(HttpStatus.CONFLICT, "Idempotency-Key가 다른 요청에 사용되었습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
 }

@@ -7,19 +7,28 @@ import com.fitmate.backend.common.error.ApiErrorCode
 import com.fitmate.backend.common.error.ApiException
 import com.fitmate.backend.notification.domain.UserNotification
 import com.fitmate.backend.notification.repository.NotificationRepository
-import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
-import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
 import java.util.UUID
 
-data class NotificationResponse(val notificationId: UUID, val type: String, val actorUserId: UUID?, val resourceType: String?, val resourceId: UUID?, val body: String?, val readAt: Instant?, val createdAt: Instant)
+data class NotificationResponse(
+    val notificationId: UUID,
+    val type: String,
+    val actorUserId: UUID?,
+    val resourceType: String?,
+    val resourceId: UUID?,
+    val body: String?,
+    val readAt: Instant?,
+    val createdAt: Instant,
+)
 
 @RestController
 @RequestMapping("/api/v1/notifications")
@@ -28,6 +37,12 @@ class NotificationController(private val notifications: NotificationRepository) 
     @Transactional(readOnly = true)
     fun list(@AuthenticationPrincipal user: AuthenticatedUser): ApiResponse<ItemListResponse<NotificationResponse>> = ApiResponse.success(
         ItemListResponse(notifications.findAllByRecipientUserIdOrderByCreatedAtDesc(user.userId).map(::response)),
+    )
+
+    @GetMapping("/unread-count")
+    @Transactional(readOnly = true)
+    fun unreadCount(@AuthenticationPrincipal user: AuthenticatedUser) = ApiResponse.success(
+        mapOf("unreadCount" to notifications.countByRecipientUserIdAndReadAtIsNull(user.userId)),
     )
 
     @PatchMapping("/{notificationId}/read")
@@ -54,5 +69,8 @@ class NotificationController(private val notifications: NotificationRepository) 
         return ResponseEntity.noContent().build()
     }
 
-    private fun response(item: UserNotification) = NotificationResponse(requireNotNull(item.id), item.type.name, item.actorUserId, item.resourceType, item.resourceId, item.body, item.readAt, item.createdAt)
+    private fun response(item: UserNotification) = NotificationResponse(
+        requireNotNull(item.id), item.type.name, item.actorUserId, item.resourceType,
+        item.resourceId, item.body, item.readAt, item.createdAt,
+    )
 }

@@ -12,7 +12,12 @@ import jakarta.persistence.Table
 import java.time.Instant
 import java.util.UUID
 
-enum class NotificationType { FOLLOW_REQUEST, FOLLOW_ACCEPTED, POST_LIKED, POST_COMMENTED, DM_REQUEST, DM_MESSAGE, REPORT_STATUS }
+enum class NotificationType {
+    FOLLOW_REQUEST, FOLLOW_ACCEPTED, POST_LIKED, POST_COMMENTED, DM_REQUEST, DM_MESSAGE, REPORT_STATUS,
+    MATE_INQUIRY_RECEIVED, MATE_MESSAGE_RECEIVED, MATE_APPLICATION_RECEIVED, MATE_APPLICATION_ACCEPTED,
+    MATE_APPLICATION_REJECTED, MATE_APPLICATION_CANCELED, MATE_PARTICIPATION_CANCELED,
+    MATE_PARTICIPATION_WITHDRAWN, MATE_POST_CLOSED, MATE_POST_CANCELED,
+}
 
 @Entity
 @Table(name = "user_notifications")
@@ -25,4 +30,5 @@ class UserNotification(
     @Column(name = "resource_id", columnDefinition = "BINARY(16)") var resourceId: UUID? = null,
     @Column(length = 500) var body: String? = null,
     @Column(name = "read_at") var readAt: Instant? = null,
+    @Column(name = "event_key", length = 255) var eventKey: String? = null,
 ) : BaseTimeEntity()
