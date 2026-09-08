@@ -38,7 +38,9 @@ data class MatePost(
     val description: String,
     val authorName: String,
     val isBeginnerWelcome: Boolean,
-    val details: MateDetails = MateDetails()
+    val details: MateDetails = MateDetails(),
+    /** 서버 모집글과 연결된 경우 UUID를 보존한다. 기존 Mock 게시물은 null이다. */
+    val serverId: String? = null,
 )
 
 data class RecruitmentDraft(

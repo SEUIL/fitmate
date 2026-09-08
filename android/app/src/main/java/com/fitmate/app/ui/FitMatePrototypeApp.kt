@@ -96,6 +96,7 @@ import com.fitmate.app.data.model.UserProfile
 import com.fitmate.app.data.model.WorkoutSet
 import com.fitmate.app.data.model.WorkoutSummary
 import com.fitmate.app.data.remote.FitMateApiClient
+import com.fitmate.app.data.remote.ServerMateApi
 import com.fitmate.app.data.remote.ServerSocialApi
 import com.fitmate.app.data.repository.MockFitMateRepository
 import com.fitmate.app.running.RunTrackingService
@@ -180,6 +181,7 @@ fun FitMatePrototypeApp(
     var savedRoutines by remember { mutableStateOf(initial.routines) }
     var storageError by remember { mutableStateOf(localStore.readFailed) }
     val exerciseCatalog = rememberExerciseCatalog(apiClient)
+    val serverMate = remember(apiClient) { ServerMateApi(apiClient) }
     val serverSocial = remember(apiClient) { ServerSocialApi(apiClient) }
     val repository = remember { MockFitMateRepository }
     val screenStates = rememberSaveableStateHolder()
@@ -224,6 +226,16 @@ fun FitMatePrototypeApp(
         }
     }
     LaunchedEffect(exerciseCatalog) { exerciseCatalog.refresh() }
+    LaunchedEffect(signedIn, apiClient) {
+        if (!signedIn) return@LaunchedEffect
+        runCatching { withContext(Dispatchers.IO) { serverMate.posts() } }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { remotePosts ->
+                matePosts = remotePosts
+                selectedMatePost = remotePosts.first()
+            }
+    }
     val currentSnapshot by rememberUpdatedState {
         FrontendSnapshot(profile = if (registered) profile else null, signedIn = signedIn,
             workout = workoutSession?.snapshot(), history = workoutHistory, routines = savedRoutines,
