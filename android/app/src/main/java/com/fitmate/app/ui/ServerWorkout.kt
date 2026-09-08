@@ -14,7 +14,7 @@ internal class ServerWorkout(private val api: FitMateApiClient, private val sess
 
     @Synchronized fun synchronize(upload: WorkoutUpload) {
         var current = state()
-        if (current.text("status") == "COMPLETED") return
+        if (current.text("status") in setOf("COMPLETED", "CANCELED")) return
         val knownNames = current.rows("exercises").map { it.text("exerciseName") }.toSet()
         require(upload.sets.all { it.exerciseName in knownNames }) { "운동 시작 후 추가한 운동은 서버에 등록되지 않았습니다. 해당 기록을 별도로 보관한 후 시작할 때 선택한 운동만 저장하세요." }
         if (current.text("status") == "READY") current = transition(current, "start")
@@ -49,6 +49,11 @@ internal class ServerWorkout(private val api: FitMateApiClient, private val sess
         if (current.text("status") != "COMPLETED") transition(current, "complete")
         // Read back the committed session before the caller leaves the workout screen.
         save(api.request("GET", "workout-sessions/${state().text("id")}").asJsonObject)
+    }
+
+    @Synchronized fun cancel() {
+        val current = api.request("GET", "workout-sessions/${state().text("id")}").asJsonObject.also(::save)
+        if (current.text("status") != "CANCELED") transition(current, "cancel")
     }
 
     private fun transition(current: JsonObject, action: String): JsonObject =

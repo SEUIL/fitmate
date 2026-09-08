@@ -22,7 +22,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".dev"
+            applicationIdSuffix = if (providers.gradleProperty("fitmateIsolatedTest").orNull == "true") ".dev.records" else ".dev"
             buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:8080/api/v1\"")
         }
         release {

@@ -34,9 +34,13 @@ class RunningRecordService(
     private val records: RunningRecordRepository,
     private val laps: RunningLapRepository,
     private val objectMapper: ObjectMapper,
+    private val entityManager: jakarta.persistence.EntityManager,
 ) {
     @Transactional
     fun create(userId: UUID, request: CreateRunningRecordRequest): RunningRecordResponse {
+        request.clientRecordId?.let { id ->
+            if (sessions.existsById(dbId(id))) return get(userId, id)
+        }
         validateTarget(request)
         val startedAt = request.startedAt ?: request.completedAt.minusSeconds(request.activeDurationSeconds.toLong())
         if (!startedAt.isBefore(request.completedAt)) invalid("시작 시각은 완료 시각보다 이전이어야 합니다.")
@@ -52,10 +56,9 @@ class RunningRecordService(
         val averageSpeed = if (request.distanceMeters == 0) null else BigDecimal(request.distanceMeters)
             .multiply(BigDecimal("3.6"))
             .divide(BigDecimal(request.activeDurationSeconds), 2, RoundingMode.HALF_UP)
-        val apiRecordId = UUID.randomUUID()
+        val apiRecordId = request.clientRecordId ?: UUID.randomUUID()
         val recordId = dbId(apiRecordId)
-        val session = sessions.saveAndFlush(
-            WorkoutSession(
+        val session = WorkoutSession(
                 id = recordId,
                 userId = userId,
                 sportCode = SportCode.RUNNING,
@@ -63,8 +66,7 @@ class RunningRecordService(
                 startedAt = startedAt,
                 endedAt = request.completedAt,
                 clientUpdatedAt = request.completedAt,
-            ),
-        )
+            ).also { entityManager.persist(it); entityManager.flush() }
         val record = records.saveAndFlush(
             RunningRecord(
                 workoutSessionId = recordId,

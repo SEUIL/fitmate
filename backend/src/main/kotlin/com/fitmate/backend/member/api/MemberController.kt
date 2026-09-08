@@ -28,7 +28,7 @@ class MemberController(private val memberService: MemberService) {
     fun terms(@RequestParam(required = false) type: TermsType?, @RequestParam(defaultValue = "true") current: Boolean): ApiResponse<ItemListResponse<TermsResponse>> = ApiResponse.success(ItemListResponse(memberService.getTerms(type, current)))
 
     @GetMapping("/regions")
-    fun regions(@RequestParam(required = false) parentId: UUID?): ApiResponse<ItemListResponse<RegionResponse>> = ApiResponse.success(ItemListResponse(memberService.getRegions(parentId)))
+    fun regions(@RequestParam(required = false) parentId: UUID?, @RequestParam(required = false) code: String?): ApiResponse<ItemListResponse<RegionResponse>> = ApiResponse.success(ItemListResponse(memberService.getRegions(parentId, code)))
 
     @GetMapping("/facilities")
     fun facilities(@RequestParam(required = false) regionId: UUID?, @RequestParam(required = false) name: String?): ApiResponse<ItemListResponse<FacilityResponse>> = ApiResponse.success(ItemListResponse(memberService.getFacilities(regionId, name)))

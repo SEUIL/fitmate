@@ -89,7 +89,8 @@ class MemberService(
     }
 
     // Unlike entity identifiers, parentId is a basic attribute whose converter runs in Hibernate.
-    fun getRegions(parentId: UUID?): List<RegionResponse> = regionRepository.findAllByIsActiveTrueAndParentIdOrderByNameAsc(parentId).map {
+    fun getRegions(parentId: UUID?, code: String? = null): List<RegionResponse> = (if (code != null)
+        regionRepository.findAllByIsActiveTrueAndCode(code) else regionRepository.findAllByIsActiveTrueAndParentIdOrderByNameAsc(parentId)).map {
         RegionResponse(toApiReferenceId(requireNotNull(it.id)), it.parentId, it.name, when (it.level) { 1 -> "PROVINCE"; 2 -> "CITY"; else -> "TOWN" }, it.code)
     }
 

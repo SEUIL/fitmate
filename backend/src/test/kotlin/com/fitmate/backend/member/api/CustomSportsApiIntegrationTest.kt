@@ -27,6 +27,17 @@ import java.util.concurrent.CompletableFuture
     "spring.datasource.password=\${FITMATE_TEST_DB_PASSWORD:}",
 ])
 class CustomSportsApiIntegrationTest {
+    @Test
+    fun `postcode region code resolves anonymously without storing street address`() {
+        val response = http.getForEntity("/api/v1/regions?code=KR-LAW-1168010300", JsonNode::class.java)
+        assertEquals(HttpStatus.OK, response.statusCode)
+        val items = response.body!!["data"]["items"]
+        assertEquals(1, items.size())
+        assertEquals("서울특별시 강남구 개포동", items[0]["name"].asText())
+        assertEquals("TOWN", items[0]["level"].asText())
+        val absent = http.getForEntity("/api/v1/regions?code=KR-LAW-0000000000", JsonNode::class.java)
+        assertEquals(0, absent.body!!["data"]["items"].size())
+    }
     @Autowired private lateinit var http: TestRestTemplate
     @Autowired private lateinit var users: UserRepository
 

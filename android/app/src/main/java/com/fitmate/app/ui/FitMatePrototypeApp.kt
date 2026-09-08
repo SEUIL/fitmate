@@ -112,7 +112,7 @@ import kotlinx.coroutines.launch
 
 private enum class PrototypeRoute(val title: String) {
     PERSON("프로필"),
-    LOGIN("로그인"), ACCOUNT("계정·개인정보"), NOTIFICATIONS("알림"), REPORTS("신고 내역"), HISTORY("운동 기록"),
+    LOGIN("로그인"), SETTINGS("설정"), APPEARANCE("화면 모드"), FOLLOW_REQUESTS("팔로우 요청"), ACCOUNT("계정·개인정보"), NOTIFICATIONS("알림"), REPORTS("신고 내역"), HISTORY("운동 기록"),
     ONBOARDING("운동 프로필"), HOME("FitMate"), SOLO("운동 선택"), HEALTH_ROUTINE("헬스 루틴 선택"), WORKOUT_PREP("운동 준비"), RUNNING("러닝"),
     MATE_LIST("같이 운동하기"), MATE_DETAIL("메이트 게시물"), MATE_WRITE("모집 게시물 작성"),
     WORKOUT("운동 진행"), REPORT("운동 리포트"), INBODY("인바디 등록"), COMMUNITY("커뮤니티"),
@@ -189,6 +189,7 @@ fun FitMatePrototypeApp(
     var matePosts by remember { mutableStateOf(initial.mates?.posts ?: repository.matePosts()) }
     var selectedMatePost by remember { mutableStateOf(matePosts.firstOrNull() ?: repository.matePosts().first()) }
     var latestWorkoutSummary by remember { mutableStateOf(WorkoutSummary(0, emptyList(), false)) }
+    var latestServerSessionId by remember { mutableStateOf<String?>(null) }
     var workoutHistory by remember { mutableStateOf(initial.history) }
     var selectedWorkoutRoutine by remember { mutableStateOf(MockHealthRoutines.first()) }
     var selectedServerRoutine by remember { mutableStateOf<com.google.gson.JsonObject?>(null) }
@@ -206,6 +207,9 @@ fun FitMatePrototypeApp(
         }
     }
     var workoutExit by remember { mutableStateOf(false) }
+    var cancelWorkout by remember { mutableStateOf(false) }
+    var cancellingWorkout by remember { mutableStateOf(false) }
+    var cancelError by remember { mutableStateOf<String?>(null) }
     var inbodyOrigin by remember { mutableStateOf(PrototypeRoute.HOME) }
     val runningState = remember { initial.running?.restore() ?: RunningState() }
     val inbodyState = remember { InbodyState().also { state -> initial.body?.let { rows -> state.records.clear(); state.records.addAll(rows.map { it.restore() }) } } }
@@ -213,6 +217,7 @@ fun FitMatePrototypeApp(
     val socialState = remember { SocialState(repository.communityPosts(), repository.dmConversations()).also { it.accounts.photo = initial.photo; initial.social?.restore(it) } }
     var currentChat by remember { mutableStateOf<ChatRoom?>(null) }
     var personOrigin by remember { mutableStateOf(PrototypeRoute.COMMUNITY) }
+    var profileEditRequest by remember { mutableStateOf(0) }
     LaunchedEffect(socialState.accounts.opened) {
         if (socialState.accounts.opened != null && route != PrototypeRoute.PERSON) {
             personOrigin = route; route = PrototypeRoute.PERSON
@@ -254,6 +259,24 @@ fun FitMatePrototypeApp(
     }
     CommunityAccountSheets(socialState, { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }, serverSocial, serverAccount.text("id"))
     SocialDelivery(socialState)
+    if (cancelWorkout) AlertDialog(
+        onDismissRequest = { if (!cancellingWorkout) cancelWorkout = false },
+        title = { Text("이번 운동을 취소할까요?") },
+        text = { Text(cancelError ?: "취소한 운동은 완료 기록과 리포트에 포함되지 않습니다.") },
+        confirmButton = { TextButton({
+            cancellingWorkout = true; cancelError = null
+            integrationScope.launch {
+                try {
+                    if (workoutSession?.serverState != null) withContext(Dispatchers.IO) { serverWorkout?.cancel() }
+                    workoutSession = null; mateState.activeWorkoutId = null; cancelWorkout = false; route = PrototypeRoute.HOME
+                } catch (failure: Exception) {
+                    if (failure is kotlinx.coroutines.CancellationException) throw failure
+                    cancelError = failure.message
+                } finally { cancellingWorkout = false }
+            }
+        }, enabled = !cancellingWorkout) { Text(if (cancellingWorkout) "취소 중…" else "운동 취소") } },
+        dismissButton = { TextButton({ cancelWorkout = false }, enabled = !cancellingWorkout) { Text("계속 운동") } }
+    )
     if (workoutExit) AlertDialog(
         onDismissRequest = { workoutExit = false },
         title = { Text("운동을 잠시 멈출까요?") },
@@ -270,7 +293,7 @@ fun FitMatePrototypeApp(
             PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE -> PrototypeRoute.MATE_LIST
             PrototypeRoute.HEALTH_ROUTINE, PrototypeRoute.RUNNING -> PrototypeRoute.SOLO
             PrototypeRoute.WORKOUT_PREP -> PrototypeRoute.HEALTH_ROUTINE
-            PrototypeRoute.ACCOUNT, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
+            PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.FOLLOW_REQUESTS, PrototypeRoute.ACCOUNT, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
             else -> PrototypeRoute.HOME
         }
     }
@@ -299,7 +322,7 @@ fun FitMatePrototypeApp(
                                 PrototypeRoute.WORKOUT_PREP -> PrototypeRoute.HEALTH_ROUTINE
                                 PrototypeRoute.WORKOUT -> PrototypeRoute.WORKOUT_PREP
                                 PrototypeRoute.RUNNING -> PrototypeRoute.SOLO
-                                PrototypeRoute.ACCOUNT, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
+                                PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.FOLLOW_REQUESTS, PrototypeRoute.ACCOUNT, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
                                 else -> PrototypeRoute.HOME
                             }
                         }, style = MaterialTheme.typography.headlineMedium)
@@ -327,6 +350,22 @@ fun FitMatePrototypeApp(
         when (route) {
             PrototypeRoute.PERSON -> MemberProfileScreen(Modifier.padding(padding), socialState, back = { socialState.accounts.opened = null; route = personOrigin }, dm = { room -> currentChat = room; route = PrototypeRoute.DM_DETAIL }, server = serverSocial)
             PrototypeRoute.LOGIN -> Unit
+            PrototypeRoute.SETTINGS -> SettingsScreen(
+                Modifier.padding(padding), profile,
+                onProfileEdit = { profileEditRequest++; route = PrototypeRoute.PROFILE },
+                onSamsungHealth = onOpenSamsungTest,
+                onAccount = { route = PrototypeRoute.ACCOUNT },
+                onAppearance = { route = PrototypeRoute.APPEARANCE },
+                onNotifications = { route = PrototypeRoute.NOTIFICATIONS },
+                onFollowRequests = { route = PrototypeRoute.FOLLOW_REQUESTS },
+                onReports = { route = PrototypeRoute.REPORTS },
+                onOpenAdmin = { route = PrototypeRoute.ADMIN },
+            )
+            PrototypeRoute.APPEARANCE -> Screen(Modifier.padding(padding)) {
+                SectionTitle("화면 모드", "앱 전체에 적용할 테마를 선택하세요.")
+                com.fitmate.app.ui.theme.AppearanceSettings()
+            }
+            PrototypeRoute.FOLLOW_REQUESTS -> FollowRequestsScreen(Modifier.padding(padding), socialState, serverSocial)
             PrototypeRoute.ACCOUNT -> ServerAccountSettings(Modifier.padding(padding), apiClient,
                 finished = { workoutSession?.pause(); RunTrackingService.stop(context); resetApp() }, external = onOpenSamsungTest,
                 health = healthConsent, setHealth = { healthConsent = it }, location = locationConsent, setLocation = { locationConsent = it },
@@ -334,7 +373,13 @@ fun FitMatePrototypeApp(
                     check(workoutSession?.serverState == null) { "진행 중인 서버 운동을 먼저 완료해 주세요." }
                     workoutHistory = emptyList(); workoutSession = null; mateState.activeWorkoutId = null
                 })
-            PrototypeRoute.HISTORY -> WorkoutHistoryFlow(Modifier.padding(padding), workoutHistory)
+            PrototypeRoute.HISTORY -> Screen(Modifier.padding(padding)) {
+                ServerRecordList(apiClient)
+                if (workoutHistory.any { it.serverId == null } || runningState.history.any { it.serverId == null }) {
+                    Text("기기에 보관된 이전 기록", style = MaterialTheme.typography.titleMedium)
+                    WorkoutRecordBrowser(workoutHistory.filter { it.serverId == null }, runningState.history.filter { it.serverId == null }, allowExamples = false)
+                }
+            }
             PrototypeRoute.REPORTS -> ReportTicketsFlow(Modifier.padding(padding), socialState)
             PrototypeRoute.NOTIFICATIONS -> NotificationFlow(Modifier.padding(padding), socialState, { notice ->
                 when (notice.destination) {
@@ -400,7 +445,7 @@ fun FitMatePrototypeApp(
                     }
                 }
             }
-            PrototypeRoute.RUNNING -> RunningFlow(Modifier.padding(padding), runningState, locationConsent, { locationConsent = it }) { saved ->
+            PrototypeRoute.RUNNING -> RunningFlow(Modifier.padding(padding), runningState, locationConsent, { locationConsent = it }, apiClient) { saved ->
                 if (saved) mateState.completeWorkout() else mateState.activeWorkoutId = null
                 route = PrototypeRoute.HOME
             }
@@ -461,16 +506,20 @@ fun FitMatePrototypeApp(
                     if (current.serverState != null) withContext(Dispatchers.IO) { serverWorkout?.complete(WorkoutUpload(summary.sets, current.isTimerRunning)) }
                 },
                 saveRoutine = { routine -> if (savedRoutines.any { it.name == routine.name }) false else { savedRoutines = savedRoutines + routine; true } },
-                onCancel = { if (workoutSession?.serverState != null) workoutSession?.pause() else { workoutSession = null; mateState.activeWorkoutId = null }; route = PrototypeRoute.HOME }
+                onCancel = { cancelError = null; cancelWorkout = true }
             ) { summary ->
+                latestServerSessionId = workoutSession?.serverState?.let { com.google.gson.JsonParser.parseString(it).asJsonObject.text("id") }
                 latestWorkoutSummary = summary
-                workoutHistory = listOf(summary) + workoutHistory
+                workoutHistory = listOf(summary.copy(serverId = latestServerSessionId)) + workoutHistory
                 socialState.accounts.notify(socialState, "헬스 리포트가 준비됐어요.", "운동", "HISTORY")
                 mateState.completeWorkout()
                 workoutSession = null
                 route = PrototypeRoute.REPORT
             }
-            PrototypeRoute.REPORT -> ReportScreen(
+            PrototypeRoute.REPORT -> if (latestServerSessionId != null) Screen(Modifier.padding(padding)) {
+                ServerRecordDetail(apiClient, requireNotNull(latestServerSessionId))
+                PrimaryAction("홈으로") { route = PrototypeRoute.HOME }
+            } else ReportScreen(
                 modifier = Modifier.padding(padding),
                 summary = latestWorkoutSummary,
                 previousSummary = workoutHistory.drop(1).firstOrNull(),
@@ -516,7 +565,9 @@ fun FitMatePrototypeApp(
                 onHistory = { route = PrototypeRoute.HISTORY },
                 onNotifications = { route = PrototypeRoute.NOTIFICATIONS },
                 onReports = { route = PrototypeRoute.REPORTS },
-                onOpenAdminDemo = { route = PrototypeRoute.ADMIN }
+                onOpenAdminDemo = { route = PrototypeRoute.ADMIN },
+                editRequest = profileEditRequest,
+                onOpenSettings = { route = PrototypeRoute.SETTINGS },
             )
             PrototypeRoute.SAFETY -> SafetyScreen(Modifier.padding(padding))
             PrototypeRoute.ADMIN -> AdminScreen(Modifier.padding(padding)) { route = PrototypeRoute.ADS }
@@ -1306,7 +1357,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         SoftCard {
             Text("안전 안내", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("날카로운 통증, 어지러움, 호흡 곤란이 느껴지면 즉시 운동을 멈추고 필요한 도움을 받으세요.", style = MaterialTheme.typography.bodyMedium, color = FitMateColors.TextSecondary)
-            OutlinedButton(onCancel, Modifier.fillMaxWidth(), shape = FitMateShapes.Button) { Text(if (serverState == null) "운동 취소하고 홈으로" else "운동 일시정지하고 홈으로", color = Mint) }
+            OutlinedButton(onCancel, Modifier.fillMaxWidth(), shape = FitMateShapes.Button) { Text("운동 취소하고 홈으로", color = Mint) }
         }
     }
     Button({
@@ -1433,7 +1484,9 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     onHistory: () -> Unit,
     onNotifications: () -> Unit,
     onReports: () -> Unit,
-    onOpenAdminDemo: () -> Unit
+    onOpenAdminDemo: () -> Unit,
+    editRequest: Int,
+    onOpenSettings: () -> Unit,
 ) = Screen(modifier) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1454,6 +1507,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     var goals by remember(profile) { mutableStateOf(profile.goals) }
     var availableTime by remember(profile) { mutableStateOf(profile.availableTime) }
     var isPrivate by remember(profile) { mutableStateOf(profile.isPrivate) }
+    LaunchedEffect(editRequest) { if (editRequest > 0) isEditing = true }
 
     if (isEditing) {
         SectionTitle("프로필 수정", "내 운동 정보와 공개 범위를 관리하세요.")
@@ -1463,6 +1517,22 @@ private enum class TimePickerTarget { START_TIME, DURATION }
             ServerRegionPicker(api, region) { id, name -> regionId = id; region = name }
             ServerFacilityPicker(api, regionId, facilityName) { facilityName = it }
             OutlinedTextField(bio, { bio = it }, Modifier.fillMaxWidth(), label = { Text("자기소개 (선택)") }, minLines = 2)
+        }
+        SoftCard {
+            Text("프로필 사진", style = MaterialTheme.typography.titleMedium)
+            PhotoActions(onSelected = { uri ->
+                if (saving) return@PhotoActions
+                saving = true; saveError = null
+                scope.launch {
+                    try {
+                        val mediaId = withContext(Dispatchers.IO) { serverSocial.uploadImage(context, uri, "PROFILE") }
+                        val saved = onSavePhoto(mediaId)
+                        social.accounts.photo = saved.profileImageUrl
+                    } catch (failure: Exception) { saveError = failure.message ?: "프로필 사진을 저장하지 못했습니다." }
+                    finally { saving = false }
+                }
+            })
+            if (profile.profileImageUrl != null) Text("새 사진을 선택하면 즉시 변경됩니다.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
         }
         SoftCard {
             Text("관심 운동", style = MaterialTheme.typography.titleMedium)
@@ -1521,18 +1591,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         if (saveError != null) TextButton({ saving = true; scope.launch { try { onReload(); saveError = null; isEditing = false } catch (failure: Exception) { saveError = failure.message } finally { saving = false } } }, enabled = !saving) { Text("편집 취소하고 서버 최신 정보 불러오기") }
         if (saving) AlertDialog(onDismissRequest = {}, title = { Text("프로필 저장 중") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
     } else {
-        ProfileOverview(profile, social, workouts, runs, { isEditing = true }, onOpenInbody, onSamsungTest, onOpenAdminDemo, onAccount, onHistory, onNotifications, onReports, serverSocial, profileImageSelected = { uri ->
-            if (saving) return@ProfileOverview
-            saving = true; saveError = null
-            scope.launch {
-                try {
-                    val mediaId = withContext(Dispatchers.IO) { serverSocial.uploadImage(context, uri, "PROFILE") }
-                    val saved = onSavePhoto(mediaId)
-                    social.accounts.photo = saved.profileImageUrl
-                } catch (failure: Exception) { saveError = failure.message ?: "프로필 사진을 저장하지 못했습니다." }
-                finally { saving = false }
-            }
-        })
+        ProfileOverview(profile, social, workouts, runs, { isEditing = true }, onOpenInbody, onSamsungTest, onOpenAdminDemo, onAccount, onHistory, onNotifications, onReports, onOpenSettings, serverSocial, recordApi = api)
     }
 }
 
