@@ -7,10 +7,19 @@ import com.google.gson.JsonObject
 /** P2 소셜 API의 UUID 기반 계약을 UI mock 모델과 분리한다. */
 internal class ServerSocialApi(private val api: FitMateApiClient) {
     fun imageBytes(path: String): ByteArray = api.downloadImage(path)
-    fun feed(followingOnly: Boolean = false): List<JsonObject> =
-        api.request("GET", "community/posts?followingOnly=$followingOnly").asJsonObject.rows("items")
+    fun feedPage(followingOnly: Boolean = false, cursor: String? = null): JsonObject =
+        api.request("GET", "community/posts?followingOnly=$followingOnly&limit=20" + cursor?.let { "&cursor=${java.net.URLEncoder.encode(it, "UTF-8")}" }.orEmpty()).asJsonObject
+    fun feed(followingOnly: Boolean = false): List<JsonObject> = feedPage(followingOnly).rows("items")
 
     fun post(postId: String): JsonObject = api.request("GET", "community/posts/$postId").asJsonObject
+
+    fun communityMediaId(context: Context, source: String): String {
+        if (source.startsWith("content:") || source.startsWith("file:"))
+            return uploadImage(context, source, "COMMUNITY_POST")
+        val match = Regex("^/api/v1/community/posts/[^/]+/media/([0-9a-fA-F-]{36})$").matchEntire(source)
+            ?: error("첨부 사진 정보를 확인할 수 없습니다. 게시물을 다시 열어 주세요.")
+        return java.util.UUID.fromString(match.groupValues[1]).toString()
+    }
 
     fun uploadImage(context: Context, uri: String, purpose: String): String {
         val parsed = Uri.parse(uri)

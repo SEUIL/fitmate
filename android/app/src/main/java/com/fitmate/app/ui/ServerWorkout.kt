@@ -56,6 +56,43 @@ internal class ServerWorkout(private val api: FitMateApiClient, private val sess
         if (current.text("status") != "CANCELED") transition(current, "cancel")
     }
 
+    /** Applies a composition edit, then reads the whole session so all row versions stay current. */
+    @Synchronized fun addExercise(exerciseId: String, sequenceNo: Int, targetSets: Int = 3): JsonObject {
+        val current = state()
+        api.request(
+            "POST", "workout-sessions/${current.text("id")}/exercises",
+            mapOf("exerciseId" to exerciseId, "sequenceNo" to sequenceNo, "targetSets" to targetSets),
+        )
+        return reload()
+    }
+
+    @Synchronized fun replaceExercise(sessionExerciseId: String, version: Long, exerciseId: String): JsonObject {
+        val current = state()
+        api.request(
+            "PATCH", "workout-sessions/${current.text("id")}/exercises/$sessionExerciseId",
+            mapOf("exerciseId" to exerciseId, "version" to version),
+        )
+        return reload()
+    }
+
+    @Synchronized fun moveExercise(sessionExerciseId: String, version: Long, sequenceNo: Int): JsonObject {
+        val current = state()
+        api.request(
+            "PATCH", "workout-sessions/${current.text("id")}/exercises/$sessionExerciseId",
+            mapOf("sequenceNo" to sequenceNo, "version" to version),
+        )
+        return reload()
+    }
+
+    @Synchronized fun deleteExercise(sessionExerciseId: String, version: Long): JsonObject {
+        val current = state()
+        api.request("DELETE", "workout-sessions/${current.text("id")}/exercises/$sessionExerciseId?version=$version")
+        return reload()
+    }
+
+    private fun reload(): JsonObject =
+        api.request("GET", "workout-sessions/${state().text("id")}").asJsonObject.also(::save)
+
     private fun transition(current: JsonObject, action: String): JsonObject =
         api.request("POST", "workout-sessions/${current.text("id")}/$action", mapOf("version" to current.get("version").asLong)).asJsonObject.also(::save)
 

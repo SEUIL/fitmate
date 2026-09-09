@@ -33,6 +33,7 @@ import com.fitmate.backend.social.repository.FollowRepository
 import com.fitmate.backend.notification.application.NotificationService
 import com.fitmate.backend.notification.domain.NotificationType
 import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -92,8 +93,8 @@ class CommunityService(
         activeProfile(viewerId)
         val safeLimit = limit.coerceIn(1, 50)
         val offset = decodeCursor(cursor)
-        val candidates = posts.findAllByDeletedAtIsNullOrderByCreatedAtDesc(PageRequest.of(offset, safeLimit + 1))
-        val visible = candidates.filter { post ->
+        val candidates = posts.findAllByDeletedAtIsNullOrderByCreatedAtDesc(communityFeedWindow(offset, safeLimit))
+        val visible = candidates.take(safeLimit).filter { post ->
             val authorId = requireNotNull(post.authorUserId)
             canView(viewerId, post) && (!followingOnly || authorId == viewerId || follows.existsByIdFollowerUserIdAndIdFollowingUserIdAndStatus(viewerId, authorId, FollowStatus.ACCEPTED))
         }
@@ -224,8 +225,16 @@ class CommunityService(
     private fun encodeCursor(offset: Int): String = Base64.getUrlEncoder().withoutPadding().encodeToString(offset.toString().toByteArray())
 
     private fun decodeCursor(cursor: String?): Int = try {
-        cursor?.let { Base64.getUrlDecoder().decode(it).decodeToString().toInt() } ?: 0
+        (cursor?.let { Base64.getUrlDecoder().decode(it).decodeToString().toInt() } ?: 0).also {
+            require(it in 0..(Int.MAX_VALUE - 50))
+        }
     } catch (_: IllegalArgumentException) {
         throw ApiException(ApiErrorCode.VALIDATION_ERROR, "페이지 커서가 올바르지 않습니다.")
     }
 }
+
+/** Cursor denotes rows consumed, not Spring Data's page number. One row is lookahead only. */
+internal fun communityFeedWindow(offset: Int, limit: Int): PageRequest =
+    object : PageRequest(0, limit + 1, Sort.unsorted()) {
+        override fun getOffset(): Long = offset.toLong()
+    }

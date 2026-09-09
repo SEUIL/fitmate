@@ -21,7 +21,8 @@ internal data class SocialSnapshot(
     val incoming: Map<String, String>, val outgoing: Map<String, String>,
     val reports: List<ReportTicket>, val notices: List<AppNotice>,
     val push: Boolean, val preferences: Map<String, Boolean>,
-    val draft: String, val photo: String?, val workout: String?, val visibility: String, val editing: Long?
+    val draft: String, val photo: String?, val workout: String?, val visibility: String, val editing: Long?,
+    val photos: List<String>? = null
 ) {
     fun restore(state: SocialState) {
         state.feed.clear(); state.feed.addAll(feed)
@@ -37,6 +38,7 @@ internal data class SocialSnapshot(
             reconcile(state)
         }
         state.composerText.value = draft; state.composerPhoto.value = photo
+        state.composerPhotos.value = photos
         state.composerWorkout.value = workout; state.composerVisibility.value = visibility
         state.composerEditing.value = editing
     }
@@ -46,7 +48,7 @@ internal fun SocialState.snapshot() = SocialSnapshot(currentSerial(), feed.toLis
     ChatSnapshot(it.id, it.name, it.messages.toList(), it.status, it.incoming, it.unread, it.muted, it.left, it.draft, it.photo, it.requestSent)
 }, blocked.toSet(), following.toSet(), accounts.followers.toSet(), accounts.incoming.toMap(), accounts.outgoing.toMap(),
     accounts.reports.toList(), accounts.notices.toList(), accounts.push, accounts.preferences.toMap(),
-    composerText.value, composerPhoto.value, composerWorkout.value, composerVisibility.value, composerEditing.value)
+    composerText.value, composerPhoto.value, composerWorkout.value, composerVisibility.value, composerEditing.value, composerPhotos.value)
 
 // Dates are strings at the storage boundary; Gson must not reflect into java.time internals.
 internal data class BodySnapshot(val id: String, val date: String, val weight: Double, val muscle: Double,

@@ -37,11 +37,26 @@ class LiveRecordIntegrationTest {
         assertEquals(run.text("id"), records.saveRun(body).text("id"))
         assertEquals(1, records.page("running-records").rows("items").size)
         assertEquals(1000, records.run(run.text("id")).recordInt("distanceMeters"))
-        val exerciseId = api.fetchExercises().first().id
-        val session = api.request("POST", "workout-sessions", mapOf("exercises" to listOf(mapOf(
+        val catalog = api.fetchExercises()
+        assertTrue("Composition test needs three catalog exercises", catalog.size >= 3)
+        val exerciseId = catalog.first().id
+        var session = api.request("POST", "workout-sessions", mapOf("exercises" to listOf(mapOf(
             "exerciseId" to exerciseId, "sequenceNo" to 1, "targetSets" to 1
         )))).asJsonObject
         val id = session.text("id")
+        val local = WorkoutSession(catalog.first().name, false).also { it.serverState = session.toString() }
+        val binding = ServerWorkout(api, local)
+        val added = binding.addExercise(catalog[1].id, 2, 1)
+        assertEquals(2, added.rows("exercises").size)
+        val first = added.rows("exercises").first()
+        val replaced = binding.replaceExercise(first.text("id"), first.get("version").asLong, catalog[2].id)
+        assertEquals(catalog[2].name, replaced.rows("exercises").first().text("exerciseName"))
+        val replacement = replaced.rows("exercises").first()
+        val moved = binding.moveExercise(replacement.text("id"), replacement.get("version").asLong, 2)
+        assertEquals(replacement.text("id"), moved.rows("exercises").last().text("id"))
+        val remove = moved.rows("exercises").first()
+        session = binding.deleteExercise(remove.text("id"), remove.get("version").asLong)
+        assertEquals(1, session.rows("exercises").size)
         val started = api.request("POST", "workout-sessions/$id/start", mapOf("version" to session.recordInt("version"))).asJsonObject
         api.request("PUT", "workout-sessions/$id/exercises/${session.rows("exercises").single().text("id")}/sets/1",
             mapOf("weightKg" to 20, "repetitions" to 10, "completed" to true,

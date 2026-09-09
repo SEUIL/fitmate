@@ -96,6 +96,7 @@ import com.fitmate.app.data.model.UserProfile
 import com.fitmate.app.data.model.WorkoutSet
 import com.fitmate.app.data.model.WorkoutSummary
 import com.fitmate.app.data.remote.FitMateApiClient
+import com.fitmate.app.data.remote.ApiExercise
 import com.fitmate.app.data.remote.ServerMateApi
 import com.fitmate.app.data.remote.ServerInbodyApi
 import com.fitmate.app.data.remote.ServerSocialApi
@@ -342,7 +343,7 @@ fun FitMatePrototypeApp(
             }
         },
         bottomBar = {
-            if (route in setOf(PrototypeRoute.HOME, PrototypeRoute.MATE_LIST, PrototypeRoute.COMMUNITY, PrototypeRoute.DM, PrototypeRoute.PROFILE)) {
+            if (route in setOf(PrototypeRoute.HOME, PrototypeRoute.MATE_LIST, PrototypeRoute.COMMUNITY, PrototypeRoute.DM, PrototypeRoute.PROFILE) && (route != PrototypeRoute.MATE_LIST || mateServerState.page == "목록")) {
                 BottomNavigation(route) { route = it }
             }
         }
@@ -478,6 +479,8 @@ fun FitMatePrototypeApp(
                 modifier = Modifier.padding(padding),
                 session = requireNotNull(workoutSession),
                 history = workoutHistory,
+                availableExercises = (exerciseCatalog.state as? ExerciseCatalogState.Ready)?.exercises.orEmpty(),
+                serverWorkout = serverWorkout,
                 completeServer = { summary ->
                     val current = requireNotNull(workoutSession)
                     if (current.serverState != null) withContext(Dispatchers.IO) { serverWorkout?.complete(WorkoutUpload(summary.sets, current.isTimerRunning)) }
@@ -1025,7 +1028,10 @@ private fun FitMatePrototypePreview() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun MateWriteScreen(modifier: Modifier, api: FitMateApiClient, initialRegionId: String, initialRegion: String, done: suspend (RecruitmentDraft, String, String) -> Unit) = Screen(modifier) {
+@Composable internal fun MateWriteScreen(modifier: Modifier, api: FitMateApiClient, initialRegionId: String, initialRegion: String, initialPost: com.google.gson.JsonObject? = null, done: suspend (RecruitmentDraft, String, String) -> Unit) = Screen(modifier) {
+    val original = remember(initialPost) { initialPost?.let { com.fitmate.app.data.remote.toMatePost(it) } }
+    val originalStart = remember(initialPost) { initialPost?.get("scheduledStartAt")?.asString?.let { java.time.Instant.parse(it).atZone(java.time.ZoneId.systemDefault()) } }
+    val originalMinutes = initialPost?.get("durationSeconds")?.takeUnless { it.isJsonNull }?.asInt?.div(60)
     val scope = rememberCoroutineScope()
     var submitting by remember { mutableStateOf(false) }
     var regionId by remember { mutableStateOf(initialRegionId) }
@@ -1033,8 +1039,8 @@ private fun FitMatePrototypePreview() {
     var attempt by remember { mutableStateOf<Pair<RecruitmentDraft, String>?>(null) }
     var attemptedRegion by remember { mutableStateOf("") }
     var idempotencyKey by remember { mutableStateOf(java.util.UUID.randomUUID().toString()) }
-    var title by remember { mutableStateOf("") }
-    var selectedSport by remember { mutableStateOf(Sport.FITNESS) }
+    var title by remember { mutableStateOf(original?.title.orEmpty()) }
+    var selectedSport by remember { mutableStateOf(original?.sport ?: Sport.FITNESS) }
     var activeSports by remember { mutableStateOf(emptyList<Sport>()) }
     var sportLoadError by remember { mutableStateOf<String?>(null) }
     var sportReload by remember { mutableStateOf(0) }
@@ -1047,17 +1053,17 @@ private fun FitMatePrototypePreview() {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { sportLoadError = e.message ?: "운동 종목을 불러오지 못했습니다." }
     }
-    var details by remember(selectedSport) { mutableStateOf(MateDetails(sportFields = mateFields(selectedSport).mapValues { it.value.firstOrNull().orEmpty() })) }
-    var selectedDate by remember { mutableStateOf("오늘") }
-    var startHour by remember { mutableStateOf(19) }
-    var startMinute by remember { mutableStateOf(30) }
-    var durationHour by remember { mutableStateOf(1) }
-    var durationMinute by remember { mutableStateOf(30) }
+    var details by remember { mutableStateOf(original?.details ?: MateDetails(sportFields = mateFields(selectedSport).mapValues { it.value.firstOrNull().orEmpty() })) }
+    var selectedDate by remember { mutableStateOf(originalStart?.toLocalDate()?.toString() ?: "오늘") }
+    var startHour by remember { mutableStateOf(originalStart?.hour ?: 19) }
+    var startMinute by remember { mutableStateOf(originalStart?.minute ?: 30) }
+    var durationHour by remember { mutableStateOf(originalMinutes?.div(60) ?: 1) }
+    var durationMinute by remember { mutableStateOf(originalMinutes?.rem(60) ?: 30) }
     var timePickerTarget by remember { mutableStateOf<TimePickerTarget?>(null) }
-    var capacityText by remember { mutableStateOf("2") }
-    var difficulty by remember { mutableStateOf("초중급") }
-    var description by remember { mutableStateOf("") }
-    var isBeginnerWelcome by remember { mutableStateOf(true) }
+    var capacityText by remember { mutableStateOf(original?.capacity?.toString() ?: "2") }
+    var difficulty by remember { mutableStateOf(when (initialPost?.get("difficulty")?.asString) { "BEGINNER" -> "초보"; "ADVANCED" -> "중급+"; else -> "초중급" }) }
+    var description by remember { mutableStateOf(original?.description.orEmpty()) }
+    var isBeginnerWelcome by remember { mutableStateOf(original?.isBeginnerWelcome ?: true) }
     var validationError by remember { mutableStateOf<String?>(null) }
     val selectedStartTime = "%02d:%02d".format(startHour, startMinute)
     val selectedDuration = when {
@@ -1100,13 +1106,17 @@ private fun FitMatePrototypePreview() {
         Text("운동 종목", fontWeight = FontWeight.Bold)
         activeSports.chunked(3).forEach { sports ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                sports.forEach { sport -> FilterChip(selectedSport == sport, { selectedSport = sport }, { Text(sport.label) }) }
+                sports.forEach { sport -> FilterChip(selectedSport == sport, {
+                    if (selectedSport != sport) details = details.copy(sportFields = mateFields(sport).mapValues { it.value.firstOrNull().orEmpty() })
+                    selectedSport = sport
+                }, { Text(sport.label) }) }
             }
         }
     }
     SoftCard {
         Text("모집 조건", fontWeight = FontWeight.Bold)
         Text("운동 날짜", style = MaterialTheme.typography.labelLarge)
+        if (originalStart != null) FilterChip(selectedDate == originalStart.toLocalDate().toString(), { selectedDate = originalStart.toLocalDate().toString() }, { Text(originalStart.toLocalDate().toString()) })
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("오늘", "내일", "토요일", "일요일").forEach { option -> FilterChip(selectedDate == option, { selectedDate = option }, { Text(option) }) }
         }
@@ -1132,14 +1142,14 @@ private fun FitMatePrototypePreview() {
     MateDetailsEditor(selectedSport, details) { details = it }
     validationError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     if (submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
-    PrimaryAction(if (submitting) "게시 중…" else "모집 게시") {
+    PrimaryAction(if (submitting) "저장 중…" else if (initialPost != null) "수정 저장" else "모집 게시") {
         if (submitting) return@PrimaryAction
         val capacity = capacityText.toIntOrNull()
         validationError = when {
             selectedSport !in activeSports -> "서버에서 사용할 수 있는 운동 종목을 불러온 뒤 선택하세요."
             regionId.isBlank() -> "활동 지역을 선택하세요."
             title.isBlank() -> "모집 제목을 입력하세요."
-            capacity == null || capacity !in 2..20 -> "모집 인원은 2명에서 20명 사이로 입력하세요."
+            capacity == null || capacity !in 2..100 -> "모집 인원은 2명에서 100명 사이로 입력하세요."
             description.isBlank() -> "운동 내용 또는 준비물을 입력하세요."
             durationHour == 0 && durationMinute == 0 -> "예상 시간은 1분 이상이어야 합니다."
             details.location.isBlank() || details.meetingPoint.isBlank() -> "공개 장소와 확정자 집결 위치를 입력하세요."
@@ -1168,6 +1178,8 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     modifier: Modifier,
     session: WorkoutSession,
     history: List<WorkoutSummary>,
+    availableExercises: List<ApiExercise>,
+    serverWorkout: ServerWorkout?,
     completeServer: suspend (WorkoutSummary) -> Unit,
     saveRoutine: (SavedRoutine) -> Boolean,
     onCancel: () -> Unit,
@@ -1175,8 +1187,32 @@ private enum class TimePickerTarget { START_TIME, DURATION }
 ) = with(session) { Screen(modifier) {
     val uploadScope = rememberCoroutineScope()
     var completing by remember { mutableStateOf(false) }
+    var compositionSaving by remember { mutableStateOf(false) }
+    var catalogExpanded by remember { mutableStateOf(false) }
+    var selectedServerExercise by remember { mutableStateOf<ApiExercise?>(null) }
+    fun applyServerComposition(response: com.google.gson.JsonObject) {
+        val names = response.rows("exercises").map { it.text("exerciseName") }
+        val selectedName = sessionExercises.getOrNull(selectedExerciseIndex)
+        sessionExercises.clear()
+        sessionExercises.addAll(names)
+        selectedExerciseIndex = names.indexOf(selectedName).takeIf { it >= 0 } ?: 0
+        exerciseName = names.getOrElse(selectedExerciseIndex) { "" }
+    }
+    fun editServerComposition(action: () -> com.google.gson.JsonObject) {
+        if (compositionSaving) return
+        compositionSaving = true
+        syncError = null
+        uploadScope.launch {
+            try {
+                applyServerComposition(withContext(Dispatchers.IO) { action() })
+            } catch (failure: Exception) {
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                syncError = failure.message ?: "운동 구성을 저장하지 못했습니다."
+            } finally { compositionSaving = false }
+        }
+    }
     if (serverState != null) {
-        Text("서버에 세트 기록을 저장합니다. 시작 후 운동 구성 변경은 아직 서버에서 지원하지 않습니다.")
+        Text("운동 구성과 세트 기록을 서버에 저장합니다.")
         syncError?.let { ErrorText(it) }
     } else Text("직접 구성 운동은 이 기기에 저장됩니다.")
     var recordEvent by remember(session) { mutableStateOf(0) }
@@ -1233,13 +1269,19 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         Text("운동 구성", fontWeight = FontWeight.Bold)
         ExerciseHelp(session, history, saveRoutine)
         if (sessionExercises.isEmpty()) Text("첫 운동을 추가한 뒤 세트를 기록하세요.", color = Mint)
-        Text(if (serverState == null) "운동을 추가하고 순서를 바꾸거나 대체 운동으로 변경할 수 있어요." else "서버 운동 구성은 시작 전에 루틴에서 편집하세요. 진행 중에는 세트를 기록·수정할 수 있어요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
+        Text("운동을 추가하고 순서를 바꾸거나 대체 운동으로 변경할 수 있어요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
+        val serverExercises = serverState?.let { com.google.gson.JsonParser.parseString(it).asJsonObject.rows("exercises") }.orEmpty()
         sessionExercises.forEachIndexed { index, name ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${index + 1}. $name", modifier = Modifier.weight(1f), color = if (selectedExerciseIndex == index) Mint else FitMateColors.TextPrimary, fontWeight = if (selectedExerciseIndex == index) FontWeight.Bold else FontWeight.Normal)
                 Text("선택", color = Mint, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { selectedExerciseIndex = index; exerciseName = name })
                 Text("↑", color = if (index > 0) Mint else FitMateColors.TextSecondary, style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable {
-                    if (serverState == null && index > 0) {
+                    if (index > 0) {
+                        if (serverState != null) {
+                            val row = serverExercises.getOrNull(index) ?: return@clickable
+                            editServerComposition { requireNotNull(serverWorkout).moveExercise(row.text("id"), row.get("version").asLong, index) }
+                            return@clickable
+                        }
                         val previous = sessionExercises[index - 1]
                         sessionExercises[index - 1] = name
                         sessionExercises[index] = previous
@@ -1247,7 +1289,12 @@ private enum class TimePickerTarget { START_TIME, DURATION }
                     }
                 })
                 Text("↓", color = if (index < sessionExercises.lastIndex) Mint else FitMateColors.TextSecondary, style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable {
-                    if (serverState == null && index < sessionExercises.lastIndex) {
+                    if (index < sessionExercises.lastIndex) {
+                        if (serverState != null) {
+                            val row = serverExercises.getOrNull(index) ?: return@clickable
+                            editServerComposition { requireNotNull(serverWorkout).moveExercise(row.text("id"), row.get("version").asLong, index + 2) }
+                            return@clickable
+                        }
                         val next = sessionExercises[index + 1]
                         sessionExercises[index + 1] = name
                         sessionExercises[index] = next
@@ -1255,7 +1302,16 @@ private enum class TimePickerTarget { START_TIME, DURATION }
                     }
                 })
                 Text("삭제", color = if (sessionExercises.size > 1) MaterialTheme.colorScheme.error else FitMateColors.TextSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable {
-                    if (serverState == null && sessionExercises.size > 1) {
+                    if (sessionExercises.size > 1) {
+                        if (recordedSets.any { it.exerciseName == name }) {
+                            syncError = "세트가 기록된 운동은 삭제할 수 없습니다. 세트를 먼저 삭제하거나 운동을 완료해 주세요."
+                            return@clickable
+                        }
+                        if (serverState != null) {
+                            val row = serverExercises.getOrNull(index) ?: return@clickable
+                            editServerComposition { requireNotNull(serverWorkout).deleteExercise(row.text("id"), row.get("version").asLong) }
+                            return@clickable
+                        }
                         sessionExercises.removeAt(index)
                         selectedExerciseIndex = selectedExerciseIndex.coerceAtMost(sessionExercises.lastIndex)
                         exerciseName = sessionExercises[selectedExerciseIndex]
@@ -1263,11 +1319,37 @@ private enum class TimePickerTarget { START_TIME, DURATION }
                 })
             }
         }
-        if (serverState == null) {
-        OutlinedTextField(exerciseDraft, { exerciseDraft = it }, Modifier.fillMaxWidth(), label = { Text("추가하거나 대체할 운동명") }, singleLine = true)
+        OutlinedTextField(exerciseDraft, { next ->
+            if (next != selectedServerExercise?.name) selectedServerExercise = null
+            exerciseDraft = next
+        }, Modifier.fillMaxWidth(), label = { Text("추가하거나 대체할 운동명") }, singleLine = true)
+        if (serverState != null) Box {
+            OutlinedButton({ catalogExpanded = true }, enabled = !compositionSaving, shape = FitMateShapes.Button) { Text("운동 목록에서 선택") }
+            DropdownMenu(catalogExpanded, { catalogExpanded = false }) {
+                availableExercises.filter { it.name.contains(exerciseDraft, ignoreCase = true) }.take(30).forEach { candidate ->
+                    DropdownMenuItem(text = { Text(candidate.name) }, onClick = {
+                        selectedServerExercise = candidate
+                        exerciseDraft = candidate.name
+                        catalogExpanded = false
+                    })
+                }
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({
                 if (exerciseDraft.isNotBlank()) {
+                    if (serverState != null) {
+                        val candidate = selectedServerExercise
+                        if (candidate == null || candidate.name != exerciseDraft) {
+                            syncError = "서버 운동 목록에서 운동을 선택해 주세요."
+                        } else if (sessionExercises.contains(candidate.name)) {
+                            syncError = "같은 운동은 한 번만 추가할 수 있어요."
+                        } else {
+                            editServerComposition { requireNotNull(serverWorkout).addExercise(candidate.id, sessionExercises.size + 1) }
+                            exerciseDraft = ""; selectedServerExercise = null
+                        }
+                        return@OutlinedButton
+                    }
                     sessionExercises += exerciseDraft
                     selectedExerciseIndex = sessionExercises.lastIndex
                     exerciseName = exerciseDraft
@@ -1276,12 +1358,28 @@ private enum class TimePickerTarget { START_TIME, DURATION }
             }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("운동 추가", color = Mint) }
             OutlinedButton({
                 if (exerciseDraft.isNotBlank() && sessionExercises.isNotEmpty()) {
+                    if (recordedSets.any { it.exerciseName == sessionExercises[selectedExerciseIndex] }) {
+                        syncError = "세트가 기록된 운동은 대체할 수 없습니다."
+                        return@OutlinedButton
+                    }
+                    if (serverState != null) {
+                        val candidate = selectedServerExercise
+                        val row = serverExercises.getOrNull(selectedExerciseIndex)
+                        if (candidate == null || candidate.name != exerciseDraft) {
+                            syncError = "서버 운동 목록에서 운동을 선택해 주세요."
+                        } else if (sessionExercises.withIndex().any { it.index != selectedExerciseIndex && it.value == candidate.name }) {
+                            syncError = "같은 운동으로 대체할 수 없어요."
+                        } else if (row != null) {
+                            editServerComposition { requireNotNull(serverWorkout).replaceExercise(row.text("id"), row.get("version").asLong, candidate.id) }
+                            exerciseDraft = ""; selectedServerExercise = null
+                        }
+                        return@OutlinedButton
+                    }
                     sessionExercises[selectedExerciseIndex] = exerciseDraft
                     exerciseName = exerciseDraft
                     exerciseDraft = ""
                 }
             }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("선택 운동 대체", color = Mint) }
-        }
         }
     }
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Ink), shape = RoundedCornerShape(24.dp)) {
