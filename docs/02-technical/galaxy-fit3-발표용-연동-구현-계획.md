@@ -2,11 +2,13 @@
 
 - 작성일: 2026-09-09
 - 최종 수정일: 2026-09-09
-- 버전: v0.1
+- 버전: v0.4
 - 상태: 검토 중
 - 목적: 대학 프로젝트 발표 시연
-- 코드 재확인 기준: `628ddca` (문서 작성 시점의 체크아웃)
-- 범위 결정: [결정·회의 로그](../00-project/결정-회의-로그.md#2026-09-09-galaxy-fit3-발표용-연동-범위)
+- 코드 재확인 기준: `jj` 브랜치, `4c6f721` (기능 코드 기준 `494b657` 포함)
+- 범위 결정: [결정·회의 로그](../00-project/결정-회의-로그.md#2026-09-09-galaxy-fit3-단일-테이블-승인과-발표-후-수동-정리)
+
+v0.4는 사용자가 승인한 단일 테이블 구조와 발표 후 개발 DB 수동 정리 방식을 반영한다. 72시간 조회 제한, 1분 주기 삭제, 서버 재시작 시 만료 정리는 구현 범위에서 제외한다. 이번 요청은 계획서와 결정·회의 로그 수정이며, 코드 구현은 후속 요청에서 시작한다.
 
 ## 1. 목표와 첫 완료 기준
 
@@ -17,10 +19,11 @@ Galaxy Fit3에서 기록한 운동을 Samsung Health를 통해 FitMate로 가져
 1. 발표자가 Fit3와 FitMate에서 같은 운동을 시작하고 종료한다.
 2. Fit3 기록이 휴대전화의 Samsung Health에 나타난다.
 3. FitMate에서 최근 운동을 새로고침하고 해당 후보를 확인한다.
-4. 해당 운동의 시간·칼로리·제공된 심박수 등을 리포트에 표시한다.
-5. Samsung Health를 사용하지 않아도 기존 직접 기록과 기본 리포트는 동작한다.
+4. 해당 요약을 기존 완료 운동 세션에 저장하고 시간·칼로리·제공된 심박수 등을 리포트에 표시한다.
+5. 기록 목록에서 다시 열어도 같은 세션의 요약이 조회되고, 같은 요청을 재시도해도 중복 저장되지 않는다.
+6. Samsung Health를 사용하지 않아도 기존 직접 기록과 기본 리포트는 동작한다.
 
-이것이 앞선 계획에서 말한 ‘실기기 개발 검증’의 의미다. 별도 인증 절차가 아니라 **발표에 쓸 휴대전화와 Fit3로 위 흐름을 직접 해보는 것**이다. 서버 저장과 재조회는 다음 완료 단계로 나눠 진행한다.
+이것이 앞선 계획에서 말한 ‘실기기 개발 검증’의 의미다. 별도 인증 절차가 아니라 **발표에 쓸 휴대전화와 Fit3로 위 흐름을 직접 해보는 것**이다. 현재는 기본 운동 서버 연동이 구현되어 있으므로 이를 재사용해 저장·재조회까지 하나의 시연으로 완성한다. 기기에서 운동 한 건을 읽는 확인은 시작 단계이며 최종 완료 기준은 아니다.
 
 ## 2. 포함 범위와 제외 범위
 
@@ -29,16 +32,17 @@ Galaxy Fit3에서 기록한 운동을 Samsung Health를 통해 FitMate로 가져
 | 연동 방식 | 현재 Samsung Health Data SDK 1.1.0 유지 |
 | 실행 환경 | 발표자 휴대전화, Fit3, Samsung Health 개발 모드, 개발용 앱 |
 | 운동 선택 | 운동마다 Samsung Health 사용 여부 선택 |
-| 조회 | 운동 종료 후 최근 3일 후보를 수동 새로고침 |
+| 조회 | 운동 종료 후 최근 운동 후보를 수동 새로고침. 기본 조회 창은 기존 7일 재사용 |
 | 연결 | 운동 종류와 시작·종료 시각으로 후보를 추리고 사용자 확인 |
 | 리포트 | 기본 기록에 외부 운동 요약 영역 추가 |
-| 서버 저장 | 사용자가 확인한 운동 요약만 최대 3일 사용 |
+| 서버 저장 | 사용자가 확인한 최소 운동 요약만 저장. 발표 후 개발 DB에서 테스트 데이터 수동 정리 |
 | 오류 대응 | 권한 거부, 기록 없음, 동기화 지연, 통신 실패, 중복 저장 |
 
 다음 기능은 이번 발표용 구현에서 제외한다.
 
 - 앱스토어 배포, Samsung 파트너 심사, 배포용 서명 등록, 운영 서버 배포 및 CI/CD 구축
-- 90일 보관, 백업·복원, 운영용 모니터링과 장기 이력 관리
+- 보유기간 정책, 자동 삭제, 백업·복원, 운영용 모니터링과 장기 이력 관리
+- 72시간 조회 제한, 1분 주기 삭제 작업, 서버 재시작 시 만료 정리
 - 외부 요약 삭제 화면/API, 별도 동의 철회·탈퇴 기능 및 삭제 연쇄 처리
 - 자동 백그라운드 동기화, Push 알림, 원본 변경·삭제 감시
 - 직접 Bluetooth 통신, Fit3 원격 운동 제어, 실시간 심박수 스트리밍
@@ -49,24 +53,36 @@ Galaxy Fit3에서 기록한 운동을 Samsung Health를 통해 FitMate로 가져
 
 ## 3. 기획 문서와 현재 코드
 
-참조 문서는 [기능명세서 v1.2](../프로젝트제출용/3주차/기능명세서_v1.2.pdf), [기능 구현 백로그](../01-spec/기능-구현-백로그.md), [개발 우선순위](../01-spec/기능-개발-우선순위.md), [P0 API 명세](../01-spec/p0-api-명세.md), [DB 기획](../01-spec/db-설계-초기화-전-기획.md)다.
+참조 문서는 [기능명세서 v1.2](../프로젝트제출용/3주차/기능명세서_v1.2.pdf), [기능 구현 백로그](../01-spec/기능-구현-백로그.md), [개발 우선순위](../01-spec/기능-개발-우선순위.md), [P0 API 명세](../01-spec/p0-api-명세.md), [DB 기획](../01-spec/db-설계-초기화-전-기획.md), [프론트·백엔드 연동 요구사항](../01-spec/프론트-백엔드-연동-요구사항.md), [운동 기록 연동](./운동-기록-api-프론트엔드-연동.md), [러닝 기록 연동](./러닝-기록-api-프론트엔드-연동.md)이다. 문서의 미완료 목록과 코드가 다르면 아래 코드 확인 결과를 기준으로 작업량을 산정한다.
 
 백로그의 `SAMSUNG-HEALTH-01~11`은 선택적 사용, 운동 종료 후 조회, 종류·시간 매칭, 사용자 확인, 상세 리포트 반영을 요구한다. 이 핵심 흐름을 유지하되, 삭제·철회·백업 등은 이번에 승인된 발표 범위에 맞춰 제외한다. 원본 기능명세서와 `1차기획` 파일은 수정하지 않는다.
 
 | 영역 | 작성 시점에 확인한 구현 | 필요한 작업 |
 |---|---|---|
 | SDK | `android/app/libs/samsung-health-data-api-1.1.0.aar` 존재, Gradle에서 로컬 AAR 사용 | 버전과 방식 유지 |
-| 조회 | `SamsungHealthManager`가 오늘 걸음 수와 최근 7일 운동을 조회 | 발표 흐름은 최근 3일, 시간 범위·페이지 처리 추가 |
+| 조회 | `SamsungHealthManager`가 오늘 걸음 수와 최근 7일 운동을 조회 | 기존 조회 창 재사용, 선택 세션에 맞는 시간 범위·페이지 처리 추가 |
 | 모델 | UID, 출처 앱·기기, 시각, 거리·칼로리·심박수 등 존재 | 원본 수정 시각, 실제 활동 시간, 구간 수 보존 |
 | UI | `SamsungHealthTestScreen`은 별도 조회 화면 | 운동 완료 리포트에서 후보 조회·확인 연결 |
-| 운동 | `FitMatePrototypeApp`의 로컬 운동·리포트와 `WorkoutSummary` | 실제 시작·종료 시각과 선택한 외부 기록을 연결 |
-| 리포트 | Samsung Health 사용 시 동기화 안내 문구만 표시 | 실제 값, 대기·실패·완료 상태 표시 |
-| Android 서버 연결 | 현재 `FitMateRepository`는 프로필·게시물 등의 Mock 중심 | 서버 저장 단계에서 인증된 API 호출 연결 필요 |
-| 백엔드 | 운동 Entity는 있으나 `WorkoutReportService`는 빈 인터페이스 | 운동 저장·기본 리포트 API 선행 구현 또는 해당 구현이 있는 코드 통합 필요 |
-| DB | migration V1~V3, `fitness_workout_sessions` 존재 | 외부 요약 테이블 1개 추가 계획 |
-| 테스트 | Android Samsung 모델 테스트와 Backend UUID 변환 테스트 존재 | 매칭·요약 저장·권한·만료 검증 추가 |
+| 헬스 진행 | `ServerWorkout`이 시작·세트 저장·일시정지·완료·완료 세션 재조회를 수행 | 응답의 세션 ID·시각을 외부 연결에 사용 |
+| 로컬 리포트 | `ReportScreen`이 조회 목록의 최신 `endTime` 운동을 표시 | 종류·시각 확인 없이 최신 기록을 붙이는 방식을 후보 확인으로 교체 |
+| 서버 리포트 | `ServerRecordDetail`이 헬스 리포트·세션 또는 러닝 상세를 조회. Samsung 상태는 전달받지 않음 | 완료 직후와 기록 목록 상세에 동일한 외부 요약 영역 추가 |
+| Android 서버 연결 | `FitMateApiClient`, `SessionTokenStore`, `ServerRecordApi` 구현 | 기존 인증·갱신·요청 방식을 재사용, 새 HTTP 클라이언트 불필요 |
+| 로컬 보존 | `FrontendLocalStore`의 계정별 snapshot과 `noBackupFilesDir` 사용 | 사용 여부·시각 등 연결 메타데이터만 보완, 원시 건강 데이터 보관 확대 없음 |
+| 운동 백엔드 | `WorkoutController`·`WorkoutService`·`WorkoutReportService` 구현. 완료 리포트는 `BASIC_READY` | 기본 상태·API 계약 유지, 외부 요약 GET/PUT만 추가 |
+| 러닝 | `RunningFlow`·`ServerRecordApi`·`RunningRecordService`가 저장·재조회 지원. 저장 시 RUNNING 완료 공통 세션 생성 | 반환된 기록 ID를 공통 세션 ID로 사용, 실제 `startedAt` 보완 |
+| DB | migration V1~V18, 러닝 V8·인바디 V14·메이트 V15~V18 존재 | 다음 번호로 외부 요약 테이블 1개 추가 |
+| 테스트 | Android 계약·상태·실기기 API 테스트, Backend 운동·러닝·migration 통합 테스트 존재 | 기존 검증 확장, Samsung 요약 전용 검증 추가 |
 
-**현재 체크아웃에는 앞선 분석에서 언급된 완성된 운동·러닝 서버 연동이 없다.** 따라서 첫 시연은 기존 로컬 리포트에 실제 Samsung Health 데이터를 붙이는 단계로 완성한다. 서버 저장은 기본 운동 세션 API가 준비된 후 연결한다. 외부 연동 전용 API 2개만으로 누락된 기본 운동 API까지 완성된다고 가정하지 않는다.
+v0.1의 ‘기본 운동 API 미구현’, ‘리포트는 빈 인터페이스’, ‘DB V3까지’ 전제는 이전 체크아웃 `628ddca`에 해당한다. v0.2에서 이를 정정하고 `BASE-01` 신규 구현 단계를 제거했다. 소셜·인바디·메이트 코드도 추가되어 있으나 이번 연동을 위해 확장할 필요는 없다. v0.2 코드 검토 시작 시 git 작업 트리는 깨끗했으며, 이후 문서 변경은 계속 보존한다. 실제 기기·DB의 현재 동작을 재검증한 것은 아니다.
+
+남은 핵심 차이는 다음과 같다.
+
+- 서버 루틴을 선택한 헬스는 완료 후 `ServerRecordDetail`로 이동한다. 로컬 `ReportScreen`만 고치면 주 시연 경로에는 반영되지 않는다.
+- `WorkoutSession.useSamsung`은 로컬 선택값이며 생성 API에는 전송하지 않는다. 완료 뒤와 기록 재진입 시 이 선택을 전달·복원해야 한다.
+- 로컬 전용 운동은 서버 세션 ID가 없을 수 있다. 첫 시연에서는 서버 루틴으로 생성한 헬스 세션을 사용한다. 로컬 운동의 신규 서버 변환 기능은 추가하지 않는다.
+- 러닝의 `runningPayload`는 현재 실제 `startedAt`을 보내지 않는다. 서버의 종료 시각에서 활동 시간을 빼는 보정은 휴식 시간이 있는 운동 매칭에 부정확할 수 있다.
+- `MainActivity.onResume()`의 새 상태 생성은 조회 결과를 비울 수 있다. 권한 확인과 선택·저장 상태를 분리하고 계정 전환 시 이전 계정의 후보를 비운다.
+- 백엔드에는 아직 Samsung 외부 요약 전용 API·테이블·원본 UID 연결이 없다.
 
 [기존 Fit2 가이드](../00-project/1차기획/Fit2_SamsungHealth_Android_연동_가이드.md)는 Health Connect를 제안하지만 실제 코드는 Samsung Health Data SDK다. [기존 SDK 테스트 안내](../../android/SAMSUNG_HEALTH_DATA_SDK_TEST.md)의 Fit2 기기명도 Fit3 검증 완료의 근거로 사용하지 않는다.
 
@@ -95,9 +111,9 @@ Galaxy Fit3 운동 기록
   → SamsungHealthManager에서 운동 읽기
   → 시간·종류로 후보 추리기
   → 사용자가 해당 운동 확인
-  → FitMate 기본 리포트에 외부 요약 표시 [첫 시연 완료]
   → 완료된 서버 운동 세션에 요약 저장
-  → 재조회해 같은 리포트 복원 [서버 연동 완료]
+  → ServerRecordDetail에서 기본 리포트와 외부 요약 표시
+  → 기록 목록에서 재조회해 같은 리포트 복원 [첫 시연 완료]
 ```
 
 1. 설정에서 연결 가능 여부를 확인하고 필요한 운동 읽기 권한을 요청한다.
@@ -107,7 +123,7 @@ Galaxy Fit3 운동 기록
 5. ‘Samsung Health 운동 불러오기’를 눌러 후보를 조회한다.
 6. 후보가 없으면 Samsung Health 동기화를 확인하고 새로고침한다. 고정 시간 안에 동기화된다고 약속하지 않는다.
 7. 종류·시간·제공된 요약을 보고 사용자가 후보를 확인한다. 한 개여도 확인을 거친다.
-8. 요약을 리포트에 표시한다. 서버 연결 단계에서는 저장 성공 여부를 별도로 표시한다.
+8. 해당 완료 세션에 요약을 저장하고 재조회 결과를 리포트에 표시한다. 저장 전 후보 미리보기와 저장 완료를 구분한다.
 9. 저장 실패 시 기본 리포트를 유지하고 재시도를 제공한다.
 
 연결 해제·데이터 삭제 메뉴는 새로 만들지 않는다. 사용자가 Samsung Health 설정에서 권한을 해제했을 때 읽기에 실패해도 FitMate 자체 운동은 계속 사용할 수 있게 한다.
@@ -118,20 +134,44 @@ Galaxy Fit3 운동 기록
 
 | 대상 | 변경 내용 | 완료 기준 |
 |---|---|---|
-| `samsunghealth/SamsungHealthManager.kt` | 운동만 요청하는 권한 경로, 기간 지정 조회, 페이지 처리, 수정 시각·활동 시간·구간 수 추출 | 기존 진단용 걸음 수 조회와 독립적으로 운동 조회 가능 |
+| `samsunghealth/SamsungHealthManager.kt` | 운동만 요청하는 권한 경로, 기간 지정 조회, 페이지 처리, `point.updateTime`·활동 시간·구간 수 추출 | 기존 진단용 걸음 수 조회와 독립적으로 운동 조회 가능 |
 | `samsunghealth/SamsungWorkoutUiModel.kt` | nullable 값과 원본 정보를 보존하는 매핑 | 미제공 값을 0으로 꾸미지 않음 |
 | 신규 `samsunghealth/ExternalWorkoutSummary.kt` | 화면·저장용 최소 요약 모델 | SDK 객체나 원시 로그를 서버에 보내지 않음 |
 | 신규 `samsunghealth/WorkoutMatchEngine.kt` | 종류와 시간 기반 후보 필터·정렬, UID 중복 제거 | 엉뚱한 최신 운동을 자동 연결하지 않음 |
 | `samsunghealth/SamsungHealthUiState.kt` | 권한 상태와 조회·후보·선택 상태 관리 | 로딩·빈 상태·오류·재시도 구분 |
 | `MainActivity.kt` | SDK 호출을 운동 리포트에 전달, 화면 복귀 시 선택 상태 보존 | 권한 화면에서 돌아와도 기본 운동 기록 유지 |
-| `data/model/FitMateModels.kt` | `WorkoutSummary`에 실제 시작·종료 시각과 외부 요약 연결 정보 추가 | 운동별로 연결이 분리됨 |
-| `ui/FitMatePrototypeApp.kt` | 기존 운동 시작·완료와 `ReportScreen`에 실제 데이터 연결 | 첫 시연 흐름 완주 |
+| `data/model/FitMateModels.kt` | 기존 `WorkoutSummary.serverId`, 완료 시각·사용 여부 재사용. 필요한 연결 시각만 보완 | 운동별로 연결이 분리됨 |
+| `ui/FitMatePrototypeApp.kt` | 서버 리포트 경로에 세션별 사용 여부·SDK 콜백 전달. 로컬 최신 운동 자동 표시 교체 | 서버 완료 직후와 로컬 경로를 혼동하지 않음 |
+| `ui/ServerRecords.kt` | `ServerRecordDetail`과 목록 상세에 외부 요약 조회·후보 확인 연결 | 기록 목록에서 재진입해도 동일 요약, 추가 조회 실패에도 기본 리포트 유지 |
+| `ui/WorkoutSession.kt`, `ui/FrontendLocalStore.kt` | 기존 서버 상태·사용 여부를 활용하고 계정별 세션 메타데이터 복원 보완 | 기존 snapshot 읽기 호환, 계정 간 후보·선택 혼합 없음 |
+| `ui/RunningFlow.kt`, `ui/ServerRecordApi.kt` | 러닝 확장 시 실제 시작 시각을 상태·snapshot·payload에 추가, 저장 결과 ID 전달 | 일시정지 포함 시간 매칭, `pendingUpload`·`clientRecordId` 재시도 유지 |
 | 신규 `ui/ExternalWorkoutSection.kt` | 후보 목록·확인·요약·저장 상태 UI | 데이터가 없거나 실패해도 기본 리포트 표시 |
-| 신규 `data/remote/ExternalWorkoutApi.kt` | 서버 단계에서 GET/PUT, 기존 인증 흐름 사용 | 저장 후 재조회 가능, 토큰 하드코딩 없음 |
+| 신규 `data/remote/ServerHealthApi.kt` | `FitMateApiClient.request`로 GET/PUT, 기존 인증 흐름 사용 | `data: null` 안전 처리, 저장 후 재조회 가능 |
 
 동기화 상태는 운동 완료 상태와 분리한다. UI 상태는 `NOT_USED`, `NEEDS_PERMISSION`, `IDLE`, `LOADING`, `EMPTY`, `CANDIDATES`, `SAVING`, `LINKED`, `ERROR` 정도로 제한한다. 서버에 별도 동기화 상태 테이블을 만들지 않는다.
 
-첫 시연 단계의 후보·선택은 메모리에서 관리한다. 앱 재시작 후 복원은 서버 단계의 GET으로 제공한다. 작업 취소는 오류로 삼키지 않도록 `CancellationException`을 다시 던진다.
+후보·선택·미리보기는 메모리에서 관리하고 서버 저장된 요약은 GET으로 복원한다. 기존 snapshot에는 필요 시 세션 ID별 사용 여부와 실제 시작 시각만 추가한다. 구버전 snapshot의 누락 필드는 기본값으로 처리한다. 새 Repository·ViewModel·DI 프레임워크나 네트워크 의존성은 도입하지 않는다. 작업 취소는 오류로 삼키지 않도록 `CancellationException`을 다시 던진다.
+
+헬스 매칭 시각은 완료 후 GET으로 읽은 서버 `startedAt`·`endedAt`을 기준으로 한다. 새 `startedAt` 서버 필드는 필요 없다. 러닝은 기존 DTO의 선택 필드 `startedAt`을 활용한다. 이전 snapshot처럼 실제 시작 시각이 없으면 정확한 매칭을 보장하지 않고 후보 재확인을 안내한다. 첫 시연에서는 신규 기록을 사용한다.
+
+기록 재진입 시 서버의 연결된 요약이 있으면 먼저 표시한다. 연결이 없고 로컬 사용 선택을 복원하지 못하면 ‘이번 기록에 연결’ 버튼을 제공하고 명시적으로 눌렀을 때만 기기 후보를 읽는다. 건강 데이터 동의 시스템을 새로 만들지 않고, 기존 운동별 선택과 후보 확인을 이어 준다.
+
+### 수정 시각 획득 계약
+
+2026-09-09에 [HealthDataPoint 공식 API](https://developer.samsung.com/health/data/api-reference/-shd/com.samsung.android.sdk.health.data.data/-health-data-point/index.html)의 `updateTime: Instant?`와 로컬 `samsung-health-data-api-1.1.0.aar`의 `getUpdateTime(): java.time.Instant` 메서드를 확인했다. 이는 API 존재 확인이며 실제 Fit3 레코드에서 값이 채워지는지까지 검증한 것은 아니다.
+
+```text
+store.readData(EXERCISE 요청).dataList
+  → 각 HealthDataPoint의 point.updateTime
+  → SamsungWorkoutUiModel.sourceModifiedAt: Instant?
+  → ExternalWorkoutSummary.sourceModifiedAt: Instant?
+  → PUT sourceModifiedAt (UTC ISO-8601 또는 null)
+  → DB source_modified_at (UTC DATETIME(3), nullable)
+```
+
+현재 `toWorkout()`은 이 속성을 버리고 있으므로 매핑만 추가한다. 부모 HealthDataPoint의 수정 시각을 사용하며, 복합 운동 제외 규칙은 유지한다. 공식 설명상 수정 이력이 없으면 `startTime`과 같을 수 있다. 값이 null이면 null을 유지하며 운동 종료 시각·조회 시각·서버 저장 시각으로 대체하지 않는다.
+
+[FAQ의 readChanges 안내](https://developer.samsung.com/health/data/faq.html)는 변경 종류·시각을 조회하는 별도 경로다. 이번 수동 조회에서는 `readData()` 결과의 `updateTime`을 사용하고, 이를 얻기 위해 변경 감시나 `readChanges()`를 새로 도입하지 않는다. 미제공 시에는 8절의 버전 확인·재조회·사용자 재확인을 적용한다.
 
 ## 7. 후보 매칭과 중복 처리
 
@@ -139,20 +179,20 @@ Galaxy Fit3 운동 기록
 - 초기 허용 오차는 **시작과 종료 각각 ±10분**으로 가정한다. 시간 구간이 겹치고 운동 종류가 맞는 후보만 제안한다. 실제 시연 기록으로 오차를 조정한다.
 - 운동 종류는 문자열 유사도 대신 명시적 코드 매핑을 사용한다. 종류가 불분명하면 자동 추천하지 않는다.
 - 거리 m, 활동 시간 초, 칼로리 kcal, 심박수 bpm으로 정규화한다. 전체 경과 시간과 실제 활동 시간을 구분한다.
-- 동일 UID의 중복 조회는 하나로 합친다. 서로 다른 UID를 시간만 같다는 이유로 합치지 않는다.
+- 중복 비교는 계정 범위 안에서 `(provider, sourceAppKey, sourceRecordId)`로 통일한다. `sourceAppKey`의 null 처리 규칙은 8절을 따른다. 같은 UID라도 출처 앱이 다르면 별개 후보이며, 시간만 같다는 이유로 합치지 않는다.
 - 첫 구현은 원본에 단일 `ExerciseSession`이 있는 운동만 연결한다. 복합 운동은 지원하지 않는다고 표시한다.
 - 저장 직전에 원본을 다시 읽고 변경됐다면 확인 화면을 갱신한다.
 - 매칭 실패 시 다른 운동을 억지로 붙이지 않고 기본 리포트만 유지한다.
 
 ## 8. 백엔드 API와 DB 계획
 
-이 단계의 선행조건은 인증된 사용자의 완료 운동 세션을 저장·조회할 수 있는 기본 API다. 현재 체크아웃에서는 이 선행 작업이 필요하다. [P0 API 명세](../01-spec/p0-api-명세.md)의 계약을 따라 준비하고, 별도의 임시 사용자 ID나 Mock 세션을 실제 서버 기록인 것처럼 사용하지 않는다.
+기존 `WorkoutController`의 완료·조회·리포트 API와 `RunningRecordController`의 저장·조회 API를 사용한다. 헬스는 `ServerWorkout.complete()` 후 보유한 세션 ID, 러닝은 저장 응답의 기록 ID가 연결 대상이다. 러닝도 같은 `fitness_workout_sessions`에 연결되므로 종목별 외부 저장 API를 따로 만들지 않는다. 기본 API 신규 구현이나 호환성 변경은 필요 없다.
 
 외부 요약을 위한 신규 API는 2개로 제한한다. 기본 리포트 응답을 변경하지 않고 추가 조회 결과를 화면에서 함께 표시한다.
 
 | 메서드 | 경로 | 동작 |
 |---|---|---|
-| GET | `/api/v1/workout-sessions/{sessionId}/external-workout` | 본인 세션의 유효한 외부 요약 조회. 없거나 만료되면 `data: null` |
+| GET | `/api/v1/workout-sessions/{sessionId}/external-workout` | 본인 세션에 저장된 외부 요약 조회. 연결된 요약이 없으면 `data: null`. 시간 경과에 따른 차단 없음 |
 | PUT | `/api/v1/workout-sessions/{sessionId}/external-workout` | 사용자가 확인한 요약 저장 또는 동일 원본 갱신 |
 
 요청 필드는 `provider`, `sourceRecordId`, `sourceAppId?`, `sourceModifiedAt?`, `exerciseType`, `startedAt`, `endedAt`, `activeDurationSeconds`, `distanceMeters?`, `caloriesKcal?`, `meanHeartRate?`, `minHeartRate?`, `maxHeartRate?`, `expectedVersion`으로 제안한다. `provider`는 `SAMSUNG_HEALTH_DATA_SDK`로 제한한다.
@@ -164,46 +204,58 @@ Galaxy Fit3 운동 기록
 | 신규 파일 | 역할 |
 |---|---|
 | `api/ExternalWorkoutController.kt`, `api/ExternalWorkoutDtos.kt` | 인증, 요청 검증, 기존 `ApiResponse` 형식 |
-| `application/ExternalWorkoutService.kt` | 세션 소유권·완료 상태 확인, 저장·갱신·만료 처리 |
+| `application/ExternalWorkoutService.kt` | 세션 소유권·완료 상태 확인, 최소 요약 저장·갱신 |
 | `domain/ExternalWorkoutSummary.kt` | 외부 요약 Entity |
-| `repository/ExternalWorkoutSummaryRepository.kt` | 조회, 중복 방지, 만료 행 정리 |
-| `db/migration/V<다음번호>__create_external_workout_summaries.sql` | 외부 요약 테이블 추가. 현재 V3 다음이지만 착수 시 번호 재확인 |
+| `repository/ExternalWorkoutSummaryRepository.kt` | 조회와 중복 방지 |
+| `db/migration/V19__create_external_workout_summaries.sql` (저장소 루트 기준) | 외부 요약 테이블 추가. V1~V18 보존, 착수 시 다음 번호 재확인 |
 
-테이블은 `health_external_workout_summaries` 하나를 추가한다.
+기존 `workout/repository/WorkoutRepositories.kt`에는 본인 세션을 쓰기 잠금으로 조회하는 메서드를 추가한다. 기존 서비스의 API ID ↔ MySQL ordered UUID 변환 경계를 그대로 따라 FK·소유권 조회가 같은 ID를 사용하도록 한다. 외부 요약의 `version`은 기본 운동 세션의 `version`과 별개다. 기존 메이트용 `ops_idempotency_keys`나 알림 처리까지 확장하지 않는다.
+
+테이블은 사용자 승인에 따라 `health_external_workout_summaries` 하나로 합친다. 기존 [DB 기획의 운동·외부 요약 모델](../01-spec/db-설계-초기화-전-기획.md)은 `health.external_workout_records`와 `health.external_workout_links`를 분리하지만, 이번 발표용 구현에는 승인된 단일 테이블 단순화를 적용한다. 이번 문서 수정 요청에서는 migration을 작성하거나 실행하지 않는다.
+
+기존 두 테이블의 ‘외부 요약’과 ‘연결’을 한 행으로 합치되, 사용자 확인 전 후보는 메모리에만 둔다. `workout_session_id` PK로 세션당 한 요약, 아래 원본 unique로 원본당 한 세션 연결을 유지한다. 사용자 확인은 인증된 본인의 PUT 성공 시 확정되며 `user_id`와 최초 `saved_at`으로 확인자·확정 시각을 표현한다. 미확정 후보·매칭 상태 이력을 서버에 보관하지 않는 것이 기존 안과의 차이다.
 
 | 컬럼 그룹 | 설계 |
 |---|---|
 | 연결 | `workout_session_id` PK/FK → `fitness_workout_sessions.id`, `user_id` FK |
-| 원본 | `provider`, `source_record_id`, `source_app_id` nullable, `source_modified_at` nullable |
+| 원본 | `provider`, `source_record_id`, `source_app_id` nullable, `source_app_key` generated, `source_modified_at` nullable |
 | 운동 | `exercise_type`, `started_at`, `ended_at`, `active_duration_seconds` |
 | 선택 지표 | `distance_meters`, `calories_kcal`, `mean_heart_rate`, `min_heart_rate`, `max_heart_rate` nullable |
-| 관리 | `payload_hash`, `version`, `saved_at`, `updated_at`, `expires_at` |
+| 관리 | 최소 요약의 `payload_hash`, `version`, `saved_at`, `updated_at` |
 
-`UNIQUE(user_id, provider, source_record_id)`로 한 원본을 여러 세션에 중복 연결하지 못하게 한다. 원본 ID는 대소문자를 구분해 비교한다. `expires_at`에 정리용 인덱스를 둔다. UUID 저장은 기존 `UuidBinaryConverter` 방식을 따른다.
+중복 키의 논리 계약은 기존 DB 기획의 **`(user_id, provider, source_app_id, source_record_id)`**를 유지한다. v0.2에서 `source_app_id`를 뺀 정의는 사용하지 않는다. nullable 출처 앱을 그대로 MySQL UNIQUE에 넣으면 중복 null 행이 허용되므로 다음과 같이 구현한다.
 
-같은 세션·원본·내용의 PUT 재시도는 성공으로 반환하고 행을 추가하지 않는다. 다른 내용의 갱신은 `expectedVersion`을 확인하며 동시 요청 충돌은 409로 처리한다. 원본 수정 시각이 오래됐으면 덮어쓰지 않는다. 수정 시각이 없거나 같으면서 내용이 다르면 다시 읽은 후보를 사용자에게 확인시킨 후 현재 버전으로 저장한다. 이미 연결된 세션에 다른 원본 UID를 넣는 교체는 제외한다.
+- SDK가 출처 앱을 주지 않으면 API·DB의 `source_app_id`는 null로 유지한다. 실제 앱 ID는 빈 문자열을 허용하지 않는다.
+- DB에서 `source_app_key = COALESCE(source_app_id, '')`인 저장형 generated column을 만든다. 이 파생값은 클라이언트 요청 필드가 아니다.
+- 물리 제약은 `UNIQUE(user_id, provider, source_app_key, source_record_id)`로 둔다. Android 후보 중복 비교도 null을 같은 빈 키로 대응시킨다.
+- 앱 ID와 원본 UID는 대소문자와 후행 공백이 구분되는 비교 방식을 사용한다. 앱 ID 최대 255자, UID 최대 128자로 제한하고 같은 값을 임의로 소문자화하지 않는다. 이는 저장 길이 제안이며 DEMO-01에서 SDK 기록과 확인한다.
+- 출처 앱이 뒤늦게 채워져 키가 달라지면 기존 연결을 자동 이관하지 않는다. 같은 세션의 다른 원본 키 요청으로 409를 반환하고 재확인을 안내한다.
 
-소유권 확인·행 잠금·쓰기·버전 증가를 한 트랜잭션에서 처리하고, UNIQUE 충돌도 정상적인 중복 응답으로 변환한다. 인증 실패는 401, 본인 세션이 아니거나 없으면 404, 잘못된 입력은 400, 연결·버전 충돌은 409로 구분한다. 서버는 외부 데이터의 진위를 증명하지 않으며, 발표자가 확인한 기기 기록을 저장한다.
+UUID 저장은 기존 `UuidBinaryConverter` 방식을 따른다. 만료 시각 컬럼과 정리용 인덱스는 추가하지 않는다. `payload_hash`는 허용된 최소 요약 필드의 중복 비교용 해시이며 전체 SDK payload나 그 원문을 저장하는 필드가 아니다.
 
-## 9. 3일 보관과 최소 데이터 정책
+같은 세션·원본 키·내용의 PUT 재시도는 성공으로 반환하고 행을 추가하지 않는다. 다른 내용의 갱신은 `expectedVersion`을 확인하며 동시 요청 충돌은 409로 처리한다. 비교 가능한 두 원본 수정 시각 중 요청 값이 오래됐으면 덮어쓰지 않는다. 어느 한쪽 수정 시각이 없거나 같으면서 내용이 다르면 다시 읽은 후보를 사용자에게 확인시킨 후 현재 버전으로 저장한다. 이미 연결된 세션에 다른 원본 키를 넣는 교체는 제외한다.
 
-3일의 기준은 **외부 운동 종료 시각부터 72시간**으로 가정한다. 최초 업로드나 재시도로 기간을 계속 늘리지 않는다.
+소유권 확인·행 잠금·쓰기·버전 증가를 한 트랜잭션에서 처리한다. UNIQUE 충돌 시 실패한 트랜잭션 밖에서 재조회해 동일 세션·동일 내용의 재시도만 성공으로 반환하고 다른 세션과의 연결 충돌은 409로 처리한다. 인증 실패는 401, 본인 세션이 아니거나 없으면 404, 잘못된 입력은 400, 연결·버전 충돌은 409로 구분한다. 서버는 외부 데이터의 진위를 증명하지 않으며, 발표자가 확인한 기기 기록을 저장한다.
 
-- 서버가 `expiresAt = endedAt + 72시간`을 계산한다. 갱신하더라도 기존 만료 시각보다 연장하지 않는다.
-- 72시간이 지난 원본은 신규 저장하지 않는다. GET은 만료 요약을 반환하지 않는다.
-- 서버 시작과 관련 API 호출 시 만료 행을 정리한다. 별도 스케줄러·백업 시스템은 만들지 않는다.
-- 서버가 꺼져 있거나 요청이 없으면 물리적 삭제는 다음 실행·호출 때 이뤄진다. 정확히 72시간에 디스크에서 삭제되는 방식은 아니다.
-- UI도 `expiresAt` 이후 요약을 숨긴다. 기본 FitMate 운동 기록은 외부 요약 만료와 별개다.
+## 9. 최소 요약 저장과 발표 후 수동 정리
+
+이번 기능은 대학 프로젝트 발표용이다. 사용자가 확인한 최소 운동 요약만 서버에 저장하며, 시간 경과를 이유로 업로드를 거절하거나 저장된 요약 조회·표시를 차단하지 않는다. 자동 삭제와 보유기간 정책은 이번에 구현하지 않는다.
+
+기기 후보의 기본 7일 조회 창은 SDK 조회량을 줄이는 검색 조건이며 서버 보유기간이 아니다. 선택한 FitMate 세션이 창 밖에 있으면 해당 세션의 시작·종료 시각과 매칭 오차 범위로 조회한다. 이미 서버에 연결된 요약은 기기 후보 검색 기간과 관계없이 GET으로 다시 읽는다.
 
 | 데이터 | 처리 |
 |---|---|
-| 확인한 운동 요약·출처·수정 시각 | 서버에 최대 72시간 동안 조회 가능한 형태로 저장 |
+| 확인한 최소 운동 요약·출처·수정 시각 | 8절의 필드만 서버에 저장. 발표 후 개발 DB에서 테스트 데이터 수동 정리 |
 | 후보 목록, 전체 기기 ID, 원본 SDK 객체 | 단말 메모리에서만 사용, 서버 업로드하지 않음 |
-| 원시 심박수 샘플, GPS 경로, 수면, 원본 전체 JSON | 이번 연동에서는 저장하지 않음 |
+| 원시 심박수 샘플, GPS 경로, 수면, 전체 SDK payload | 이번 연동에서는 서버와 단말 파일에 저장하지 않음 |
 | 건강 수치·토큰이 담긴 로그, 실제 개인정보 테스트 fixture | 남기지 않음 |
 | 백업·복원 | 신규 구현 없음. 기존 프로젝트 설정을 임의로 변경하지 않음 |
 
-확인 화면에는 ‘선택한 운동 요약을 리포트에 사용하며 서버 저장 시 운동 종료 후 3일까지 표시한다’는 짧은 안내를 둔다. 별도 동의 이력 테이블이나 철회 절차는 만들지 않는다. 발표자 본인 데이터와 본인 계정을 사용하며 건강 요약은 다른 사용자에게 공개하지 않는다.
+확인 화면에는 ‘선택한 운동의 최소 요약을 발표용 리포트에 저장합니다. 발표용 테스트 데이터는 발표 후 개발 DB에서 수동으로 정리합니다’라고 안내한다. 별도 동의 이력 테이블이나 철회 절차는 만들지 않는다. 발표자 본인 데이터와 본인 계정을 사용하며 건강 요약은 다른 사용자에게 공개하지 않는다.
+
+발표 후 개발 담당자는 연결된 DB가 발표용 개발 DB인지 확인하고, 발표에 사용한 테스트 계정·세션 ID로 외부 요약 행을 조회한 뒤 해당 행만 수동 삭제한다. 정리 후 대상 행이 남아 있지 않은지 확인한다. 다른 개발 데이터나 기본 운동 기록을 일괄 초기화하지 않으며, 정리 수행 여부만 결정·회의 로그에 기록한다. 실제 계정 ID나 건강 수치를 문서에 남기지 않는다. 이번 요청에서 데이터 정리를 실행하지 않는다.
+
+운영 배포 전 후속 과제는 보유기간의 정의, 자동 삭제·파기 검증, 사용자용 삭제·동의 철회 기능이다. 이 기능들은 현재 WBS·API·migration·테스트의 구현 대상에 포함하지 않는다.
 
 ## 10. 단계별 구현 순서
 
@@ -211,24 +263,26 @@ Galaxy Fit3 운동 기록
 
 | ID | 작업과 담당 | 주요 대상 | 선행조건 | 완료 기준 | 예상 |
 |---|---|---|---|---|---|
-| DEMO-01 | Android: 발표 기기로 운동 1건 읽기 | Manager, 테스트 화면, SDK 테스트 안내 | Fit3·휴대전화·AAR·개발 모드 | 실제 운동의 UID·시각·제공 필드 확인 | 반나절~1일 |
-| DEMO-02 | Android: 요약·매칭과 실제 운동 시각 | 모델, MatchEngine, FitMateModels | DEMO-01 | 같은 운동 후보를 정확히 제안 | 1일 |
-| DEMO-03 | Android: 기존 리포트에 후보 확인·요약 표시 | MainActivity, PrototypeApp, ExternalWorkoutSection | DEMO-02 | **첫 실제 데이터 시연 성공**, 미사용 흐름 정상 | 1~2일 |
-| BASE-01 | Backend·Android: 기본 운동 저장·조회 연결 | 기존 P0 명세의 workout/report, 인증 API 연결 | 현재 구현·병합 상태 확인 | 본인 완료 세션 ID와 기본 리포트 확보 | 미구현 범위 확인 후 산정 |
-| DEMO-04 | Backend: 외부 요약 저장·조회·3일 만료 | health 패키지, migration | BASE-01 | 소유권·중복·만료 검증 통과 | 1~2일 |
-| DEMO-05 | Android: 외부 API 연결·재조회 | ExternalWorkoutApi, 리포트 화면 | DEMO-03~04 | 저장 후 다시 열어도 요약 표시 | 1일 |
-| DEMO-06 | 공통: 예외 처리와 발표 리허설 | 모델·서비스 테스트, 실제 기기 | DEMO-03, 서버 시연 시 DEMO-05 | 권한 거부·지연에도 발표 흐름 유지 | 1일 |
+| DEMO-01 | 공통: 기존 연동 동작 확인 | Manager, 테스트 화면, ServerWorkout, ServerRecordDetail | 발표 기기·개발 모드·개발 서버 | 실제 Fit3 운동 1건 조회, 서버 루틴 운동 완료·재조회 확인 | 반나절~1일 |
+| DEMO-02 | Android: 요약·매칭 모델과 조회 보완 | Manager, 모델, MatchEngine, UiState | DEMO-01의 기록 필드 확인 | 같은 운동 후보 제안, UID·null·복합 운동 처리 | 1일 |
+| DEMO-03 | Backend: 최소 외부 요약 저장·조회 | health 패키지, WorkoutRepositories, V19, migration 테스트 | 기존 완료 세션 API와 8절 계약 | 소유권·중복·수정·최소 필드 저장 검증 통과 | 1~2일 |
+| DEMO-04 | Android: 서버 헬스 리포트에 후보 확인·저장 연결 | MainActivity, PrototypeApp, ServerRecords, ServerHealthApi, ExternalWorkoutSection, snapshot | DEMO-02~03 | **첫 시연 성공**: 확인 → 저장 → 기록 재조회, 미사용 흐름 정상 | 1~2일 |
+| DEMO-05 | Android: 러닝에도 같은 요약 영역 연결 | RunningFlow, ServerRecordApi, RunningSnapshot, ServerRecords | DEMO-04 | 실제 시작 시각 전송, 러닝 저장 ID 연결, 재시도 후 중복 없음 | 반나절~1일 |
+| DEMO-06 | 공통: 예외 처리와 발표 리허설 | 기존 계약·통합 테스트 + 신규 요약 테스트 | DEMO-04, 러닝 포함 시 DEMO-05 | 권한 거부·동기화 지연·외부 저장 실패에도 기본 기록 유지 | 1일 |
 
-러닝 경로에도 같은 요약 영역을 붙이는 작업은 위 흐름이 안정된 뒤 진행한다. 발표 일정이 촉박하면 헬스 한 종류로 시연을 끝낸다. DEMO-03까지만 완료했다면 발표에서 ‘기기 연동·화면 반영 완료, 서버 저장 후속’으로 정확하게 설명한다.
+이 표의 ID는 v0.2 기준으로 재정렬했다. 이전 `BASE-01`은 삭제하고 기존 코드의 동작 확인만 DEMO-01에 포함한다. DEMO-03은 DEMO-02 완료를 기다리지 않고 명시된 DTO 계약을 기준으로 진행할 수 있다. 러닝 저장 기능을 다시 만드는 작업은 없다. 발표 일정이 촉박하면 DEMO-05를 미루고 헬스 한 종류의 저장·재조회 흐름으로 시연한다.
 
 ## 11. 필요한 검증
 
 | 검증 | 확인 내용 |
 |---|---|
 | Android 단위 테스트 | null 지표, UTC 변환, 시작·종료 오차 경계, 종류 불일치, 중복 UID, 복합 운동 제외 |
-| Backend 단위 테스트 | 주입한 Clock 기준 72시간 경계, 만료 연장 금지, 원본 수정·버전 충돌 |
-| Backend DB/API 테스트 | 본인만 접근, 같은 PUT 재시도, 동시 중복 연결, null 지표, 만료 조회·정리 |
-| 기존 기능 회귀 | Samsung Health 미사용·권한 거부·조회 실패에도 기본 운동 완료와 리포트 가능 |
+| Backend 단위 테스트 | 원본 수정·버전 충돌, 허용 필드·단위·시간 순서 검증 |
+| Backend DB/API 테스트 | 본인만 접근, 같은 PUT 재시도, 동시 중복 연결, 같은 UID·다른 앱 분리, null 앱 중복 차단, 대소문자 키 구분, null 지표 |
+| 최소 저장 범위 | 원시 심박수 샘플·GPS 경로·수면·전체 SDK payload가 요청 DTO와 저장 필드에 포함되지 않음 |
+| 기존 기능 회귀 | Samsung Health 미사용·부분 권한·권한 해제·외부 API 실패에도 기본 운동 완료와 서버 리포트 가능 |
+| 화면·계정 상태 | 완료 직후 및 기록 목록 모두 같은 세션 연결, 권한 화면 복귀 시 상태 보존, 계정 전환 시 후보 초기화, 구버전 snapshot 복원 |
+| 러닝 확장 | 일시정지를 포함한 실제 시작 시각, 기존 `pendingUpload` 재전송과 `clientRecordId` 보존 |
 | 실제 Fit3 | 동일 운동의 시각·종류·요약을 Samsung Health와 비교, 새로고침 후 확인·반영 |
 | 서버 연결 후 | 저장 성공 후 화면 재진입·앱 재실행에서 해당 세션 요약 재조회 |
 
@@ -244,13 +298,34 @@ Backend 폴더에서 실행할 검증 명령:
 .\gradlew.bat test --no-daemon
 ```
 
-Android SDK·JDK·로컬 AAR이 필요하다. DB 통합 검증은 별도 테스트 DB를 준비한 뒤 수행하며 기존 개인 DB를 초기화하지 않는다. 현재 Backend 테스트 명령만 통과한다고 새 API나 DB가 검증되는 것은 아니므로, 구현 시 해당 테스트를 추가한다. SDK 실제 데이터 조회는 휴대전화에서 별도로 확인한다.
+기존 테스트를 아래처럼 확장한다. 경로 기준은 Android의 `app/src/test/java/com/fitmate/app/`, Backend의 `src/test/kotlin/com/fitmate/backend/`다.
 
-이 문서는 계획서다. 위 구현·빌드·기기 시연이 완료됐다는 의미가 아니다.
+| 기존 대상 또는 신규 대상 | 검증 변경 |
+|---|---|
+| Android `samsunghealth/SamsungHealthModelsTest.kt`, 신규 `WorkoutMatchEngineTest.kt` | `point.updateTime`의 값·null·시작 시각과 동일한 값 보존, 조회 시각으로 대체하지 않음, 출처 앱 포함 중복 키와 후보 경계 |
+| Android `ui/ServerRecordContractTest.kt`, `ui/FrontendStateTest.kt`, `ui/FrontendCompletionTest.kt` | 기존 저장 payload·상태 보존 회귀, 러닝 시작 시각과 snapshot 호환 |
+| 신규 Android `ui/ServerHealthContractTest.kt` | 외부 GET의 null·선택 필드, PUT 단위·시각·원본 UID 계약 |
+| Backend `workout/api/WorkoutApiIntegrationTest.kt`, `running/api/RunningRecordApiIntegrationTest.kt` | 기존 운동 생성·완료·리포트·러닝 재조회 회귀 |
+| 신규 Backend `health/api/ExternalWorkoutApiIntegrationTest.kt`, `health/application/ExternalWorkoutServiceTest.kt` | 본인 접근, 중복·동시성·버전 충돌·최소 요약 저장 |
+| Backend `migration/MateMigrationUpgradeIntegrationTest.kt` | 기존 V13→최신 5개 단정은 V19 추가 시 실패. 메이트 검증 대상은 V18로 고정해 기존 의미 유지 |
+| 신규 Backend `migration/ExternalWorkoutMigrationIntegrationTest.kt` | V18→V19와 빈 테스트 DB 이행, 기본 운동 보존 및 FK·unique 확인 |
+
+Android SDK·JDK·로컬 AAR이 필요하다. Backend 통합 테스트는 `FITMATE_TEST_DB_URL` 설정 시 실행되며 없으면 건너뛴다. 따라서 `test` 명령 성공만으로 DB 검증 완료라고 기록하지 않는다. 테스트 DB를 따로 준비하고 기존 개인 DB를 초기화하지 않는다. migration 테스트의 임시 DB 생성 권한도 사전에 확인한다.
+
+기존 기기 API 테스트는 `android/app/src/androidTest/java/com/fitmate/app/LiveRecordIntegrationTest.kt`에 있고 Kotlin 패키지는 `com.fitmate.app.ui`다. 개발 서버와 연결된 기기에서 다음 명령을 사용한다. 테스트는 별도 계정·기록을 생성하며 Samsung SDK 읽기 검증을 대신하지 않는다.
+
+```powershell
+adb reverse tcp:8080 tcp:8080
+.\gradlew.bat -PfitmateIsolatedTest=true :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fitmate.app.ui.LiveRecordIntegrationTest -Pandroid.testInstrumentationRunnerArguments.liveRecords=true
+```
+
+위 Gradle 명령은 Android 폴더 기준이다. 현재 debug 패키지는 `com.fitmate.app.dev`, 격리 테스트는 `com.fitmate.app.dev.records`다. 발표 앱에서 개발 모드·권한을 확인하며, 격리 테스트 앱의 권한 상태와 같다고 가정하지 않는다. 기존 debug API 주소 `http://127.0.0.1:8080/api/v1`와 USB reverse 연결을 활용해 배포 작업을 추가하지 않는다.
+
+v0.2~v0.3에서 코드·DB 기획 대조, 공식 API와 로컬 AAR 메서드 서명을 확인했다. v0.4에서는 사용자 결정을 문서에 반영하고 Markdown 검사를 수행했다. 빌드·통합 테스트·실제 Fit3 시연은 실행하지 않았으며, 기존 테스트 파일의 존재를 이번 실행 성공으로 보고하지 않는다.
 
 ## 12. 발표 순서와 실패 시 대체안
 
-발표 전날 또는 당일에 같은 운동을 Fit3와 FitMate에서 함께 기록해 둔다. 서버 시연용 기록은 발표 시점에 72시간 이내여야 한다. 자동 운동 인식보다 기기에서 직접 시작·종료하는 방식으로 준비한다.
+발표 전날 또는 당일에 같은 운동을 Fit3와 FitMate에서 함께 기록해 두면 후보를 찾기 쉽다. 준비 시점은 권장 시연 절차이며 저장된 기록의 조회 기한은 아니다. 자동 운동 인식보다 기기에서 직접 시작·종료하는 방식으로 준비한다.
 
 3~5분 시연 순서:
 
@@ -259,7 +334,7 @@ Android SDK·JDK·로컬 AAR이 필요하다. DB 통합 검증은 별도 테스�
 3. FitMate의 해당 기본 리포트에서 ‘운동 불러오기’를 누른다.
 4. 후보의 종류·시간을 확인하고 연결한다.
 5. 칼로리·제공된 심박수 등의 요약을 보여준다.
-6. 서버 단계가 완료됐으면 저장 후 재조회와 중복 저장 방지를 보여준다.
+6. 저장 후 기록 목록에서 다시 열어 요약이 유지되는 것과 중복 저장 방지를 보여준다.
 
 | 위험 | 대체안 |
 |---|---|
@@ -267,13 +342,18 @@ Android SDK·JDK·로컬 AAR이 필요하다. DB 통합 검증은 별도 테스�
 | 일부 지표 없음 | 제공되는 필드만 보여주고 ‘기록 없음’ 표시 |
 | 서버 연결 불안정 | 사전 점검한 개발 PC 연결 사용. 필요하면 실제 성공한 리허설 영상으로 해당 구간 설명 |
 | 권한·개발 모드 해제 | 발표 전 확인. 실패 시 기본 리포트를 유지하고 설정에서 복구 |
-| 기본 운동 API 미완료 | DEMO-03의 실제 기기 연동 시연을 먼저 완성하고 서버 구현 상태를 구분해 발표 |
+| 외부 요약 연동 미완료 | 후보 미리보기와 실제 저장 완료를 구분한다. 기존 기본 리포트는 유지하며 미완료 항목을 설명 |
+| 로컬 운동으로 잘못 진입 | 발표에서는 서버 루틴을 선택하고 완료 세션 ID가 있는지 확인 |
 
 사전 기록이나 영상을 현재 실시간 수집 중인 것처럼 설명하지 않는다. 발표가 성공하려면 핵심 흐름 하나를 안정적으로 보여주는 것으로 충분하다.
 
-## 13. 구현 가정과 후속 요청
+## 13. 승인된 범위와 후속 요청
 
-SDK 유지, 발표 전용 범위, 3일 요약, 배포·백업·삭제·철회·탈퇴 확장 제외는 사용자 요청을 반영한 범위다. 파일명, 신규 API 2개·테이블 1개, 72시간 기준점, 수동 새로고침, ±10분 후보 조건은 단순하게 구현하기 위한 가정이다.
+사용자는 단일 테이블 구조를 승인했다. 이번 발표 범위는 기존 SDK·운동 API를 활용한 최소 요약 저장·재조회이며, 자동 삭제·보유기간 정책·사용자용 삭제·동의 철회는 운영 배포 전 후속 과제로 분리한다. 발표용 테스트 데이터는 발표 후 개발 DB에서 수동 정리한다. 이전 버전의 3일 제한·주기 삭제·재시작 정리 제안은 이 결정으로 대체한다.
+
+원본 중복 키는 출처 앱을 포함하고, `sourceModifiedAt`은 `readData()` 결과의 `HealthDataPoint.updateTime`에서 가져온다. 신규 API 2개와 단일 테이블, 기존 기본 리포트 유지, 심박수 원시 샘플·GPS 경로·수면·전체 SDK payload 저장 제외를 적용한다.
+
+이 범위에 대한 추가 승인은 필요하지 않다. 다만 사용자가 이번 작업을 문서 수정으로 한정했으므로 코드·설정·migration 구현과 DB 정리는 실행하지 않는다. 아래 프롬프트는 사용자가 후속 구현을 요청할 때 사용하는 예시다.
 
 이 범위 안의 세부 구현 때문에 같은 승인을 반복해서 요청하지 않는다. 연동 방식 교체, 직접 Bluetooth, 원시 데이터 저장, 배포 또는 기존 API의 호환성 변경이 필요해질 때만 별도 판단한다.
 
@@ -281,9 +361,19 @@ SDK 유지, 발표 전용 범위, 3일 요약, 배포·백업·삭제·철회·�
 
 ```text
 docs/02-technical/galaxy-fit3-발표용-연동-구현-계획.md를 기준으로 구현해줘.
-우선 DEMO-01~03을 진행해서 실제 Fit3 운동을 읽고, 사용자가 후보를 확인한 뒤
-기존 FitMate 리포트에 요약을 표시하는 시연을 완성해줘.
-현재 코드와 선행조건을 먼저 확인하고 기존 운동 기능은 유지해줘.
+승인된 단일 테이블 구조를 반영한 v0.4를 기준으로 DEMO-01~04를 진행해줘.
+실제 Fit3 운동을 읽고, 사용자가 후보를 확인한 뒤
+기존 완료 헬스 세션에 요약을 저장하고 ServerRecordDetail에서 재조회하는 시연을 완성해줘.
+현재 브랜치와 코드를 다시 확인하고 구현된 운동·러닝·인증 API와 FitMateApiClient를 재사용해줘.
+기본 운동 API를 새로 만들지 말고 외부 요약 API 2개·테이블 1개를 추가해줘.
+원본 중복 키에 source_app_id를 포함하고 null 중복도 DB에서 막아줘.
+sourceModifiedAt은 point.updateTime에서 가져오고 사용자가 확인한 최소 운동 요약만 저장해줘.
+72시간 조회 제한, 1분 주기 삭제, 서버 재시작 시 만료 정리는 구현하지 마.
+원시 심박수 샘플, GPS 경로, 수면, 전체 SDK payload는 저장하지 마.
+발표용 테스트 데이터는 발표 후 개발 DB에서 수동 정리하며 이번 구현에 자동 정리 기능을 추가하지 마.
+보유기간 정책, 자동 삭제, 사용자용 삭제·동의 철회는 운영 배포 전 후속 과제로 남겨줘.
+V1~V18은 보존하고 다음 migration 번호를 확인해줘.
+헬스 시연이 안정된 뒤 DEMO-05의 러닝 연동을 진행해줘.
 파일명·모델 분리·테스트 방식은 기존 구조에 맞춰 판단해도 돼.
 배포, 백업, 삭제·동의 철회·탈퇴 확장, 실시간 스트리밍은 구현하지 마.
 기기 조작이 필요한 지점은 필요한 행동만 구체적으로 알려주고,
