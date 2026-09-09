@@ -43,7 +43,9 @@ class MateInbodyDeviceTest {
     private val region = "10000000-0000-0000-0000-000000000001"
     private fun click(label: String) {
         compose.waitUntil(20_000) { compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodesWithText(label).onFirst().performScrollTo().performClick()
+        val node = compose.onAllNodesWithText(label).onFirst()
+        if (!node.isDisplayed()) node.performScrollTo()
+        node.performClick()
     }
     private fun enter(label: String, value: String) =
         compose.onNode(hasSetTextAction() and hasText(label)).performScrollTo().performTextReplacement(value)
@@ -89,11 +91,20 @@ class MateInbodyDeviceTest {
         compose.setContent { MaterialTheme { ServerMateFlow(Modifier, host, state, profile, hostId) {} } }
         compose.waitUntil(20_000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("집결 위치 · 확정자 전용 2층").assertExists()
-        click("제목·안내 수정")
-        enter("제목", "$title 수정")
+        click("모집 정보 수정")
+        enter("모집 제목", "$title 수정")
+        enter("모집 인원", "5")
         click("수정 저장")
+        try {
+            compose.waitUntil(20_000) { state.page == "상세" && !state.busy }
+        } catch (error: androidx.compose.ui.test.ComposeTimeoutException) {
+            throw AssertionError("Mate save did not return to detail: ${compose.onRoot().printToString()}", error)
+        }
         compose.waitUntil(20_000) { compose.onAllNodesWithText("$title 수정").fetchSemanticsNodes().isNotEmpty() }
         assertEquals("$title 수정", api.detail(postId).text("title"))
+        assertEquals(5, api.detail(postId).get("capacity").asInt)
+        assertEquals(post.get("scheduledStartAt"), api.detail(postId).get("scheduledStartAt"))
+        assertEquals(post.get("sportFields"), api.detail(postId).get("sportFields"))
         api.action(postId, "close", api.detail(postId).get("version").asLong)
         assertEquals("CLOSED", api.detail(postId).text("status"))
         api.action(postId, "cancel", api.detail(postId).get("version").asLong)
@@ -153,7 +164,7 @@ class MateInbodyDeviceTest {
         }
         compose.waitUntil(20_000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
         click(title)
-        click("작성자에게 문의")
+        click("문의하기")
         compose.waitUntil(20_000) { compose.onAllNodesWithText("메시지").fetchSemanticsNodes().isNotEmpty() }
         compose.waitUntil(20_000) { compose.onAllNodes(hasSetTextAction() and hasText("메시지") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         enter("메시지", "안녕하세요")

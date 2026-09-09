@@ -26,17 +26,17 @@ internal fun postcodeRegionCode(bcode: String): String {
     return "KR-LAW-${bcode.take(8)}00"
 }
 
-@Composable internal fun KakaoRegionPicker(api: FitMateApiClient, label: String, choose: (String, String) -> Unit) {
+@Composable internal fun KakaoRegionPicker(api: FitMateApiClient, label: String, compact: Boolean = false, choose: (String, String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    Text("활동 지역", style = MaterialTheme.typography.labelLarge)
-    if (label.isNotBlank()) Text(label)
-    OutlinedButton({ error = null; open = true }, enabled = !loading) {
-        Text(if (loading) "지역 확인 중…" else if (label.isBlank()) "주소로 지역 검색" else "활동 지역 변경")
+    if (!compact) Text("활동 지역", style = MaterialTheme.typography.labelLarge)
+    if (!compact && label.isNotBlank()) Text(label)
+    OutlinedButton({ error = null; open = true }, modifier = if (compact) Modifier.fillMaxWidth() else Modifier, enabled = !loading, shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)) {
+        Text(if (loading) "지역 확인 중…" else if (compact) "$label  ⌄" else if (label.isBlank()) "주소로 지역 검색" else "활동 지역 변경")
     }
-    Text("주소를 검색하면 시·군·구와 읍·면·동만 저장해요. 도로명·번지·건물명·상세주소는 저장하지 않아요.", style = MaterialTheme.typography.bodySmall)
+    if (!compact) Text("주소를 검색하면 시·군·구와 읍·면·동만 저장해요. 도로명·번지·건물명·상세주소는 저장하지 않아요.", style = MaterialTheme.typography.bodySmall)
     ErrorText(error)
     if (open) KakaoPostcodeDialog({ open = false }) { bcode ->
         open = false; loading = true; error = null

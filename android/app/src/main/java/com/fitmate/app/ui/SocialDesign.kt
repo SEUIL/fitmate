@@ -129,7 +129,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
             }
         }
         Text(entry.post.content, fontSize = 16.sp, lineHeight = 25.sp, letterSpacing = (-0.2).sp, color = FitMateColors.TextPrimary)
-        entry.photo?.let { FitMatePhoto(it, server, square = true) }
+        PostPhotos(entry, server)
         entry.workout?.let { summary ->
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Outlined.FitnessCenter, "운동 기록", tint = FitMateColors.Primary)
@@ -209,23 +209,23 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     }
     HorizontalDivider(color = FitMateColors.Outline)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        listOf(Triple("메이트", Icons.Outlined.Groups, mates), Triple("운동 일지", Icons.Outlined.GridView, community), Triple("인바디", Icons.Outlined.Insights, inbody)).forEach { (label, icon, action) ->
+        listOf(Triple("메이트", Icons.Outlined.Groups, mates), Triple("운동 일지", Icons.Outlined.EventNote, community), Triple("인바디", Icons.Outlined.AccessibilityNew, inbody)).forEach { (label, icon, action) ->
             val interaction = remember { MutableInteractionSource() }
             Card(
-                modifier = Modifier.weight(1f).height(126.dp).pressFeedback(interaction).clip(RoundedCornerShape(18.dp))
-                    .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = action),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, FitMateColors.Outline),
+                modifier = Modifier.weight(1f).heightIn(min = 84.dp).pressFeedback(interaction).clip(RoundedCornerShape(16.dp))
+                    .clickable(interactionSource = interaction, indication = LocalIndication.current, role = Role.Button, onClick = action),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .35f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(
-                    Modifier.fillMaxSize().padding(vertical = 18.dp, horizontal = 6.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 84.dp).padding(vertical = 12.dp, horizontal = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
+                    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)
                 ) {
-                    Icon(icon, null, tint = FitMateColors.TextPrimary, modifier = Modifier.size(38.dp))
-                    Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
+                    Text(label, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
         }
@@ -287,7 +287,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     }
     opened?.let { entry -> SocialSheet({ opened = null }) {
         Text(entry.post.authorName, fontWeight = FontWeight.Bold)
-        entry.photo?.let { FitMatePhoto(it, server, square = true) }
+        PostPhotos(entry, server)
         entry.workout?.let { Text(it) }
         Text(entry.post.content)
         Text("${entry.visibility} · ${entry.comments.size}개의 댓글", color = FitMateColors.TextSecondary)

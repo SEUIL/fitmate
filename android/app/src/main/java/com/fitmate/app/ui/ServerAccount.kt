@@ -23,7 +23,7 @@ internal val skillCodes = linkedMapOf("입문" to "BEGINNER", "6개월 미만" t
 internal fun Sport.apiCode() = if (this == Sport.FITNESS) "HEALTH" else name
 
 @Composable internal fun ServerRegionPicker(api: FitMateApiClient, label: String, choose: (String, String) -> Unit) {
-    KakaoRegionPicker(api, label, choose)
+    KakaoRegionPicker(api, label, choose = choose)
 }
 
 /** 서버에 등록된 시설을 지역 기준으로 찾아 제안하되, 등록되지 않은 시설명 직접 입력도 보존한다. */

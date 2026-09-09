@@ -14,7 +14,19 @@ import com.fitmate.app.data.model.RecruitmentDraft
 /** 메이트 모집글 서버 응답을 기존 화면 모델에 안전하게 변환한다. */
 internal class ServerMateApi(private val api: FitMateApiClient) {
     fun posts(): List<MatePost> = api.items("mate-posts").map(::toMatePost)
-    fun page(cursor: String? = null): JsonObject = api.request("GET", "mate-posts?size=30" + cursor?.let { "&cursor=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()).asJsonObject
+    fun page(cursor: String? = null, sportCode: String? = null, difficulty: String? = null, status: String? = null, regionId: String? = null, from: String? = null, to: String? = null): JsonObject {
+        val query = buildList {
+            add("size=30")
+            cursor?.let { add("cursor=${URLEncoder.encode(it, "UTF-8")}") }
+            sportCode?.let { add("sportCode=${URLEncoder.encode(it, "UTF-8")}") }
+            difficulty?.let { add("difficulty=${URLEncoder.encode(it, "UTF-8")}") }
+            status?.let { add("status=${URLEncoder.encode(it, "UTF-8")}") }
+            regionId?.let { add("regionId=${URLEncoder.encode(it, "UTF-8")}") }
+            from?.let { add("from=${URLEncoder.encode(it, "UTF-8")}") }
+            to?.let { add("to=${URLEncoder.encode(it, "UTF-8")}") }
+        }.joinToString("&")
+        return api.request("GET", "mate-posts?$query").asJsonObject
+    }
     fun detail(id: String) = api.request("GET", "mate-posts/$id").asJsonObject
     fun create(body: Map<String, Any>, key: String) = api.request("POST", "mate-posts", body, headers = mapOf("Idempotency-Key" to key)).asJsonObject
     fun update(id: String, body: Map<String, Any>) = api.request("PATCH", "mate-posts/$id", body).asJsonObject
@@ -65,6 +77,14 @@ internal fun mateCreateBody(draft: RecruitmentDraft, regionId: String, today: Lo
         "estimatedCostKrw" to draft.details.cost.toInt(), "meetingPoint" to draft.details.meetingPoint.trim(),
         "visibility" to if (draft.details.visibility == "맞팔 공개") "MUTUAL" else "PUBLIC",
         "sportFields" to draft.details.sportFields.toSortedMap(), "beginnerWelcome" to draft.isBeginnerWelcome)
+}
+
+internal fun mateUpdateBody(original: JsonObject, draft: RecruitmentDraft, regionId: String): Map<String, Any> {
+    val gson = com.google.gson.Gson()
+    return mateCreateBody(draft, regionId).filter { (key, value) ->
+        if (key == "scheduledStartAt") Instant.parse(value.toString()) != Instant.parse(original.get(key).asString)
+        else gson.toJsonTree(value) != original.get(key)
+    } + ("version" to original.get("version").asLong)
 }
 
 internal fun toMatePost(row: JsonObject): MatePost {

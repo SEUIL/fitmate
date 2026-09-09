@@ -71,6 +71,33 @@ import java.nio.ByteBuffer
 }
 
 /** The picker grants access only to a user-selected image; no broad gallery permission. */
+@Composable internal fun MultiplePhotoAction(count: Int, selected: (List<String>) -> Unit) {
+    val context = LocalContext.current
+    var error by remember { mutableStateOf<String?>(null) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris ->
+        uris.forEach { uri ->
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+        error = if (count + uris.size > 10) "사진은 최대 10장까지 첨부할 수 있어요." else null
+        selected(uris.map { it.toString() })
+    }
+    OutlinedButton({
+        runCatching { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+            .onFailure { error = "사진 선택을 열지 못했습니다." }
+    }, enabled = count < 10) { Text("사진 추가 ($count/10)") }
+    ErrorText(error)
+}
+
+@Composable internal fun PostPhotos(entry: FeedEntry, server: ServerSocialApi?) {
+    val photos = entry.photoList()
+    if (photos.isEmpty()) return
+    val pager = androidx.compose.foundation.pager.rememberPagerState { photos.size }
+    androidx.compose.foundation.pager.HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth()) { index ->
+        FitMatePhoto(photos[index], server, square = true)
+    }
+    if (photos.size > 1) Text("${pager.currentPage + 1} / ${photos.size}", style = MaterialTheme.typography.labelSmall)
+}
+
 @Composable internal fun PhotoActions(onSelected: (String) -> Unit, camera: Boolean = false) {
     val context = LocalContext.current
     var pendingCameraUri by rememberSaveable { mutableStateOf<String?>(null) }
