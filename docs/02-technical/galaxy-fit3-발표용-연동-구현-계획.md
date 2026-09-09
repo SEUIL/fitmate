@@ -2,19 +2,23 @@
 
 - 작성일: 2026-09-09
 - 최종 수정일: 2026-09-09
-- 버전: v0.4
+- 버전: v0.6
 - 상태: 검토 중
 - 목적: 대학 프로젝트 발표 시연
-- 코드 재확인 기준: `jj` 브랜치, `4c6f721` (기능 코드 기준 `494b657` 포함)
+- 코드 재확인 기준: `main` 브랜치, `fedb4c0` (2026-09-09 정적 검토)
 - 범위 결정: [결정·회의 로그](../00-project/결정-회의-로그.md#2026-09-09-galaxy-fit3-단일-테이블-승인과-발표-후-수동-정리)
 
 v0.4는 사용자가 승인한 단일 테이블 구조와 발표 후 개발 DB 수동 정리 방식을 반영한다. 72시간 조회 제한, 1분 주기 삭제, 서버 재시작 시 만료 정리는 구현 범위에서 제외한다. 이번 요청은 계획서와 결정·회의 로그 수정이며, 코드 구현은 후속 요청에서 시작한다.
+
+v0.5는 현재 코드의 V19 메이트 확장을 반영해 외부 요약 migration을 V20으로 제안하고, 단일 헬스 세션 시연과 저장·재시도 계약을 구체화한다. 사용자 요청에 따라 10절의 WBS·단계별 구현 순서와 관련 작업 ID·일정은 수정하지 않는다. 해당 표에 남아 있는 V19 표기는 기술 구현 번호로 사용하지 않으며, migration과 이행 검증은 최신화한 8절·11절을 기준으로 한다. 이번 검토에서는 테스트·빌드·앱·서버·DB를 실행하지 않는다.
 
 ## 1. 목표와 첫 완료 기준
 
 Galaxy Fit3에서 기록한 운동을 Samsung Health를 통해 FitMate로 가져와, 사용자가 선택한 운동의 리포트에 실제 측정 요약을 표시한다. 일반 서비스 출시 수준의 운영 기능보다 발표에서 설명하고 재현할 수 있는 흐름을 우선한다.
 
 첫 완료 목표는 **운동 한 종류로 실제 데이터 연동 시연을 끝까지 성공하는 것**이다. 우선 기존 헬스 화면에 연결하고, 러닝까지 확장하는 것은 후순위로 둔다.
+
+구현·시연을 쉽게 하기 위한 추천은 **서버 헬스 세션 하나 ↔ Fit3 단일 운동 기록 하나**다. 서버 루틴에 시연할 근력 운동 한 종류를 구성하고 실제 완료 세트를 하나 이상 기록한다. Fit3에서도 같은 운동을 한 번 시작하고 한 번 종료해 전체 시간이 대응되게 한다. 외부 요약은 ‘이 운동 세션의 Samsung Health 요약’으로 표시하며, 개별 세트에 심박수·칼로리를 배분하거나 기본 리포트 수치에 합산하지 않는다. 러닝의 실제 시작 시각·재전송 상태 확장은 헬스 시연이 안정된 뒤 진행한다.
 
 1. 발표자가 Fit3와 FitMate에서 같은 운동을 시작하고 종료한다.
 2. Fit3 기록이 휴대전화의 Samsung Health에 나타난다.
@@ -70,7 +74,7 @@ Galaxy Fit3에서 기록한 운동을 Samsung Health를 통해 FitMate로 가져
 | 로컬 보존 | `FrontendLocalStore`의 계정별 snapshot과 `noBackupFilesDir` 사용 | 사용 여부·시각 등 연결 메타데이터만 보완, 원시 건강 데이터 보관 확대 없음 |
 | 운동 백엔드 | `WorkoutController`·`WorkoutService`·`WorkoutReportService` 구현. 완료 리포트는 `BASIC_READY` | 기본 상태·API 계약 유지, 외부 요약 GET/PUT만 추가 |
 | 러닝 | `RunningFlow`·`ServerRecordApi`·`RunningRecordService`가 저장·재조회 지원. 저장 시 RUNNING 완료 공통 세션 생성 | 반환된 기록 ID를 공통 세션 ID로 사용, 실제 `startedAt` 보완 |
-| DB | migration V1~V18, 러닝 V8·인바디 V14·메이트 V15~V18 존재 | 다음 번호로 외부 요약 테이블 1개 추가 |
+| DB | migration V1~V19, 러닝 V8·인바디 V14·메이트 V15~V19 존재. V19는 모집글 상세 확장 | V1~V19 보존, 현재 다음 번호 V20으로 외부 요약 테이블 1개 추가 |
 | 테스트 | Android 계약·상태·실기기 API 테스트, Backend 운동·러닝·migration 통합 테스트 존재 | 기존 검증 확장, Samsung 요약 전용 검증 추가 |
 
 v0.1의 ‘기본 운동 API 미구현’, ‘리포트는 빈 인터페이스’, ‘DB V3까지’ 전제는 이전 체크아웃 `628ddca`에 해당한다. v0.2에서 이를 정정하고 `BASE-01` 신규 구현 단계를 제거했다. 소셜·인바디·메이트 코드도 추가되어 있으나 이번 연동을 위해 확장할 필요는 없다. v0.2 코드 검토 시작 시 git 작업 트리는 깨끗했으며, 이후 문서 변경은 계속 보존한다. 실제 기기·DB의 현재 동작을 재검증한 것은 아니다.
@@ -184,6 +188,20 @@ store.readData(EXERCISE 요청).dataList
 - 저장 직전에 원본을 다시 읽고 변경됐다면 확인 화면을 갱신한다.
 - 매칭 실패 시 다른 운동을 억지로 붙이지 않고 기본 리포트만 유지한다.
 
+### 첫 시연의 종류·시간 매칭 추천
+
+FitMate의 `HEALTH`는 세션 종목이고 SDK의 `exerciseType`은 기기 운동 종류이므로 문자열을 직접 비교하지 않는다. 첫 구현은 아래의 작은 허용 목록을 사용한다.
+
+| FitMate 대상 | 허용할 SDK 종류 | 연결 단위 |
+|---|---|---|
+| 서버 루틴으로 만든 완료 `HEALTH` 세션 | 발표자가 실제 수행할 근력 운동을 Fit3에서 기록한 뒤, 기존 조회 화면에서 확인한 정확한 SDK enum 코드 한 개 | 세션 전체와 단일 `ExerciseSession` 한 개 |
+| `RUNNING` 세션 | 첫 헬스 시연에서는 대상 제외. 러닝 확장 시 실제 조회 코드로 별도 매핑 | 러닝 기록 전체 |
+| 미확인 코드·종류 없음·여러 `ExerciseSession` | 후보로 연결하지 않고 지원하지 않는 기록으로 안내 | 연결 없음 |
+
+실제 코드값은 이번 정적 검토로 확인하지 않았으므로 임의의 기기 메뉴명이나 enum을 확정하지 않는다. 구현 착수 시 실제 기록에서 확인한 enum을 허용 목록에 넣고 코드 자체를 `exerciseType`으로 전송한다. Android의 후보 필터와 서버의 종목 검증은 같은 매핑을 사용한다. 일반적인 기타 운동 코드를 모든 `HEALTH` 기록에 허용하지 않는다.
+
+시작·종료 오차는 각각 10분 이하이고 두 시간 구간이 겹쳐야 한다. 후보 정렬은 시작 오차와 종료 오차의 합이 작은 순서로 하며, 동률이면 원본 중복 키 순서로 고정한다. 후보 한 개도 자동 저장하지 않는다. 서버도 완료 상태·허용 종류·시간 조건을 확인한다. 조건을 벗어나면 다른 후보나 새 기록을 준비하며 첫 시연을 위해 오차 범위를 자동으로 넓히지 않는다.
+
 ## 8. 백엔드 API와 DB 계획
 
 기존 `WorkoutController`의 완료·조회·리포트 API와 `RunningRecordController`의 저장·조회 API를 사용한다. 헬스는 `ServerWorkout.complete()` 후 보유한 세션 ID, 러닝은 저장 응답의 기록 ID가 연결 대상이다. 러닝도 같은 `fitness_workout_sessions`에 연결되므로 종목별 외부 저장 API를 따로 만들지 않는다. 기본 API 신규 구현이나 호환성 변경은 필요 없다.
@@ -207,7 +225,7 @@ store.readData(EXERCISE 요청).dataList
 | `application/ExternalWorkoutService.kt` | 세션 소유권·완료 상태 확인, 최소 요약 저장·갱신 |
 | `domain/ExternalWorkoutSummary.kt` | 외부 요약 Entity |
 | `repository/ExternalWorkoutSummaryRepository.kt` | 조회와 중복 방지 |
-| `db/migration/V19__create_external_workout_summaries.sql` (저장소 루트 기준) | 외부 요약 테이블 추가. V1~V18 보존, 착수 시 다음 번호 재확인 |
+| `db/migration/V20__create_external_workout_summaries.sql` (저장소 루트 기준) | 외부 요약 테이블 추가. V1~V19 보존, 착수 시 다음 번호 재확인 |
 
 기존 `workout/repository/WorkoutRepositories.kt`에는 본인 세션을 쓰기 잠금으로 조회하는 메서드를 추가한다. 기존 서비스의 API ID ↔ MySQL ordered UUID 변환 경계를 그대로 따라 FK·소유권 조회가 같은 ID를 사용하도록 한다. 외부 요약의 `version`은 기본 운동 세션의 `version`과 별개다. 기존 메이트용 `ops_idempotency_keys`나 알림 처리까지 확장하지 않는다.
 
@@ -236,6 +254,28 @@ UUID 저장은 기존 `UuidBinaryConverter` 방식을 따른다. 만료 시각 �
 같은 세션·원본 키·내용의 PUT 재시도는 성공으로 반환하고 행을 추가하지 않는다. 다른 내용의 갱신은 `expectedVersion`을 확인하며 동시 요청 충돌은 409로 처리한다. 비교 가능한 두 원본 수정 시각 중 요청 값이 오래됐으면 덮어쓰지 않는다. 어느 한쪽 수정 시각이 없거나 같으면서 내용이 다르면 다시 읽은 후보를 사용자에게 확인시킨 후 현재 버전으로 저장한다. 이미 연결된 세션에 다른 원본 키를 넣는 교체는 제외한다.
 
 소유권 확인·행 잠금·쓰기·버전 증가를 한 트랜잭션에서 처리한다. UNIQUE 충돌 시 실패한 트랜잭션 밖에서 재조회해 동일 세션·동일 내용의 재시도만 성공으로 반환하고 다른 세션과의 연결 충돌은 409로 처리한다. 인증 실패는 401, 본인 세션이 아니거나 없으면 404, 잘못된 입력은 400, 연결·버전 충돌은 409로 구분한다. 서버는 외부 데이터의 진위를 증명하지 않으며, 발표자가 확인한 기기 기록을 저장한다.
+
+### 저장·재시도·갱신 계약 추천
+
+첫 시연의 화면은 ‘후보 확인 → 저장 → 저장된 요약’으로 구성한다. 동일 원본의 갱신은 연결된 요약의 ‘원본 다시 확인’에서만 시작하고, 자동 갱신이나 다른 원본으로의 교체는 하지 않는다.
+
+| 상황 | 요청·서버 처리 |
+|---|---|
+| 최초 저장 | `expectedVersion: null`로 PUT. 연결이 없을 때만 생성하며 최초 `version`은 0 |
+| 같은 내용 재시도 | 같은 세션·원본 키·정규화 내용이면 `expectedVersion`이 null 또는 이전 값이어도 200과 현재 요약 반환. 버전·최초 저장 시각 변경 없음 |
+| 동일 원본 갱신 | GET에서 받은 외부 요약 `version`을 `expectedVersion`으로 전송. 현재 버전과 일치하고 원본 수정 시각 규칙을 만족하면 갱신하고 버전은 정확히 1 증가 |
+| 내용이 다른데 버전 누락·불일치 | 409. GET 재조회와 SDK 원본 재조회 후 변경 내용을 다시 확인받음. 새 버전만 끼워 넣어 자동 재전송하지 않음 |
+| 다른 세션에 연결된 원본·현재 세션의 다른 원본 | 409. 기존 연결 유지, 다른 후보 또는 기본 리포트로 돌아가기 안내 |
+
+GET과 PUT 성공은 기존 `ApiResponse`의 `data`를 사용한다. 연결이 없을 때 GET만 `data: null`이고, 연결이 있거나 PUT이 성공하면 `sessionId`, 요청의 요약·원본 필드 전체(`expectedVersion` 제외), `version`, `savedAt`, `updatedAt`을 반환한다. 선택 필드는 null을 허용하고 Android는 JSON 필드 누락도 null로 처리한다. 서버 내부 `user_id`, generated key, `payload_hash`는 응답하지 않는다. `version`은 기본 세션 버전과 혼용하지 않는다.
+
+PUT 응답 유실이나 저장 후 GET 실패 시 ‘저장 여부 확인’을 제공한다. 먼저 같은 계정·대상 세션의 GET을 다시 읽어, 아래 Android 정규화 비교로 확인한 요청과 같으면 저장 완료로 복원한다. 연결이 없으면 같은 확인 payload로 PUT을 재시도하고, 다른 내용이면 재확인 절차로 이동한다. 저장 직전 SDK 재조회에서 선택한 원본이 사라졌거나 조회에 실패하면 새 PUT을 하지 않는다. 이미 서버에 저장된 요약의 GET 복원에는 SDK 권한이나 재조회 성공을 요구하지 않는다.
+
+`payload_hash`는 서버에서 SHA-256으로 계산한다. 대상은 8절 요청 필드 중 `expectedVersion`을 제외한 모든 필드이며 `sourceModifiedAt`도 포함한다. 고정된 필드 순서의 JSON을 사용하고, 선택 필드 누락과 명시적 null은 같은 null로 정규화한다. 시각은 UTC 밀리초 정밀도로 통일하고 그보다 세밀한 입력은 400으로 거절한다. 활동 시간은 정수 초이며 Android에서 SDK duration을 초 단위로 내림한다. 선택 수치는 유한한 0 이상 값만 받아 소수 둘째 자리에서 HALF_UP 반올림하여 저장·비교하고, 숫자 1과 1.0은 같은 값으로 처리한다. 원본 ID와 앱 ID는 대소문자·공백을 보존한다. 정규화된 저장값으로 해시를 만들고 응답에도 같은 값을 사용하여 DB 재조회 전후 비교가 달라지지 않게 한다.
+
+Android도 확인한 요청과 GET 응답의 비교에 위 서버 정규화 규칙을 동일하게 적용한다. 비교 대상은 `provider`, `sourceRecordId`, `sourceAppId`, `sourceModifiedAt`, `exerciseType`, `startedAt`, `endedAt`, `activeDurationSeconds`, `distanceMeters`, `caloriesKcal`, `meanHeartRate`, `minHeartRate`, `maxHeartRate`만이다. `sessionId`는 대상 세션 일치 확인에 사용하고, `expectedVersion`, `version`, `savedAt`, `updatedAt`은 내용 비교에서 제외한다. GET 전체 JSON이나 SDK 원본 객체를 그대로 비교하지 않는다.
+
+Android의 비교 기준은 실제 PUT에 직렬화한 요청 값이다. 요청과 GET의 숫자를 십진 문자열 기반 `BigDecimal`로 해석해 소수 둘째 자리 HALF_UP으로 정규화하고 수치로 비교한다. SDK Float를 Double로 확장한 이진 근삿값으로 다시 반올림하지 않는다. 선택 필드 누락과 null, 숫자 1과 1.0은 각각 같은 값이며 시각은 같은 UTC 밀리초 값으로 비교한다. ID의 대소문자·공백과 `sourceModifiedAt`의 null·값 차이는 보존한다. 따라서 요청 `123.456`과 GET `123.46`은 동일 내용으로 복원하지만 GET `123.47`은 재확인이 필요하다. 클라이언트 해시나 새 응답 필드는 추가하지 않는다.
 
 ## 9. 최소 요약 저장과 발표 후 수동 정리
 
@@ -304,11 +344,17 @@ Backend 폴더에서 실행할 검증 명령:
 |---|---|
 | Android `samsunghealth/SamsungHealthModelsTest.kt`, 신규 `WorkoutMatchEngineTest.kt` | `point.updateTime`의 값·null·시작 시각과 동일한 값 보존, 조회 시각으로 대체하지 않음, 출처 앱 포함 중복 키와 후보 경계 |
 | Android `ui/ServerRecordContractTest.kt`, `ui/FrontendStateTest.kt`, `ui/FrontendCompletionTest.kt` | 기존 저장 payload·상태 보존 회귀, 러닝 시작 시각과 snapshot 호환 |
-| 신규 Android `ui/ServerHealthContractTest.kt` | 외부 GET의 null·선택 필드, PUT 단위·시각·원본 UID 계약 |
+| 신규 Android `ui/ServerHealthContractTest.kt` | 외부 GET의 null·선택 필드, PUT 단위·시각·원본 UID 계약. 반올림된 저장값의 응답 유실 복구와 요청 필드만의 정규화 비교 |
 | Backend `workout/api/WorkoutApiIntegrationTest.kt`, `running/api/RunningRecordApiIntegrationTest.kt` | 기존 운동 생성·완료·리포트·러닝 재조회 회귀 |
 | 신규 Backend `health/api/ExternalWorkoutApiIntegrationTest.kt`, `health/application/ExternalWorkoutServiceTest.kt` | 본인 접근, 중복·동시성·버전 충돌·최소 요약 저장 |
-| Backend `migration/MateMigrationUpgradeIntegrationTest.kt` | 기존 V13→최신 5개 단정은 V19 추가 시 실패. 메이트 검증 대상은 V18로 고정해 기존 의미 유지 |
-| 신규 Backend `migration/ExternalWorkoutMigrationIntegrationTest.kt` | V18→V19와 빈 테스트 DB 이행, 기본 운동 보존 및 FK·unique 확인 |
+| Backend `migration/MateMigrationUpgradeIntegrationTest.kt` | 현재 V13→최신 6개 단정은 V20 추가 시 7개가 되어 실패. 메이트 이행의 target을 V19로 고정하고 6개 단정 및 재실행 0개 검증 유지. V19 모집글 상세 컬럼·기존 행 기본값 검증 추가 |
+| 신규 Backend `migration/ExternalWorkoutMigrationIntegrationTest.kt` | V19→V20은 1개, 빈 테스트 DB→V20은 20개, 재실행은 0개 이행. 기존 운동·러닝·메이트 데이터 보존, V19 상세 컬럼 유지 및 외부 요약 FK·unique 확인 |
+
+V19는 `V19__extend_mate_post_details.sql`이며 `meeting_point`, `visibility`, `sport_fields`, `beginner_welcome`을 추가한다. 기존 메이트 이행 검증을 V18로 되돌리지 않는다. 외부 요약 구현 착수 전에 migration이 더 추가되면 기존 파일을 보존하고 신규 번호와 이행 개수를 다시 맞춘다. 위 내용은 후속 검증 계획이며 이번에 테스트 파일을 변경하거나 테스트 DB를 실행하지 않는다.
+
+외부 API 계약 검증에는 최초 버전 0, 동일 PUT의 버전 불변, 내용 갱신 시 1 증가, 응답 유실 후 GET 복원, 같은 숫자 표현·누락/null의 동일 해시, 오래된 원본 거절, 종류·시간 불일치 거절을 포함한다.
+
+Android 응답 유실 복구 검증은 합성 수치 `caloriesKcal: 123.456`의 PUT 저장 후 응답이 유실되고 GET이 `123.46`과 서버 관리 필드를 반환하는 상황을 포함한다. 저장 완료로 복원하고 불필요한 PUT·재확인 화면이 발생하지 않아야 한다. HALF_UP 경계 `123.455 → 123.46`, 선택 필드 누락/null, 1/1.0도 같은 내용으로 처리하고, GET `123.47` 또는 다른 원본 수정 시각은 다른 내용으로 처리하는 경우를 함께 검증한다. 서버 테스트에도 같은 합성 입력·정규화 결과를 사용한다. 이는 후속 테스트 추가 계획이며 이번에 테스트 코드를 작성하거나 실행하지 않는다.
 
 Android SDK·JDK·로컬 AAR이 필요하다. Backend 통합 테스트는 `FITMATE_TEST_DB_URL` 설정 시 실행되며 없으면 건너뛴다. 따라서 `test` 명령 성공만으로 DB 검증 완료라고 기록하지 않는다. 테스트 DB를 따로 준비하고 기존 개인 DB를 초기화하지 않는다. migration 테스트의 임시 DB 생성 권한도 사전에 확인한다.
 
@@ -323,9 +369,15 @@ adb reverse tcp:8080 tcp:8080
 
 v0.2~v0.3에서 코드·DB 기획 대조, 공식 API와 로컬 AAR 메서드 서명을 확인했다. v0.4에서는 사용자 결정을 문서에 반영하고 Markdown 검사를 수행했다. 빌드·통합 테스트·실제 Fit3 시연은 실행하지 않았으며, 기존 테스트 파일의 존재를 이번 실행 성공으로 보고하지 않는다.
 
+v0.5는 `fedb4c0`의 migration 파일과 이행 테스트 소스를 읽고 계획을 최신화했다. 문서 변경 내용만 대조했으며 테스트·빌드·앱·서버·DB 및 Markdown 검사 도구는 실행하지 않았다.
+
+v0.6은 Android의 응답 유실 복구 비교에 서버와 동일한 정규화·요청 필드 제한을 명시하고 반올림 복구 검증 계획을 추가했다. WBS와 실행 범위는 변경하지 않았다.
+
 ## 12. 발표 순서와 실패 시 대체안
 
 발표 전날 또는 당일에 같은 운동을 Fit3와 FitMate에서 함께 기록해 두면 후보를 찾기 쉽다. 준비 시점은 권장 시연 절차이며 저장된 기록의 조회 기한은 아니다. 자동 운동 인식보다 기기에서 직접 시작·종료하는 방식으로 준비한다.
+
+가장 재현하기 쉬운 발표 방식은 **사전 기록·동기화 완료 → 현장에서 후보 확인·저장·재조회**다. 리허설에 이미 연결한 세션과 별도로, 발표용으로 같은 운동의 FitMate 완료 세션과 Fit3 원본 한 쌍을 준비해 외부 요약은 아직 연결하지 않은 상태로 둔다. 원본당 한 세션 제약이 있으므로 리허설 원본을 다른 세션에 재사용하지 않는다. 발표 중 운동 자체를 새로 수행하거나 동기화를 기다릴 필요 없이 실제 저장 흐름을 보여줄 수 있다. 사전 준비된 기록이라는 점을 먼저 설명한다. 기기의 착용·운동 시작·종료·권한 허용은 발표자가 직접 수행하고, 코드 구현만으로 실기기 확인이 끝났다고 판단하지 않는다.
 
 3~5분 시연 순서:
 
@@ -361,7 +413,7 @@ v0.2~v0.3에서 코드·DB 기획 대조, 공식 API와 로컬 AAR 메서드 서
 
 ```text
 docs/02-technical/galaxy-fit3-발표용-연동-구현-계획.md를 기준으로 구현해줘.
-승인된 단일 테이블 구조를 반영한 v0.4를 기준으로 DEMO-01~04를 진행해줘.
+승인된 단일 테이블 구조와 v0.6의 기술 계약을 기준으로 DEMO-01~04를 진행해줘.
 실제 Fit3 운동을 읽고, 사용자가 후보를 확인한 뒤
 기존 완료 헬스 세션에 요약을 저장하고 ServerRecordDetail에서 재조회하는 시연을 완성해줘.
 현재 브랜치와 코드를 다시 확인하고 구현된 운동·러닝·인증 API와 FitMateApiClient를 재사용해줘.
@@ -372,7 +424,10 @@ sourceModifiedAt은 point.updateTime에서 가져오고 사용자가 확인한 �
 원시 심박수 샘플, GPS 경로, 수면, 전체 SDK payload는 저장하지 마.
 발표용 테스트 데이터는 발표 후 개발 DB에서 수동 정리하며 이번 구현에 자동 정리 기능을 추가하지 마.
 보유기간 정책, 자동 삭제, 사용자용 삭제·동의 철회는 운영 배포 전 후속 과제로 남겨줘.
-V1~V18은 보존하고 다음 migration 번호를 확인해줘.
+V1~V19는 보존하고 외부 요약은 현재 기준 V20으로 추가하되 착수 시 다음 번호를 확인해줘.
+메이트 이행은 V19까지 유지하고 외부 요약은 V19→V20 및 빈 DB 이행을 별도로 검증해줘.
+7절의 실제 확인한 단일 운동 코드와 세션 전체 매칭, 8절의 버전·재시도 계약을 적용해줘.
+WBS와 10절 단계별 구현 순서는 수정하지 마. migration 번호는 8절·11절을 기준으로 해줘.
 헬스 시연이 안정된 뒤 DEMO-05의 러닝 연동을 진행해줘.
 파일명·모델 분리·테스트 방식은 기존 구조에 맞춰 판단해도 돼.
 배포, 백업, 삭제·동의 철회·탈퇴 확장, 실시간 스트리밍은 구현하지 마.
