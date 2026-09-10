@@ -9,6 +9,8 @@ import org.springframework.data.domain.Slice
 import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.jpa.repository.Lock
+import jakarta.persistence.LockModeType
 import org.springframework.data.repository.query.Param
 import java.time.Instant
 import java.util.UUID
@@ -16,6 +18,10 @@ import java.util.UUID
 interface WorkoutSessionRepository : JpaRepository<WorkoutSession, UUID> {
     @EntityGraph(attributePaths = ["routine"])
     fun findByIdAndUserId(id: UUID, userId: UUID): WorkoutSession?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select ws from WorkoutSession ws where ws.id = :id and ws.userId = :userId")
+    fun findByIdAndUserIdForUpdate(@Param("id") id: UUID, @Param("userId") userId: UUID): WorkoutSession?
 
     fun findAllByUserIdOrderByStartedAtDescIdDesc(userId: UUID, pageable: Pageable): Slice<WorkoutSession>
     fun findAllByUserIdAndStatusOrderByStartedAtDescIdDesc(

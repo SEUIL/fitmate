@@ -115,7 +115,6 @@ import com.fitmate.app.running.RunTrackingService
 import com.fitmate.app.running.RunTrackingStore
 import com.fitmate.app.samsunghealth.SamsungHealthStatus
 import com.fitmate.app.samsunghealth.SamsungHealthUiState
-import com.fitmate.app.samsunghealth.SamsungWorkoutMetrics
 import com.fitmate.app.ui.theme.FitMateColors
 import com.fitmate.app.ui.theme.FitMateShapes
 import com.fitmate.app.ui.theme.FitMateSpacing
@@ -155,14 +154,16 @@ private val Ink = FitMateColors.DarkSurface
 fun FitMatePrototypeApp(
     onOpenSamsungTest: () -> Unit,
     samsungHealthState: SamsungHealthUiState = SamsungHealthUiState(),
-    onRefreshSamsungHealth: () -> Unit = {}
+    onRefreshSamsungHealth: () -> Unit = {},
+    onLoadSamsungWorkouts: (java.time.Instant, java.time.Instant, (SamsungHealthUiState) -> Unit) -> Unit = { _, _, _ -> },
+    onRequestSamsungExercisePermission: () -> Unit = {},
 ) {
     var generation by remember { mutableStateOf(0) }
     key(generation) {
         val api = rememberFitMateApiClient()
         ServerSessionGate(api, signup = { done -> OnboardingScreen(Modifier.safeDrawingPadding(), api, onExit = done) { done() } }) { account ->
             key(account.text("id")) {
-                FitMateAppContent(onOpenSamsungTest, samsungHealthState, onRefreshSamsungHealth, api, account) { generation++ }
+                FitMateAppContent(onOpenSamsungTest, samsungHealthState, onRefreshSamsungHealth, onLoadSamsungWorkouts, onRequestSamsungExercisePermission, api, account) { generation++ }
             }
         }
     }
@@ -173,6 +174,8 @@ fun FitMatePrototypeApp(
     onOpenSamsungTest: () -> Unit,
     samsungHealthState: SamsungHealthUiState,
     onRefreshSamsungHealth: () -> Unit,
+    onLoadSamsungWorkouts: (java.time.Instant, java.time.Instant, (SamsungHealthUiState) -> Unit) -> Unit,
+    onRequestSamsungExercisePermission: () -> Unit,
     apiClient: FitMateApiClient,
     serverAccount: com.google.gson.JsonObject,
     resetApp: () -> Unit
@@ -414,7 +417,7 @@ fun FitMatePrototypeApp(
                     workoutHistory = emptyList(); workoutSession = null; mateState.activeWorkoutId = null
                 })
             PrototypeRoute.HISTORY -> Screen(Modifier.padding(padding)) {
-                ServerRecordList(apiClient)
+                ServerRecordList(apiClient, samsungHealthState, onLoadSamsungWorkouts, onRequestSamsungExercisePermission)
                 if (workoutHistory.any { it.serverId == null } || runningState.history.any { it.serverId == null }) {
                     Text("기기에 보관된 이전 기록", style = MaterialTheme.typography.titleMedium)
                     WorkoutRecordBrowser(workoutHistory.filter { it.serverId == null }, runningState.history.filter { it.serverId == null }, allowExamples = false)
@@ -454,12 +457,11 @@ fun FitMatePrototypeApp(
             }
             PrototypeRoute.HOME -> SocialHome(Modifier.padding(padding), profile, socialState, workoutHistory.size, runningState.history.size,
                 notifications = { route = PrototypeRoute.NOTIFICATIONS },
-                history = { route = PrototypeRoute.HISTORY },
                 resumeDescription = workoutSession?.let { "${it.exerciseName} · 기록 ${it.recordedSets.size}세트" }
                     ?: if (runningState.phase != "설정") "진행 중인 러닝으로 돌아가요" else null,
                 resuming = workoutSession != null || runningState.phase != "설정",
                 start = { if (workoutSession != null) route = PrototypeRoute.WORKOUT else if (runningState.phase != "설정") route = PrototypeRoute.RUNNING else { mateState.activeWorkoutId = null; route = PrototypeRoute.SOLO } },
-                mates = { route = PrototypeRoute.MATE_LIST }, community = { route = PrototypeRoute.COMMUNITY },
+                mates = { route = PrototypeRoute.MATE_LIST }, history = { route = PrototypeRoute.HISTORY }, community = { route = PrototypeRoute.COMMUNITY },
                 dm = { route = PrototypeRoute.DM }, inbody = { inbodyOrigin = PrototypeRoute.HOME; route = PrototypeRoute.INBODY }, server = serverSocial)
             PrototypeRoute.SOLO -> SoloScreen(Modifier.padding(padding), { mateState.activeWorkoutId = null; route = PrototypeRoute.HEALTH_ROUTINE }, { mateState.activeWorkoutId = null; route = PrototypeRoute.RUNNING })
             PrototypeRoute.HEALTH_ROUTINE -> if (!localRoutineMode) ServerRoutineLibrary(Modifier.padding(padding), apiClient, Sport.FITNESS in profile.interests,
@@ -529,7 +531,11 @@ fun FitMatePrototypeApp(
                 route = PrototypeRoute.REPORT
             }
             PrototypeRoute.REPORT -> if (latestServerSessionId != null) Screen(Modifier.padding(padding)) {
-                ServerRecordDetail(apiClient, requireNotNull(latestServerSessionId))
+                ServerRecordDetail(
+                    apiClient, requireNotNull(latestServerSessionId), false, samsungHealthState,
+                    onLoadSamsungWorkouts, onRequestSamsungExercisePermission,
+                    samsungSelected = latestWorkoutSummary.usedSamsungHealth,
+                )
                 WorkoutAction("홈으로") { route = PrototypeRoute.HOME }
             } else ReportScreen(
                 modifier = Modifier.padding(padding),
@@ -1576,29 +1582,18 @@ private fun applyWorkoutComposition(session: WorkoutSession, response: com.googl
     if (summary.usedSamsungHealth) {
         WorkoutCard {
             Text("Samsung Health 상세 리포트", fontWeight = FontWeight.Bold)
-            val workout = samsungHealthState.workouts.maxByOrNull { it.endTime }
             when (samsungHealthState.status) {
                 SamsungHealthStatus.LOADING -> Text("상태 · 동기화 중", style = MaterialTheme.typography.bodyMedium, color = Mint)
                 SamsungHealthStatus.PERMISSION_MISSING -> Text("상태 · 읽기 권한 필요", style = MaterialTheme.typography.bodyMedium, color = Mint)
                 SamsungHealthStatus.DATA_EMPTY -> Text("상태 · 최근 7일 운동 기록 없음", style = MaterialTheme.typography.bodyMedium, color = Mint)
-                SamsungHealthStatus.READY -> Text(if (workout == null) "상태 · 불러온 운동 기록 없음" else "상태 · 최근 동기화 완료", style = MaterialTheme.typography.bodyMedium, color = Mint)
+                SamsungHealthStatus.READY -> Text("상태 · 연결 가능한 서버 세션 필요", style = MaterialTheme.typography.bodyMedium, color = Mint)
                 else -> Text("상태 · ${samsungHealthState.message ?: "연결 확인 필요"}", style = MaterialTheme.typography.bodyMedium, color = Mint)
             }
-            if (workout != null) {
-                val durationSeconds = java.time.Duration.between(workout.startTime, workout.endTime).seconds
-                val distance = SamsungWorkoutMetrics.kilometers(workout.distanceMeters)?.let { "%.2f km".format(it) } ?: "거리 없음"
-                val calories = workout.calories?.let { " · %.0f kcal".format(it) }.orEmpty()
-                val heartRate = workout.meanHeartRate?.let { "평균 심박 %.0f bpm".format(it) } ?: "평균 심박 없음"
-                Text("${workout.customTitle ?: workout.exerciseType} · ${durationSeconds / 60}분 · $distance$calories", style = MaterialTheme.typography.bodyMedium)
-                Text(heartRate, style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-            } else {
-                Text("Samsung Health에 연결한 뒤 최근 7일의 제공 가능한 운동 값을 이곳에서 확인할 수 있어요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-            }
+            Text("로컬 운동에는 서버 세션 ID가 없어 기기 운동을 자동으로 붙이지 않습니다. 발표 시연은 서버 루틴을 완료한 뒤 후보를 확인해 연결하세요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = refreshSamsungHealth) { Text("동기화 새로고침") }
                 TextButton(onClick = openSamsungHealth) { Text("연결 관리") }
             }
-            Text("이번 세션과 Samsung Health 원본 기록은 종료 시각을 기준으로 참고 표시합니다. 서버 연결 전에는 자동으로 하나의 기록으로 합치지 않습니다.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
         }
     } else {
         WorkoutCard { Text("Samsung Health 미사용", fontWeight = FontWeight.Bold); Text("이번 리포트는 FitMate에 직접 기록한 운동 정보만으로 구성됐어요.") }

@@ -9,12 +9,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fitmate.app.data.remote.FitMateApiClient
+import com.fitmate.app.samsunghealth.SamsungHealthUiState
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-@Composable internal fun ServerRecordList(api: FitMateApiClient) {
+@Composable internal fun ServerRecordList(
+    api: FitMateApiClient,
+    samsungHealthState: SamsungHealthUiState = SamsungHealthUiState(),
+    loadSamsungWorkouts: (java.time.Instant, java.time.Instant, (SamsungHealthUiState) -> Unit) -> Unit = { _, _, _ -> },
+    requestSamsungExercisePermission: () -> Unit = {},
+) {
     val records = remember(api) { ServerRecordApi(api) }
     var sport by remember { mutableStateOf("헬스") }
     var rows by remember { mutableStateOf(emptyList<JsonObject>()) }
@@ -71,10 +77,20 @@ import kotlinx.coroutines.withContext
         }
     }
     if (next != null && error == null) WorkoutSecondaryAction("더 보기", enabled = !loading) { cursor = requireNotNull(next) }
-    selected?.let { id -> SocialSheet({ selected = null }) { ServerRecordDetail(api, id, sport == "러닝") } }
+    selected?.let { id -> SocialSheet({ selected = null }) {
+        ServerRecordDetail(api, id, sport == "러닝", samsungHealthState, loadSamsungWorkouts, requestSamsungExercisePermission)
+    } }
 }
 
-@Composable internal fun ServerRecordDetail(api: FitMateApiClient, id: String, running: Boolean = false) {
+@Composable internal fun ServerRecordDetail(
+    api: FitMateApiClient,
+    id: String,
+    running: Boolean = false,
+    samsungHealthState: SamsungHealthUiState = SamsungHealthUiState(),
+    loadSamsungWorkouts: (java.time.Instant, java.time.Instant, (SamsungHealthUiState) -> Unit) -> Unit = { _, _, _ -> },
+    requestSamsungExercisePermission: () -> Unit = {},
+    samsungSelected: Boolean? = null,
+) {
     var detail by remember(id) { mutableStateOf<JsonObject?>(null) }
     var session by remember(id) { mutableStateOf<JsonObject?>(null) }
     var error by remember(id) { mutableStateOf<String?>(null) }
@@ -84,7 +100,7 @@ import kotlinx.coroutines.withContext
         try {
             val result = withContext(Dispatchers.IO) {
                 val records = ServerRecordApi(api)
-                if (running) records.run(id) to null else records.report(id) to records.session(id)
+                (if (running) records.run(id) else records.report(id)) to records.session(id)
             }
             detail = result.first; session = result.second
         } catch (failure: Exception) {
@@ -134,6 +150,28 @@ import kotlinx.coroutines.withContext
                     }
                 }
             }
+        }
+        val serverSession = session
+        val startedAt = serverSession?.recordTime("startedAt")?.let(java.time.Instant::ofEpochMilli)
+        val endedAt = serverSession?.recordTime("endedAt")?.let(java.time.Instant::ofEpochMilli)
+        if (samsungSelected == false) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Samsung Health 미사용", fontWeight = FontWeight.SemiBold)
+                    Text("이번 리포트는 FitMate에 직접 기록한 운동 정보만으로 구성됐어요.")
+                }
+            }
+        } else if (startedAt != null && endedAt != null) {
+            ExternalWorkoutSection(
+                api = api,
+                sessionId = id,
+                sportCode = if (running) "RUNNING" else "HEALTH",
+                sessionStartedAt = startedAt,
+                sessionEndedAt = endedAt,
+                samsungState = samsungHealthState,
+                loadWorkouts = loadSamsungWorkouts,
+                requestPermission = requestSamsungExercisePermission,
+            )
         }
     }
 }

@@ -56,6 +56,7 @@ internal class RunningState {
     var error by mutableStateOf<String?>(null)
     var deviceTracking by mutableStateOf(false)
     var pendingUpload by mutableStateOf<String?>(null)
+    var startedAt by mutableStateOf<Long?>(null)
     var completedAt by mutableStateOf<Long?>(null)
     val history = mutableStateListOf<RunResult>()
 
@@ -87,7 +88,7 @@ internal class RunningState {
     }
     fun reset() {
         phase = "설정"; paused = false; stationary = false; seconds = 0; meters = 0; laps = emptyList()
-        error = null; memo = ""; rpe = "5"; condition = "3"; exitDialog = false; deviceTracking = false; pendingUpload = null; completedAt = null
+        error = null; memo = ""; rpe = "5"; condition = "3"; exitDialog = false; deviceTracking = false; pendingUpload = null; startedAt = null; completedAt = null
     }
 }
 
@@ -112,6 +113,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
     val tracking by RunTrackingStore.updates.collectAsState()
     var consentDialog by remember { mutableStateOf(false) }
     fun startDeviceTracking() {
+        if (startedAt == null) startedAt = System.currentTimeMillis()
         deviceTracking = true; paused = false; stationary = false; signal = "위치 확인 중"; phase = "진행"
         RunTrackingService.start(context)
     }
@@ -194,7 +196,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     else {
                         target = if (goal in listOf("거리", "페이스")) (distance!! * 1000).toInt() else targetMinutes.toInt() * 60
                         error = null; paused = false
-                        if (demo) { deviceTracking = false; phase = "진행" }
+                        if (demo) { startedAt = System.currentTimeMillis(); deviceTracking = false; phase = "진행" }
                         else if (locationConsent) permissionLauncher.launch(buildList {
                             add(Manifest.permission.ACCESS_FINE_LOCATION); add(Manifest.permission.ACCESS_COARSE_LOCATION)
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
