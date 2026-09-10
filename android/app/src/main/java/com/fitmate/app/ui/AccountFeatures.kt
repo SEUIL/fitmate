@@ -153,7 +153,6 @@ internal fun validDemoPassword(value: String) = value.length >= 8 && value.any(C
     TextButton(external) { Text("Samsung Health 연결·권한 관리") }
     TextButton({ confirm = "로컬 운동 기록 삭제" }) { Text("내 기기의 헬스 기록·임시 운동 삭제") }
     TextButton({ notice = "서버에 저장된 외부 운동 기록 삭제 요청은 API 미연결로 전송되지 않았습니다." }) { Text("서버 외부 운동 기록 삭제 요청 (미연결)") }
-    TextButton({ confirm = "로그아웃" }) { Text("로그아웃") }
     TextButton({ confirm = "회원 탈퇴" }) { Text("회원 탈퇴") }
     notice?.let { Text(it) }
     sheet?.let { value -> SocialSheet({ sheet = null }) {
