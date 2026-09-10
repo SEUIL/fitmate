@@ -7,6 +7,8 @@ import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fitmate.app.data.model.*
@@ -21,19 +23,18 @@ internal fun mateFields(sport: Sport): Map<String, List<String>> = when (sport) 
 }
 
 @Composable internal fun MateDetailsEditor(sport: Sport, details: MateDetails, update: (MateDetails) -> Unit) {
-    SoftCard {
-        Text("장소·비용·공개 범위", fontWeight = FontWeight.Bold)
+    MateSection("장소·비용·공개 범위") {
         OutlinedTextField(details.location, { update(details.copy(location = it)) }, label = { Text("공개 장소 (예: 성수역 인근)") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(details.meetingPoint, { update(details.copy(meetingPoint = it)) }, label = { Text("확정자에게 공개할 집결 위치") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(details.cost, { update(details.copy(cost = it)) }, label = { Text("1인 예상 비용 (원, 무료는 0)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        Choices(listOf("전체 공개", "맞팔 공개"), details.visibility) { update(details.copy(visibility = it)) }
+        Text("참가 확정자에게만 공개됩니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(details.cost, { update(details.copy(cost = it)) }, label = { Text("1인 예상 비용 (원, 무료는 0)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+        MateChoices(listOf("전체 공개", "맞팔 공개"), details.visibility) { update(details.copy(visibility = it)) }
     }
-    SoftCard {
-        Text("${sport.label} 상세 조건", fontWeight = FontWeight.Bold)
+    MateSection("${sport.label} 상세 조건") {
         mateFields(sport).forEach { (label, options) ->
             val value = details.sportFields[label] ?: options.firstOrNull().orEmpty()
             if (options.isEmpty()) OutlinedTextField(value, { update(details.copy(sportFields = details.sportFields + (label to it))) }, label = { Text(label) }, modifier = Modifier.fillMaxWidth())
-            else { Text(label); Choices(options, value) { update(details.copy(sportFields = details.sportFields + (label to it))) } }
+            else MateOptionField(label, value, options) { update(details.copy(sportFields = details.sportFields + (label to it))) }
         }
     }
 }

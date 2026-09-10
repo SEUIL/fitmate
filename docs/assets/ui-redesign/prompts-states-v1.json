@@ -1,0 +1,72 @@
+{
+  "version": "v1",
+  "date": "2026-09-10",
+  "status": "review",
+  "generator": "built-in image_gen",
+  "purpose": "FitMate additional UI states, light and dark; synthetic data; Samsung Health internal UI excluded",
+  "darkStyle": "Use case: ui-mockup. Edit/create a Korean FitMate Android UI state from the supplied reference. One complete flat portrait screenshot, same dimensions/aspect as reference (about 853x1844). Preserve its polished native UI language, charcoal #1C2025 background, #282E35 surfaces, white headings, secondary gray, vivid mint #16DFC1 main CTA, understated borders and consistent outline icons. Sharp exact Korean sans-serif text. No phone bezel, no poster, no annotations outside UI. No added features, AI coach, ads, anatomy art or Samsung Health content. Fictional data. Keep all content readable and within safe areas.",
+  "lightThemeEdit": "Use case: ui-mockup. Edit the supplied FitMate DARK state screenshot into its exact LIGHT counterpart. Change only theme colors: background #F6F8FA, surfaces and sheets #FFFFFF, borders #E1E6EC, primary text #182129, secondary text #5D6874. Filled primary actions stay vivid mint #16DFC1 with black text. Text-only mint and outlined selected controls use dark teal #007D70. Dark status/gesture icons. Preserve all Korean wording, figures, input values, states, ordering, positions, spacing, icons and portrait dimensions. Keep dim overlay behind any sheet/dialog but make the underlying app LIGHT too. Error icon retains coral and error text dark red. Do not add anything or fill secondary outline buttons. Match the reference geometry faithfully. Sharp readable Korean type.",
+  "states": [
+    {
+      "id": "01a-home-resume",
+      "title": "홈 이어하기",
+      "reference": "01-home-dark-v1.png",
+      "darkPrompt": "Use case: ui-mockup. Edit/create a Korean FitMate Android UI state from the supplied reference. One complete flat portrait screenshot, same dimensions/aspect as reference (about 853x1844). Preserve its polished native UI language, charcoal #1C2025 background, #282E35 surfaces, white headings, secondary gray, vivid mint #16DFC1 main CTA, understated borders and consistent outline icons. Sharp exact Korean sans-serif text. No phone bezel, no poster, no annotations outside UI. No added features, AI coach, ads, anatomy art or Samsung Health content. Fictional data. Keep all content readable and within safe areas. Target state: HOME with an unfinished workout paused. Preserve every region of the reference except the main workout card. Keep FitMate, greeting, 8회/3회 device summary, shortcuts, community preview, exact five navigation tabs. In main card replace eyebrow with \"일시정지 중\"; large title \"진행 중인 운동이 있어요\"; secondary \"스쿼트 · 1세트 기록\"; small clock text \"14:32\"; prominent mint button \"운동 이어하기\" with play icon. Use paused status, NOT active running indicator. Same card footprint; refine internal spacing to fit. No second new-workout CTA, no discard/delete option. Preserve normal home content outside main card exactly.",
+      "outputs": [
+        "01a-home-resume-light-v1.png",
+        "01a-home-resume-dark-v1.png"
+      ]
+    },
+    {
+      "id": "02a-routine-empty",
+      "title": "내 루틴 빈 상태",
+      "reference": "02-routine-dark-v1.png",
+      "darkPrompt": "Use case: ui-mockup. Edit/create a Korean FitMate Android UI state from the supplied reference. One complete flat portrait screenshot, same dimensions/aspect as reference (about 853x1844). Preserve its polished native UI language, charcoal #1C2025 background, #282E35 surfaces, white headings, secondary gray, vivid mint #16DFC1 main CTA, understated borders and consistent outline icons. Sharp exact Korean sans-serif text. No phone bezel, no poster, no annotations outside UI. No added features, AI coach, ads, anatomy art or Samsung Health content. Fictional data. Keep all content readable and within safe areas. Target state: routine library EMPTY MY ROUTINES. Preserve header \"루틴 선택\", tabs \"추천 루틴\" \"기본 루틴\" \"내 루틴\" but select ONLY 내 루틴 with mint underline. Remove the existing routine group and all exercise rows. In calm central negative space place small outline clipboard icon, title \"아직 내 루틴이 없어요\", secondary two lines \"기본 루틴을 복사하거나\\n나만의 루틴을 만들어 보세요.\" Under it modest outlined button \"기본 루틴 보기\". At bottom quiet link \"기기에 저장한 루틴·직접 입력 운동\", then sole full-width mint CTA \"+ 새 루틴 만들기\". Do NOT show \"이 루틴으로 운동\", no error warning, no fake routine, no spinner. This is a successful empty response with exercise catalogue available. Android status and bottom gesture retained. Intentional useful empty space.",
+      "outputs": [
+        "02a-routine-empty-light-v1.png",
+        "02a-routine-empty-dark-v1.png"
+      ]
+    },
+    {
+      "id": "02b-routine-edit",
+      "title": "루틴 편집",
+      "reference": "02-routine-dark-v1.png",
+      "darkPrompt": "Use case: ui-mockup. Edit/create a Korean FitMate Android UI state from the supplied reference. One complete flat portrait screenshot, same dimensions/aspect as reference (about 853x1844). Preserve its polished native UI language, charcoal #1C2025 background, #282E35 surfaces, white headings, secondary gray, vivid mint #16DFC1 main CTA, understated borders and consistent outline icons. Sharp exact Korean sans-serif text. No phone bezel, no poster, no annotations outside UI. No added features, AI coach, ads, anatomy art or Samsung Health content. Fictional data. Keep all content readable and within safe areas. Target state: existing routine editor as a tall bottom sheet over dimmed routine library. Top sliver behind sheet shows routine header/tabs. Sheet fills roughly 86% height, top drag handle, heading \"루틴 수정\", close X on right.\nEditable labeled field \"루틴 이름\", value \"나의 전신 루틴\".\nSection \"선택한 운동 · 3개\". Three compact aligned rows with number/name, an up-arrow control and a small \"제거\" text control: \"01 스쿼트\", \"02 벤치 프레스\", \"03 랫 풀다운\". First up-arrow visibly disabled; other arrows enabled. No drag handles, no down arrows, no checkboxes.\nSection \"추가할 운동\". Two catalogue rows: \"+ 레그 프레스\" with \"상세·대체 ›\" at right, \"+ 플랭크\" with \"상세·대체 ›\" at right. Use outline text controls rather than huge cards.\nMuted help text exactly \"새 운동은 3세트로 추가돼요.\" and \"기존 운동의 목표 값은 유지돼요.\"\nBottom fixed mint primary \"서버에 저장\". Retain close without saving. No exercise weight inputs or search field or new features. Background dim, sheet surfaces charcoal but slightly lighter. Keyboard closed. Korean text legible and roomy.",
+      "correction": "Use case: precise-object-edit. Change ONLY the selected tab in the dimmed background behind the 루틴 수정 sheet. Currently 추천 루틴 is mint selected; make 추천 루틴 gray/unselected and make 내 루틴 mint with underline. Remove underline from 추천 루틴 and place it under 내 루틴. This is editing a user's own routine. Preserve all sheet content and every other part of image exactly: title, name field, 3 selected exercises, upward arrows, 제거, 2 additional exercises, explanations, save button, theme and geometry. No other changes.",
+      "outputs": [
+        "02b-routine-edit-light-v1.png",
+        "02b-routine-edit-dark-v1.png"
+      ]
+    },
+    {
+      "id": "03a-set-edit",
+      "title": "기록한 세트 수정",
+      "reference": "03-workout-dark-v1.png",
+      "darkPrompt": "Use case: ui-mockup. Edit/create a Korean FitMate Android UI state from the supplied reference. One complete flat portrait screenshot, same dimensions/aspect as reference (about 853x1844). Preserve its polished native UI language, charcoal #1C2025 background, #282E35 surfaces, white headings, secondary gray, vivid mint #16DFC1 main CTA, understated borders and consistent outline icons. Sharp exact Korean sans-serif text. No phone bezel, no poster, no annotations outside UI. No added features, AI coach, ads, anatomy art or Samsung Health content. Fictional data. Keep all content readable and within safe areas. Target state: EDITING RECORDED SET in existing workout screen. Preserve appbar, workout 1/4, elapsed14:32, current exercise 스쿼트, previous20kgx10, all existing links, rest idle 01:00, safety action.\nChange input card heading to \"1세트 수정\"; put small badge \"수정 중\". Input values change to 22.5 in 중량 (kg), 10 in 횟수, 8 in RPE. kg selected, lb unselected. Expand memo field in place of 메모 추가: label \"세트 메모 (선택)\", value \"자세에 집중\". No keyboard shown.\nRecorded set section still displays OLD SAVED row \"1세트\" \"20 kg × 10회\" \"RPE 7\" and OLD total \"1세트 · 200 kg\"; highlight row with a subtle mint border to indicate editing. Do NOT calculate new total until saving. Bottom primary label becomes \"세트 수정\". A small line near input \"기록한 세트를 수정하고 있어요\" if space permits. No destructive action or invented cancel button. Keep 휴식 시작 outlined secondary, not mint filled. Layout may compact vertically a little for expanded memo but preserve overall structure.",
+      "outputs": [
+        "03a-set-edit-light-v1.png",
+        "03a-set-edit-dark-v1.png"
+      ]
+    },
+    {
+      "id": "03b-rest-running",
+      "title": "휴식 중",
+      "reference": "03-workout-dark-v1.png",
+      "darkPrompt": "Use case: ui-mockup. Edit/create a Korean FitMate Android UI state from the supplied reference. One complete flat portrait screenshot, same dimensions/aspect as reference (about 853x1844). Preserve its polished native UI language, charcoal #1C2025 background, #282E35 surfaces, white headings, secondary gray, vivid mint #16DFC1 main CTA, understated borders and consistent outline icons. Sharp exact Korean sans-serif text. No phone bezel, no poster, no annotations outside UI. No added features, AI coach, ads, anatomy art or Samsung Health content. Fictional data. Keep all content readable and within safe areas. Target state: REST TIMER RUNNING on workout screen. Preserve everything from reference including current 2세트 entry 20/10/7, recorded1set200kg, top timer14:32, main bottom 이 세트 기록, overview, safety.\nChange only rest card: small mint status \"휴식 중\", large remaining \"00:42\" with a subtle thin countdown progress line. Controls \"일시정지\" (outlined mint text, pause icon), \"+ 30초\", \"설정\". No AI preset, no +10, no skip, no full-screen modal. Rest start is replaced by pause because running. Main 이 세트 기록 remains sole dominant filled CTA, resting controls secondary. Same footprint and crisp text.",
+      "outputs": [
+        "03b-rest-running-light-v1.png",
+        "03b-rest-running-dark-v1.png"
+      ]
+    },
+    {
+      "id": "03c-save-error",
+      "title": "운동 종료 저장 오류",
+      "reference": "03-workout-dark-v1.png",
+      "darkPrompt": "Use case: ui-mockup. Edit/create a Korean FitMate Android UI state from the supplied reference. One complete flat portrait screenshot, same dimensions/aspect as reference (about 853x1844). Preserve its polished native UI language, charcoal #1C2025 background, #282E35 surfaces, white headings, secondary gray, vivid mint #16DFC1 main CTA, understated borders and consistent outline icons. Sharp exact Korean sans-serif text. No phone bezel, no poster, no annotations outside UI. No added features, AI coach, ads, anatomy art or Samsung Health content. Fictional data. Keep all content readable and within safe areas. Target state: WORKOUT COMPLETION SAVE FAILURE modal on current workout screen. Keep entire reference workout dimmed in background, preserving entered fields20/10/7 and recorded1set200kg. A carefully sized centered native dialog, rounded16, charcoal surface slightly elevated. Small coral warning outline icon. Title exactly \"운동 기록 저장 실패\". Body two lines \"네트워크 연결을 확인한 뒤\\n다시 시도해 주세요.\" Then small explanatory line \"완료 처리가 끝나지 않았어요.\" Lower row: secondary text button \"닫기\" and primary mint filled \"다시 저장\". No success check, no data deleted or saved claims, no automatic retry countdown, no button going to completed report. Closing returns to still-existing workout screen; retry uses existing completion action. Dialog text and both buttons readable. Error coral only icon/title emphasis, not entire screen. Retain status bar and bottom gesture.",
+      "outputs": [
+        "03c-save-error-light-v1.png",
+        "03c-save-error-dark-v1.png"
+      ]
+    }
+  ]
+}

@@ -3,7 +3,6 @@ package com.fitmate.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.animation.animateColorAsState
@@ -21,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.automirrored.outlined.DirectionsRun
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import com.fitmate.app.data.model.*
 import com.fitmate.app.data.remote.FitMateApiClient
 import com.fitmate.app.data.remote.ServerSocialApi
-import com.fitmate.app.R
 import com.fitmate.app.ui.theme.FitMateColors
 import com.fitmate.app.ui.theme.FitMateShapes
 import kotlinx.coroutines.Dispatchers
@@ -44,9 +42,9 @@ import kotlinx.coroutines.withContext
 
 internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme.surfaceContainerLow
 
-@Composable internal fun ProfileIdentityRow(name: String, photo: String?, counts: List<String>, server: ServerSocialApi? = null, select: (String) -> Unit) {
+@Composable internal fun ProfileIdentityRow(name: String, photo: String?, counts: List<String>, server: ServerSocialApi? = null, accent: Boolean = false, select: (String) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (photo == null) SocialAvatar(name, 80)
+        if (photo == null) { if (accent) SocialAccentAvatar(name, 80) else SocialAvatar(name, 80) }
         else Box(Modifier.size(80.dp).clip(CircleShape)) { FitMatePhoto(photo, server, square = true) }
         listOf("운동 기록", "팔로워", "팔로잉").forEachIndexed { index, label ->
             Column(Modifier.weight(1f).clickable { select(label) }.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -85,13 +83,14 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     }
 }
 
-@Composable internal fun SocialTabs(options: List<String>, selected: String, onSelect: (String) -> Unit) {
+@Composable internal fun SocialTabs(options: List<String>, selected: String, accent: Boolean = false, onSelect: (String) -> Unit) {
     Column {
         Row(Modifier.fillMaxWidth()) {
             options.forEach { label ->
-                val indicator by animateColorAsState(if (selected == label) FitMateColors.TextPrimary else Color.Transparent, tween(MotionDuration), label = "tabIndicator")
+                val selectedColor = if (accent) MaterialTheme.colorScheme.primary else FitMateColors.TextPrimary
+                val indicator by animateColorAsState(if (selected == label) selectedColor else Color.Transparent, tween(MotionDuration), label = "tabIndicator")
                 Column(Modifier.weight(1f).selectable(selected = selected == label, role = Role.Tab, onClick = { onSelect(label) }), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(label, Modifier.padding(vertical = 16.dp), fontWeight = if (selected == label) FontWeight.Bold else FontWeight.Normal, color = if (selected == label) FitMateColors.TextPrimary else FitMateColors.TextSecondary)
+                    Text(label, Modifier.padding(vertical = 16.dp), fontWeight = if (selected == label) FontWeight.Bold else FontWeight.Normal, color = if (selected == label) selectedColor else FitMateColors.TextSecondary)
                     Box(Modifier.fillMaxWidth().height(2.dp).background(indicator))
                 }
             }
@@ -107,18 +106,19 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     }
 }
 
-@Composable internal fun EditorialPost(entry: FeedEntry, onLike: () -> Unit, onComments: () -> Unit, menu: Map<String, () -> Unit> = emptyMap(), onAuthor: (() -> Unit)? = null, server: ServerSocialApi? = null) {
+@Composable internal fun EditorialPost(entry: FeedEntry, onLike: () -> Unit, onComments: () -> Unit, menu: Map<String, () -> Unit> = emptyMap(), onAuthor: (() -> Unit)? = null, server: ServerSocialApi? = null, redesigned: Boolean = false) {
     var expanded by remember { mutableStateOf(false) }
     val heartScale = likeScale(entry.post.isLiked)
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(if (redesigned) 18.dp else 10.dp),
+        border = if (redesigned) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            SocialAvatar(entry.post.authorName, 32)
+            if (redesigned) SocialAccentAvatar(entry.post.authorName) else SocialAvatar(entry.post.authorName, 32)
             Column(Modifier.weight(1f).padding(start = 10.dp).then(if (onAuthor != null) Modifier.clickable(onClick = onAuthor) else Modifier)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(entry.post.authorName, modifier = Modifier.weight(1f, fill = false), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -128,7 +128,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
             }
             if (menu.isNotEmpty()) Box {
                 IconButton({ expanded = true }) { Icon(Icons.Outlined.MoreHoriz, "게시물 더 보기") }
-                FitMatePostMenu(expanded, { expanded = false }, menu)
+                FitMatePostMenu(expanded, { expanded = false }, menu, redesigned)
             }
         }
         Text(entry.post.content, fontSize = 16.sp, lineHeight = 25.sp, letterSpacing = (-0.2).sp, color = FitMateColors.TextPrimary)
@@ -157,14 +157,14 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     }
 }
 
-@Composable private fun FitMatePostMenu(expanded: Boolean, dismiss: () -> Unit, actions: Map<String, () -> Unit>) {
+@Composable private fun FitMatePostMenu(expanded: Boolean, dismiss: () -> Unit, actions: Map<String, () -> Unit>, redesigned: Boolean = false) {
     FitMateMenuSurface(expanded, dismiss, Modifier.width(188.dp)) {
         actions.entries.forEachIndexed { index, (label, action) ->
             val destructive = label in setOf("게시물 신고", "차단", "삭제")
             DropdownMenuItem(
                 text = { Text(label, style = MaterialTheme.typography.labelLarge) },
                 onClick = { dismiss(); action() },
-                modifier = Modifier.height(38.dp),
+                modifier = if (redesigned) Modifier.heightIn(min = 48.dp) else Modifier.height(38.dp),
                 colors = MenuDefaults.itemColors(textColor = if (destructive) MaterialTheme.colorScheme.error else FitMateColors.TextPrimary),
                 contentPadding = PaddingValues(horizontal = 18.dp)
             )
@@ -192,16 +192,11 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     )
 }
 
-@Composable internal fun SocialHome(modifier: Modifier, profile: UserProfile, social: SocialState, workoutCount: Int, runCount: Int, start: () -> Unit, mates: () -> Unit, community: () -> Unit, dm: () -> Unit, inbody: () -> Unit, resuming: Boolean = false, notifications: () -> Unit = {}, server: ServerSocialApi? = null) = Screen(modifier, background = FeedBackground) {
+@Composable internal fun SocialHome(modifier: Modifier, profile: UserProfile, social: SocialState, workoutCount: Int, runCount: Int, start: () -> Unit, mates: () -> Unit, community: () -> Unit, dm: () -> Unit, inbody: () -> Unit, resuming: Boolean = false, notifications: () -> Unit = {}, server: ServerSocialApi? = null, history: () -> Unit = {}, resumeDescription: String? = null) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(40.dp).background(Color(0xFF1F2927), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                Image(painterResource(R.drawable.fitmate_symbol), contentDescription = "FitMate 로고", modifier = Modifier.size(32.dp))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Fit", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp, color = MaterialTheme.colorScheme.onSurface)
-                Text("Mate", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp, color = MaterialTheme.colorScheme.primary)
-            }
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text("Fit", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp, color = MaterialTheme.colorScheme.onSurface)
+            Text("Mate", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp, color = MaterialTheme.colorScheme.primary)
         }
         IconButton(notifications) {
             BadgedBox(badge = { if (social.accounts.notices.any { !it.read }) Badge { Text(social.accounts.notices.count { !it.read }.toString()) } }) {
@@ -210,15 +205,36 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         }
         IconButton(dm) { Icon(Icons.Outlined.ChatBubbleOutline, "DM 열기") }
     }
-    HorizontalDivider(color = FitMateColors.Outline)
+    Text("오늘도,\n나답게 운동해요", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(vertical = 12.dp))
+    WorkoutCard {
+        Text(if (resuming) "진행 중인 운동" else "나의 운동", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        Text(if (resuming) "운동을 이어가 볼까요?" else "오늘의 운동을 시작해요", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(if (resuming) resumeDescription ?: "진행 중인 운동으로 돌아가요" else "헬스부터 러닝까지, 나의 페이스로", color = FitMateColors.TextSecondary)
+        WorkoutAction(if (resuming) "운동 이어하기" else "운동 시작", onClick = start)
+    }
+    WorkoutCard {
+        Text("기기에 저장된 운동", style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            listOf(Triple("헬스", workoutCount, Icons.Outlined.FitnessCenter), Triple("러닝", runCount, Icons.AutoMirrored.Outlined.DirectionsRun)).forEach { (label, count, icon) ->
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(icon, null, Modifier.size(28.dp))
+                    Column {
+                        Text(label, color = FitMateColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                        Text("${count}회", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        listOf(Triple("메이트", Icons.Outlined.Groups, mates), Triple("운동 일지", Icons.Outlined.EventNote, community), Triple("인바디", Icons.Outlined.AccessibilityNew, inbody)).forEach { (label, icon, action) ->
+        listOf(Triple("메이트", Icons.Outlined.Groups, mates), Triple("운동 기록", Icons.AutoMirrored.Outlined.Notes, history), Triple("인바디", Icons.Outlined.AccessibilityNew, inbody)).forEach { (label, icon, action) ->
             val interaction = remember { MutableInteractionSource() }
             Card(
                 modifier = Modifier.weight(1f).heightIn(min = 84.dp).pressFeedback(interaction).clip(RoundedCornerShape(16.dp))
                     .clickable(interactionSource = interaction, indication = LocalIndication.current, role = Role.Button, onClick = action),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .35f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
@@ -234,15 +250,8 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         }
     }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("${profile.nickname}님의 오늘", style = MaterialTheme.typography.titleMedium)
-            Text("운동 기록 · 헬스 $workoutCount · 러닝 $runCount", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-        }
-        val startInteraction = remember { MutableInteractionSource() }
-        Button(start, modifier = Modifier.pressFeedback(startInteraction), interactionSource = startInteraction, shape = FitMateShapes.Button, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)) { Text(if (resuming) "운동 이어하기" else "운동 시작") }
-    }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("운동하는 일상", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("커뮤니티", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        TextButton(community) { Text("더보기") }
         IconButton({ social.openComposer = true; community() }) { Icon(Icons.Outlined.AddBox, "게시물 작성") }
     }
     val feed = social.feed.filter { it.post.authorName !in social.blocked && (it.mine || it.visibility == "전체 공개" || it.post.authorName in social.mutual) }
@@ -283,19 +292,19 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
             }
         }.onSuccess { serverCounts = it }
     }
-    SocialTitle(profile.nickname, Icons.Outlined.Menu, "프로필 설정", openSettings)
-    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo, serverCounts ?: fallbackCounts, server) {
+    SocialScreenTitle(profile.nickname, action = { IconButton(openSettings) { Icon(Icons.Outlined.Menu, "프로필 설정") } })
+    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo, serverCounts ?: fallbackCounts, server, accent = true) {
         if (it == "운동 기록") tab = it else social.accounts.directory = it
     }
     Text(profile.displayName.ifBlank { profile.nickname }, fontWeight = FontWeight.SemiBold)
     if (profile.bio.isNotBlank()) Text(profile.bio, style = MaterialTheme.typography.bodyMedium)
     Text("${profile.region} · ${(profile.interests.map { it.label } + profile.customInterests).joinToString(" · ")}", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(edit, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("프로필 편집", color = FitMateColors.TextPrimary) }
-        OutlinedButton(inbody, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("인바디 기록", color = FitMateColors.TextPrimary) }
+        OutlinedButton(edit, Modifier.weight(1f).heightIn(min = 56.dp), shape = FitMateShapes.Button) { Text("프로필 편집", color = FitMateColors.TextPrimary) }
+        OutlinedButton(inbody, Modifier.weight(1f).heightIn(min = 56.dp), shape = FitMateShapes.Button) { Text("인바디 기록", color = FitMateColors.TextPrimary) }
     }
     Column(verticalArrangement = Arrangement.spacedBy(if (tab == "게시물") 3.dp else 12.dp)) {
-    SocialTabs(listOf("게시물", "운동 기록"), tab) { tab = it }
+    SocialTabs(listOf("게시물", "운동 기록"), tab, accent = true) { tab = it }
     if (tab == "게시물") {
         if (mine.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Outlined.GridView, null, Modifier.size(36.dp))
@@ -330,7 +339,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     onFollowRequests: () -> Unit,
     onReports: () -> Unit,
     onOpenAdmin: () -> Unit,
-) = Screen(modifier) {
+) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     var confirmLogout by remember { mutableStateOf(false) }
     SettingsGroup("계정 및 프로필") {
         SettingsRow(Icons.Outlined.PersonOutline, "프로필 편집", "이름, 활동 지역, 소개를 관리해요", onProfileEdit)
@@ -352,17 +361,17 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         SettingsRow(Icons.Outlined.GppMaybe, "내 신고 내역", "신고 처리 상태를 확인해요", onReports)
     }
     DebugOnly { SettingsGroup("개발") { SettingsRow(Icons.Outlined.AdminPanelSettings, "운영자 데모", "개발 환경에서만 표시됩니다", onOpenAdmin) } }
-    if (confirmLogout) ConfirmAction(
+    if (confirmLogout) StateConfirm(
         "로그아웃",
         "현재 기기의 로그인 세션을 종료하고 로그인 화면으로 이동합니다. 기기 내 운동 기록은 유지됩니다.",
         { confirmLogout = false },
-        { confirmLogout = false; onLogout() }
+        confirm = { confirmLogout = false; onLogout() }
     )
 }
 
 @Composable private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(title, Modifier.padding(top = 12.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = FitMateColors.TextSecondary)
+    WorkoutCard {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         content()
     }
 }
@@ -373,12 +382,14 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Icon(icon, null, Modifier.size(22.dp), tint = FitMateColors.TextPrimary)
+        Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = .08f), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+        }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(description, style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
         }
-        trailing?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = FitMateColors.Primary) }
+        if (androidx.compose.ui.platform.LocalDensity.current.fontScale <= 1.3f) trailing?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
         Icon(Icons.Outlined.ChevronRight, null, Modifier.size(20.dp), tint = FitMateColors.TextSecondary)
     }
     HorizontalDivider(color = FitMateColors.Outline)

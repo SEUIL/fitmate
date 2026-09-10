@@ -1,0 +1,100 @@
+{
+  "version": "v1",
+  "status": "검토 중",
+  "date": "2026-09-10",
+  "tool": "built-in image_gen",
+  "scope": "기능 보존 UI/UX 검토 이미지. Samsung Health 내부 UI 제외. 합성 이름·본문·대화·사진 사용.",
+  "styleReference": "03-workout-dark-v1.png",
+  "sharedDarkStyle": "Use case: ui-mockup. Input is STYLE ONLY. One high fidelity FitMate Android flat screenshot, portrait 853x1844, full safe area with 9:41 status bar and Android gesture line, no phone frame or poster. Reference visual language: charcoal #1C2025 background, #282E35 surfaces, white text, gray secondary text, vivid mint #16DFC1 primary buttons with BLACK text, outlined secondary actions, simple consistent icons, sharp readable Korean. Preserve only specified existing features. No stories/reels, bookmark/share, search, AI, calls, voice, location maps, online/typing dots, stars, new tabs or invented extra counters. Only feed and DM list have the five bottom navigation tabs; all other screens have NO bottom nav. Synthetic user data. Photo when specified: small natural still life of plain black training shoes and mint water bottle on a neutral gym bench, no people or logos.",
+  "lightThemeEdit": "Use case: ui-mockup. Convert supplied DARK FitMate screenshot into its exact LIGHT counterpart. Change only colors: #F6F8FA background, #FFFFFF cards/sheets, #E1E6EC borders, #182129 primary text and #5D6874 secondary text. Mint filled primary buttons/chips stay #16DFC1 with black text; mint text/icons on light surfaces become dark teal #007D70. Amber request badge pale amber/dark brown. Danger text dark red. Dark system icons/gesture bar. Preserve ALL Korean wording, values, selected states, photographs, geometry, icon arrows, buttons, navigation and source dimensions. Photos remain exactly the same unmodified. For sheets retain dimmed overlay behind the white sheet, underlying app light. No extra arrows or missing existing controls. No new features. Sharp readable Korean.",
+  "darkCorrections": [
+    {
+      "ids": [
+        "17-post-comments",
+        "18-post-compose",
+        "18b-post-edit"
+      ],
+      "prompt": "Use case: ui-mockup. Edit this DARK FitMate screenshot. Preserve the entire foreground bottom sheet pixel layout, wording, controls, photos and sizes. Only repair the dimmed underlying community feed above the sheet: header '커뮤니티' with a single outlined plus button at right. Exactly THREE tabs '전체 공개' (mint selected), '팔로잉', '내 게시물'. Remove any bell, feed/DM tabs, 운동 인증, 식단, 자유톡. Background post author '민트', initial avatar 민, optional text 오늘도 운동 완료!. No other changes. Remain 853x1844 dark, sharp readable Korean."
+    }
+  ],
+  "lightCorrections": [
+    {
+      "ids": [
+        "18b-post-edit"
+      ],
+      "prompt": "Use case: precise-object-edit. Preserve this LIGHT FitMate screenshot exactly, except add a translucent neutral BLACK scrim at 45% opacity ONLY over the background app ABOVE and BEHIND the foreground rounded modal bottom sheet. This must visibly dim the community title, tabs, background post, and status bar, turning white background medium gray. Keep the foreground white sheet perfectly bright, all its labels and controls unchanged. Do not dim the foreground sheet. Do not change geometry, text, photos or dimensions 853x1844."
+    },
+    {
+      "ids": [
+        "17-post-comments",
+        "18-post-compose"
+      ],
+      "prompt": "Use case: precise-object-edit. Preserve this LIGHT FitMate screenshot exactly, except add a translucent neutral BLACK scrim at 45% opacity ONLY over the background app ABOVE and BEHIND the foreground rounded modal bottom sheet. This must visibly dim the community title, tabs, background post, background photo if any, and status bar, turning white background medium gray. Keep the foreground white sheet perfectly bright, all its labels and controls unchanged. Do not dim the foreground sheet. Do not change geometry, text, photos or dimensions 853x1844."
+    }
+  ],
+  "screens": [
+    {
+      "id": "16-community-feed",
+      "title": "커뮤니티 피드",
+      "darkPrompt": "Header '커뮤니티', top right outlined square-plus compose icon. Tabs '전체 공개' selected mint underline, '팔로잉', '내 게시물'. Post1 white initialcircle '민', nickname '민트', '10분 전', visibility '전체 공개', right ellipsis. Content '오늘도 운동 완료! 무리하지 않고 꾸준히 이어가고 있어요.' Below medium landscape photo of black training shoes and mint water bottle on gym bench. Below only outlineheart '12' and commentbubble '2'. Post2 initialavatar '달', '달리미', '1시간 전', '전체 공개', ellipsis; text '오늘은 가볍게 달렸어요. 다들 운동 후 어떻게 회복하시나요?'; below outlineheart '8' and commentbubble '3'. Small outlined '게시물 더 보기'. Bottom five tabs '홈','메이트','커뮤니티' SELECTED,'DM','프로필'. Keep text-first composition, no workout stats card, no new reactions or share button.",
+      "outputs": [
+        "16-community-feed-light-v1.png",
+        "16-community-feed-dark-v1.png"
+      ]
+    },
+    {
+      "id": "17-post-comments",
+      "title": "게시물·댓글 시트",
+      "darkPrompt": "Existing comments MODAL BOTTOM SHEET over a dimmed community feed, not a new independent detail route. Background top shows community header, tabs and faint mint author's post '오늘도 운동 완료! 무리하지 않고 꾸준히 이어가고 있어요.'. Sheet starts at about 30% from top, rounded dark surface, draghandle and title '댓글' with X close. Two comments: avatar '봄', name '러너봄', text '꾸준히 하는 모습이 멋져요!', secondary textbutton '신고'; avatar '나', name '나', text '내일도 가볍게 이어가 볼게요.', secondary '삭제'. Thin separators. Bottom sheet composer: input label '댓글 남기기', draft '함께 응원해요!', right mint '게시'. Large space between comments and input. No reply threading, likes on comments, times, sort dropdown, new count, or bottom navigation on sheet. Background bottom navigation must be obscured by sheet.",
+      "outputs": [
+        "17-post-comments-light-v1.png",
+        "17-post-comments-dark-v1.png"
+      ]
+    },
+    {
+      "id": "18-post-compose",
+      "title": "새 게시물 작성",
+      "darkPrompt": "Tall MODAL BOTTOM SHEET, a sliver of dimmed community header behind it. Sheet rounded top at 12% screen height, draghandle, title '새 게시물', X. Large multiline outlined input label '오늘의 운동이나 생각', draft '오늘도 운동 완료! 내일도 꾸준히 이어가 볼게요.'. No character counter. Public options '전체 공개' selected mint check, '맞팔 공개' outlined. Outlined photoicon action '사진 추가 (0/10)'. Section '운동 기록 첨부'; empty-state text '완료한 운동이 없어요. 먼저 운동을 기록해 주세요.'. Small note '운동 요약만 공유하며 심박수·정확한 경로는 첨부하지 않습니다.'. Bottom actions text '나중에 쓰기', muted coral '초안 삭제', dominant mint '게시 저장'. No post button duplicate, no media previews with zero photos, no new editing tools, no hashtags/toolbars, no bottom nav, no keyboard in mockup.",
+      "outputs": [
+        "18-post-compose-light-v1.png",
+        "18-post-compose-dark-v1.png"
+      ]
+    },
+    {
+      "id": "18b-post-edit",
+      "title": "게시물 수정",
+      "darkPrompt": "Tall MODAL BOTTOM SHEET at 12% screen height over dimmed community header, rounded top and draghandle. Title '게시물 수정', X. Multiline outlined field '오늘의 운동이나 생각', value '오늘은 무게보다 자세에 집중했어요.'. Options '전체 공개' outlined, '맞팔 공개' SELECTED mint check. Outlined '사진 추가 (1/10)'. Medium preview photo of plain black training shoes and mint water bottle on gym bench, below text action '1번 사진 제거'. Section '운동 기록 첨부', text '완료한 운동이 없어요. 먼저 운동을 기록해 주세요.'. Small note '운동 요약만 공유하며 심박수·정확한 경로는 첨부하지 않습니다.'. Bottom row '나중에 쓰기', '초안 삭제' coral, mint button '게시 저장'. NO bottom navigation, no extra imagefilters/crop/reorder, no charactercounter, no save-success banner.",
+      "outputs": [
+        "18b-post-edit-light-v1.png",
+        "18b-post-edit-dark-v1.png"
+      ]
+    },
+    {
+      "id": "19-dm-list",
+      "title": "DM 목록",
+      "darkPrompt": "Header 'DM'. Small subtitle '요청을 수락하고 메이트와 대화하세요.'. Section '메시지 요청 2개'. Two modest cards: nickname '러너봄', amber badge '받은 요청', preview '안녕하세요. 운동 이야기 나누고 싶어요.', outlined '요청 보기'; nickname '초록', neutral badge '보낸 요청', preview '안녕하세요. 같이 운동해요!', outlined '요청 보기'. Section '대화'. Row initialavatar '민', name '민트', preview '내일도 가볍게 이어가요.', mint unread badge '2', chevron. Row initial '바', name '바람 · 알림 끔', preview '사진', no unread badge, chevron. Small muted text action '개발 및 테스트 도구'. Bottom five tabs '홈','메이트','커뮤니티','DM' SELECTED,'프로필'. No search, compose FAB, times, online dots, filters, no merging with mate inquiry inbox.",
+      "outputs": [
+        "19-dm-list-light-v1.png",
+        "19-dm-list-dark-v1.png"
+      ]
+    },
+    {
+      "id": "20-dm-chat",
+      "title": "DM 대화 가능",
+      "darkPrompt": "Back header initialavatar '민' and '민트', right ellipsis for existing conversation options. No online status. Left gray bubble '오늘 운동은 어땠어요?' small '19:30'. Right mint bubble dark text '가볍게 전신 운동을 했어요.' small '19:31 · 전송 완료 · 읽음'. Left gray bubble '내일도 가볍게 이어가요.' small '19:32'. Right image-only bubble: photo of black training shoes and mint water bottle on gym bench, under it '19:33 · 전송 완료 · 1'. Bottom pinned input row plus icon for PHOTO attachment, field draft '좋아요, 내일도 힘내요!', mint '전송'. NO bottom navigation, no phone/voice/video buttons, no timestamps other than specified, no new reactions. Existing accepted active conversation; enough whitespace around messages.",
+      "outputs": [
+        "20-dm-chat-light-v1.png",
+        "20-dm-chat-dark-v1.png"
+      ]
+    },
+    {
+      "id": "20b-dm-request",
+      "title": "DM 받은 요청",
+      "darkPrompt": "Back header initialavatar '봄', '러너봄', right ellipsis. Card near top with amber icon and title '받은 메시지 요청', helper '수락하면 대화를 시작할 수 있어요.'. Two large buttons outlined '거절' and mint '수락'. Below one LEFT gray message bubble '안녕하세요. 운동 이야기 나누고 싶어요.' small '19:20'. NO text input, NO send button, NO attachment button before accepting, NO bottom navigation, no auto-follow promise, no profile/reply action, no confirmation or success message. Large clear open space below, tall portrait same geometry system.",
+      "outputs": [
+        "20b-dm-request-light-v1.png",
+        "20b-dm-request-dark-v1.png"
+      ]
+    }
+  ]
+}

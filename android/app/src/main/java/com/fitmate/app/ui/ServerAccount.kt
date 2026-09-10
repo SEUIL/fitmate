@@ -2,6 +2,7 @@ package com.fitmate.app.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -115,7 +116,7 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
 
 @Composable internal fun ServerAccountSettings(modifier: Modifier, api: FitMateApiClient, finished: () -> Unit,
     external: () -> Unit, health: Boolean, setHealth: (Boolean) -> Unit, location: Boolean, setLocation: (Boolean) -> Unit,
-    deleteLocalRecords: () -> Unit) = Screen(modifier) {
+    deleteLocalRecords: () -> Unit) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     val scope = rememberCoroutineScope()
     var settings by remember { mutableStateOf<JsonObject?>(null) }
     var terms by remember { mutableStateOf(emptyList<JsonObject>()) }
@@ -138,47 +139,57 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
         }
     }
     LaunchedEffect(reload) {
+        message = null
         try {
             val loaded = withContext(Dispatchers.IO) { Triple(api.request("GET", "users/me/notification-settings").asJsonObject,
                 api.items("terms", false), api.request("GET", "users/me/consents").asJsonArray.map { it.asJsonObject }) }
             settings = loaded.first; terms = loaded.second; consents = loaded.third
         } catch (failure: Exception) { message = failure.message }
     }
-    SectionTitle("계정 및 알림 설정")
-    message?.let { Text(it); TextButton({ reload++ }, enabled = !busy) { Text("다시 불러오기") } }
+    message?.let { ErrorText(it); TextButton({ reload++ }, enabled = !busy) { Text("다시 불러오기") } }
+    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    WorkoutCard {
+    Text("계정 및 알림 설정", style = MaterialTheme.typography.titleMedium)
     settings?.let { value ->
         listOf("inAppEnabled" to "앱 알림", "dmEnabled" to "DM 알림", "mateEnabled" to "메이트 알림", "communityEnabled" to "커뮤니티 알림").forEach { (field, label) ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(label)
-                Switch(value.get(field).asBoolean, { enabled ->
+                AuthToggle(label, value.get(field).asBoolean, { enabled ->
                     val body = value.deepCopy().apply { addProperty(field, enabled) }
                     runAction({ api.request("PATCH", "users/me/notification-settings", body) }, { reload++ })
                 }, enabled = !busy)
-            }
         }
     }
+    }
+    WorkoutCard {
+    Text("약관 동의", style = MaterialTheme.typography.titleMedium)
     terms.forEach { term ->
         val active = consents.any { it.text("termsDocumentId") == term.text("id") && it.text("withdrawnAt").isBlank() }
         val label = when (term.text("type")) { "SERVICE_TERMS" -> "이용약관"; "PRIVACY" -> "개인정보 처리방침"; else -> term.text("type") }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("$label · ${term.text("version")}")
-            Switch(active, { enabled -> runAction({ api.request(if (enabled) "PUT" else "DELETE", "users/me/consents/${term.text("id")}") }, { reload++ }) }, enabled = !busy && !term.get("required").asBoolean)
-        }
+        AuthToggle("$label · ${term.text("version")}", active,
+            { enabled -> runAction({ api.request(if (enabled) "PUT" else "DELETE", "users/me/consents/${term.text("id")}") }, { reload++ }) },
+            enabled = !busy && !term.get("required").asBoolean,
+            description = if (term.get("required").asBoolean) "서비스 이용에 필요한 필수 동의입니다." else "선택 동의입니다.")
     }
-    ToggleLine("기기 내 건강정보 이용 동의", health, setHealth)
-    ToggleLine("기기 내 위치정보 이용 동의", location, setLocation)
+    }
+    WorkoutCard {
+    Text("기기 내 동의", style = MaterialTheme.typography.titleMedium)
+    AuthToggle("기기 내 건강정보 이용 동의", health, setHealth)
+    AuthToggle("기기 내 위치정보 이용 동의", location, setLocation)
     TextButton(external) { Text("Samsung Health 연결·권한 관리") }
-    TextButton({ confirmLocalDeletion = true }, enabled = !busy) { Text("내 기기의 헬스 기록·임시 운동 삭제") }
+    }
+    WorkoutCard {
+    Text("계정 관리", style = MaterialTheme.typography.titleMedium)
+    TextButton({ confirmLocalDeletion = true }, enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("내 기기의 헬스 기록·임시 운동 삭제") }
     if (confirmLocalDeletion) ConfirmAction("로컬 운동 기록 삭제", "이 계정의 기기 내 헬스 기록과 임시 운동만 삭제합니다. 서버 기록은 삭제되지 않습니다. 서버 운동이 진행 중이면 먼저 완료해 주세요.", { confirmLocalDeletion = false }) {
         try { deleteLocalRecords(); confirmLocalDeletion = false; message = "기기 내 헬스 기록을 삭제했습니다." }
         catch (failure: Exception) { confirmLocalDeletion = false; message = failure.message }
     }
     TextButton({ action = "비밀번호 변경" }, enabled = !busy) { Text("비밀번호 변경") }
-    TextButton({ action = "회원 탈퇴" }, enabled = !busy) { Text("회원 탈퇴") }
+    TextButton({ action = "회원 탈퇴" }, enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("회원 탈퇴") }
+    }
     action?.let { selected -> SocialSheet({ if (!busy) { action = null; current = ""; next = ""; repeat = "" } }) {
         Text(selected, style = MaterialTheme.typography.titleLarge)
-        if (selected in listOf("회원 탈퇴", "비밀번호 변경")) SecretField(current, { current = it }, "현재 비밀번호")
-        if (selected == "비밀번호 변경") { SecretField(next, { next = it }, "새 비밀번호"); SecretField(repeat, { repeat = it }, "새 비밀번호 확인") }
+        if (selected in listOf("회원 탈퇴", "비밀번호 변경")) AuthSecretField(current, { current = it }, "현재 비밀번호", !busy)
+        if (selected == "비밀번호 변경") { AuthSecretField(next, { next = it }, "새 비밀번호", !busy); AuthSecretField(repeat, { repeat = it }, "새 비밀번호 확인", !busy) }
         Text(if (selected == "회원 탈퇴") "서버 계정을 탈퇴합니다. 이 작업은 되돌릴 수 없습니다." else "처리 후 로그인 화면으로 이동합니다.")
         message?.let { Text(it) }
         Button({
@@ -198,16 +209,18 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
     } }
 }
 
-@Composable internal fun ServerLogin(modifier: Modifier, api: FitMateApiClient, signedIn: () -> Unit, signup: () -> Unit) = Screen(modifier) {
+@Composable internal fun ServerLogin(modifier: Modifier, api: FitMateApiClient, signedIn: () -> Unit, signup: () -> Unit) = WorkoutDesignTheme { Screen(modifier, background = MaterialTheme.colorScheme.background) {
     val scope = rememberCoroutineScope()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    SectionTitle("다시 만나서 반가워요", "계정으로 로그인하고 운동을 이어가세요.")
-    OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("이메일") }, singleLine = true, enabled = !busy)
-    SecretField(password, { password = it }, "비밀번호")
-    Button({
+    Text("FITMATE", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
+    SocialScreenTitle("다시 만나서 반가워요", "계정으로 로그인하고 운동을 이어가세요.")
+    WorkoutCard {
+    OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("이메일") }, singleLine = true, enabled = !busy, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+    AuthSecretField(password, { password = it }, "비밀번호", !busy)
+    AuthAction(if (busy) "로그인 중…" else "로그인", enabled = !busy && validDemoEmail(email.trim()) && password.isNotEmpty()) {
         val submittedEmail = email.trim(); val submittedPassword = password
         busy = true; error = null
         scope.launch {
@@ -217,10 +230,11 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
             } catch (failure: Exception) { error = failure.message ?: "로그인에 실패했습니다." }
             finally { busy = false }
         }
-    }, Modifier.fillMaxWidth(), enabled = !busy && validDemoEmail(email.trim()) && password.isNotEmpty()) { Text(if (busy) "로그인 중…" else "로그인") }
+    }
     ErrorText(error)
-    TextButton(signup, enabled = !busy) { Text("회원가입") }
-}
+    }
+    TextButton(signup, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !busy) { Text("회원가입") }
+} }
 
 @Composable internal fun ServerSessionGate(api: FitMateApiClient, signup: @Composable (() -> Unit) -> Unit,
     content: @Composable (JsonObject) -> Unit) {
@@ -235,13 +249,17 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
         catch (failure: Exception) { error = failure.message ?: "계정을 불러오지 못했습니다." }
         finally { loading = false }
     }
+    val sessionError = error
     when {
-        loading -> Screen(Modifier.safeDrawingPadding()) { Text("계정 정보를 확인하고 있어요."); LinearProgressIndicator(Modifier.fillMaxWidth()) }
+        loading -> LaunchScreen()
         account != null -> content(requireNotNull(account))
-        error != null -> Screen(Modifier.safeDrawingPadding()) {
-            ErrorText(error); PrimaryAction("다시 시도") { attempt++ }
-            TextButton({ error = null; registration = false }) { Text("다시 로그인") }
-        }
+        sessionError != null -> WorkoutDesignTheme { Screen(Modifier.safeDrawingPadding(), background = MaterialTheme.colorScheme.background) {
+            Text("FITMATE", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            StateCard("계정을 불러오지 못했어요", sessionError, androidx.compose.material.icons.Icons.Outlined.ErrorOutline) {
+                AuthAction("다시 시도") { attempt++ }
+                TextButton({ error = null; registration = false }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("다시 로그인") }
+            }
+        } }
         registration -> {
             androidx.activity.compose.BackHandler { registration = false }
             signup { registration = false; attempt++ }

@@ -206,7 +206,7 @@ internal class CommunityAccounts {
     } }
 }
 
-@Composable internal fun FollowRequestsScreen(modifier: Modifier, state: SocialState, server: ServerSocialApi? = null) = Screen(modifier) {
+@Composable internal fun FollowRequestsScreen(modifier: Modifier, state: SocialState, server: ServerSocialApi? = null) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     val accounts = state.accounts
     val scope = rememberCoroutineScope()
     var serverUsers by remember(server) { mutableStateOf<List<DirectoryUser>?>(null) }
@@ -220,7 +220,7 @@ internal class CommunityAccounts {
             }
             .onFailure { error = it.message ?: "팔로우 요청을 불러오지 못했습니다." }
     }
-    SectionTitle("팔로우 요청", "나를 팔로우하려는 사람을 승인하거나 거절할 수 있어요.")
+    Text("나를 팔로우하려는 사람을 승인하거나 거절할 수 있어요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     ErrorText(error)
     val users = (serverUsers ?: accounts.incoming.map { DirectoryUser(state.serverUserId(it.key).orEmpty(), it.key, it.value) })
         .filter { it.status == "PENDING" && it.nickname !in state.blocked }
@@ -230,26 +230,29 @@ internal class CommunityAccounts {
     if (visibleUsers.isEmpty()) Text("대기 중인 팔로우 요청이 없어요.", style = MaterialTheme.typography.bodyMedium)
     visibleUsers.forEach { user ->
         val person = accounts.people.firstOrNull { it.name == user.nickname }
-        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SocialAvatar(user.nickname, 44)
+        WorkoutCard {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SocialAccentAvatar(user.nickname, 44)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(user.nickname, fontWeight = FontWeight.SemiBold)
                 Text(person?.bio ?: "FitMate 사용자", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
             }
-            TextButton({
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SocialPrimaryButton("수락", Modifier.weight(1f), onClick = {
                 if (server != null && user.id.isNotBlank()) scope.launch {
                     runCatching { withContext(Dispatchers.IO) { server.acceptFollowRequest(user.id) } }
                         .onSuccess { serverUsers = serverUsers?.filterNot { it.id == user.id } }
                 } else accounts.respond(state, user.nickname, true)
-            }) { Text("수락") }
+            })
             TextButton({
                 if (server != null && user.id.isNotBlank()) scope.launch {
                     runCatching { withContext(Dispatchers.IO) { server.rejectFollowRequest(user.id) } }
                         .onSuccess { serverUsers = serverUsers?.filterNot { it.id == user.id } }
                 } else accounts.respond(state, user.nickname, false)
-            }) { Text("거절", color = FitMateColors.TextSecondary) }
+            }, Modifier.weight(1f).heightIn(min = 48.dp)) { Text("거절", color = FitMateColors.TextSecondary) }
         }
-        HorizontalDivider(color = FitMateColors.Outline)
+        }
     }
 }
 
@@ -379,7 +382,7 @@ internal class CommunityAccounts {
     }
 }
 
-@Composable internal fun NotificationFlow(modifier: Modifier, state: SocialState, open: (AppNotice) -> Unit, server: ServerSocialApi? = null) = Screen(modifier) {
+@Composable internal fun NotificationFlow(modifier: Modifier, state: SocialState, open: (AppNotice) -> Unit, server: ServerSocialApi? = null) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(server) {
         if (server != null) runCatching { withContext(Dispatchers.IO) { server.notifications() } }.onSuccess(state::replaceServerNotices)
@@ -409,20 +412,18 @@ internal class CommunityAccounts {
     if (clear) ConfirmAction("알림 삭제", "앱 내 알림 목록을 모두 삭제할까요?", { clear = false }) {
         accounts.notices.clear(); if (server != null) scope.launch { runCatching { withContext(Dispatchers.IO) { server.deleteAllNotifications() } } }; clear = false
     }
-    if (accounts.notices.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(Icons.Outlined.NotificationsNone, null, Modifier.size(32.dp), tint = FitMateColors.TextSecondary)
-        Text("새로운 알림이 없어요", style = MaterialTheme.typography.titleSmall)
-        Text("새 소식이 도착하면 여기에 모아드릴게요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-    }
-    Column(Modifier.fillMaxWidth()) {
+    if (accounts.notices.isEmpty()) StateCard("새로운 알림이 없어요", "새 소식이 도착하면 여기에 모아드릴게요.", Icons.Outlined.NotificationsNone)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     accounts.notices.toList().forEach { item -> key(item.id) {
         var options by remember { mutableStateOf(false) }
+        Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (item.read) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary.copy(alpha = .4f))) {
         Row(Modifier.fillMaxWidth().semantics { stateDescription = if (item.read) "읽음" else "읽지 않음" }.clickable {
             val index = accounts.notices.indexOfFirst { it.id == item.id }
             if (index >= 0) accounts.notices[index] = item.copy(read = true)
             state.serverNoticeId(item.id)?.let { id -> if (server != null) scope.launch { runCatching { withContext(Dispatchers.IO) { server.readNotification(id) } } } }
             open(item)
-        }.heightIn(min = 76.dp).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+        }.heightIn(min = 76.dp).padding(12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.size(36.dp).background(if (item.read) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
                 Icon(when (item.category) {
@@ -452,7 +453,7 @@ internal class CommunityAccounts {
                 }
             }
         }
-        if (item.id != accounts.notices.lastOrNull()?.id) HorizontalDivider(Modifier.padding(start = 48.dp), color = FitMateColors.Outline.copy(alpha = .5f))
+        }
     } }
     }
     DebugOnly {

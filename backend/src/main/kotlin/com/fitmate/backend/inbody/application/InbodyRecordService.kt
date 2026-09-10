@@ -119,7 +119,20 @@ class InbodyRecordService(
 
     private fun response(record: InbodyRecord): InbodyRecordResponse {
         val optionalValues = record.optionalValuesJson?.let {
-            objectMapper.readValue(it, object : TypeReference<Map<InbodyFieldCode, BigDecimal>>() {})
+            val stored = objectMapper.readValue(it, object : TypeReference<Map<String, BigDecimal>>() {})
+            // Existing records use *_FAT_MASS_KG for segment fat. Normalize only when reading;
+            // keep the persisted JSON and the current request/response field names unchanged.
+            val aliases = mapOf(
+                "LEFT_ARM_FAT_MASS_KG" to InbodyFieldCode.LEFT_ARM_FAT_KG,
+                "RIGHT_ARM_FAT_MASS_KG" to InbodyFieldCode.RIGHT_ARM_FAT_KG,
+                "TRUNK_FAT_MASS_KG" to InbodyFieldCode.TRUNK_FAT_KG,
+                "LEFT_LEG_FAT_MASS_KG" to InbodyFieldCode.LEFT_LEG_FAT_KG,
+                "RIGHT_LEG_FAT_MASS_KG" to InbodyFieldCode.RIGHT_LEG_FAT_KG,
+            )
+            stored.entries.associate { (key, value) ->
+                val code = aliases[key] ?: InbodyFieldCode.valueOf(key)
+                code to (stored[code.name] ?: value)
+            }
         }.orEmpty()
         return InbodyRecordResponse(
             id = requireNotNull(record.id),

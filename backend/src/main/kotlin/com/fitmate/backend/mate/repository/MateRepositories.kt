@@ -1,6 +1,7 @@
 package com.fitmate.backend.mate.repository
 
 import com.fitmate.backend.mate.domain.*
+import com.fitmate.backend.fitness.domain.SportCode
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.*
 import org.springframework.data.repository.query.Param
@@ -29,7 +30,7 @@ interface MatePostRepository : JpaRepository<MatePost, UUID> {
           and (:cursorAt is null or p.createdAt < :cursorAt or (p.createdAt = :cursorAt and p.id < :cursorId))
         order by p.createdAt desc, p.id desc""")
     fun findPage(
-        @Param("sportCode") sportCode: String?, @Param("regionId") regionId: UUID?,
+        @Param("sportCode") sportCode: SportCode?, @Param("regionId") regionId: UUID?,
         @Param("fromAt") fromAt: Instant?, @Param("toAt") toAt: Instant?,
         @Param("difficulty") difficulty: MateDifficulty?, @Param("status") status: MatePostStatus?,
         @Param("cursorAt") cursorAt: Instant?, @Param("cursorId") cursorId: UUID?, pageable: Pageable,

@@ -2,6 +2,9 @@ package com.fitmate.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -95,6 +98,7 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
         try {
             when (page) {
                 "목록" -> {
+                    error = null
                     posts = emptyList()
                     nextCursor = null
                     val result = withContext(Dispatchers.IO) {
@@ -122,6 +126,8 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
         finally { loading = false }
     }
     DisposableEffect(Unit) { onDispose { busy = false } }
+    // Read the loading state in the parent scope as well as the lazy screen content.
+    val screenLoading = loading
     when (page) {
         "필터" -> MateFilterPage(modifier, api, MateFilters(filterSport, filterDifficulty, filterStatus, filterRegion, filterRegionLabel, filterDate), { back() }) { selected ->
             filterSport = selected.sport; filterDifficulty = selected.difficulty; filterStatus = selected.status
@@ -129,7 +135,7 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
             page = "목록"
         }
         "수정" -> detail?.let { original ->
-            MateWriteScreen(modifier, api, original.value("regionId"), original.value("locationSummary"), initialPost = original) { draft, region, _ ->
+            MateWriteScreen(modifier, api, original.value("regionId"), original.value("locationSummary"), initialPost = original, onBack = { back() }) { draft, region, _ ->
                 busy = true
                 try {
                     val payload = mateUpdateBody(original, draft, region)
@@ -141,7 +147,7 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
                 } finally { busy = false }
             }
         }
-        "작성" -> MateWriteScreen(modifier, api, profile.activityRegionId, profile.region) { draft, region, key ->
+        "작성" -> MateWriteScreen(modifier, api, profile.activityRegionId, profile.region, onBack = { back() }) { draft, region, key ->
             busy = true
             try {
                 val body = mateCreateBody(draft, region)
@@ -149,7 +155,7 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
                 postId = created.value("id"); page = "상세"
             } finally { busy = false }
         }
-        "채팅" -> ServerMateChat(modifier, server, requireNotNull(roomId), userId)
+        "채팅" -> ServerMateChat(modifier, server, requireNotNull(roomId), userId, { back() })
         else -> Column(modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
         Screen(Modifier.fillMaxSize(), background = MaterialTheme.colorScheme.background) {
@@ -157,7 +163,7 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
                 if (page == "목록") TextButton({ page = "문의 목록" }) { Text("문의함") }
                 IconButton({ error = null; revision++ }, enabled = !busy && !loading) { Icon(Icons.Outlined.Refresh, "새로고침") }
             }
-            if (loading || busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (screenLoading || busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             ErrorText(error)
             when (page) {
                 "목록" -> {
@@ -171,7 +177,7 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
                         Text(if (filterStatus == "RECRUITING") "모집 중인 모임" else "함께할 모임", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text("최신순", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (!loading && error == null && posts.isEmpty()) SoftCard {
+                    if (!loading && error == null && posts.isEmpty()) WorkoutCard {
                         Text("조건에 맞는 모임이 아직 없어요.", fontWeight = FontWeight.SemiBold)
                         Text("지역이나 날짜를 넓히거나 직접 모임을 만들어 보세요.", style = MaterialTheme.typography.bodyMedium)
                         TextButton({ page = "필터" }) { Text("조건 바꾸기") }
@@ -196,18 +202,24 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
                                 finally { busy = false }
                             }
                         }
-                    }, enabled = !busy && !loading) { Text("모집 글 더 보기") } }
+                    }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(12.dp), enabled = !busy && !loading) { Text("모집 글 더 보기") } }
                     Spacer(Modifier.height(80.dp))
                 }
                 "문의 목록" -> {
-                    if (!loading && error == null && rooms.isEmpty()) Text("아직 메이트 문의가 없어요.")
+                    Text("메이트 문의", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!loading && error == null && rooms.isEmpty()) WorkoutCard { Text("아직 메이트 문의가 없어요.") }
                     rooms.forEach { room ->
                         val other = room.objectOrNull(if (room.objectOrNull("author")?.value("userId") == userId) "inquirer" else "author")
-                        OutlinedCard(onClick = { roomId = room.value("id"); chatOrigin = "문의 목록"; page = "채팅" }, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(other?.value("nickname").orEmpty().ifBlank { "메이트" }, fontWeight = FontWeight.SemiBold)
-                                Text(room.objectOrNull("lastMessage")?.value("body").orEmpty().ifBlank { "대화를 시작해 보세요." }, maxLines = 2)
-                                Text("읽지 않은 메시지 ${room.value("unreadCount")}개", style = MaterialTheme.typography.bodySmall)
+                        OutlinedCard(onClick = { roomId = room.value("id"); chatOrigin = "문의 목록"; page = "채팅" }, modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                            Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    MateHost(other?.value("nickname").orEmpty().ifBlank { "메이트" })
+                                    Text(room.objectOrNull("lastMessage")?.value("body").orEmpty().ifBlank { "대화를 시작해 보세요." }, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if ((room.value("unreadCount").toIntOrNull() ?: 0) > 0) MateStatus("읽지 않음 ${room.value("unreadCount")}", highlighted = true)
+                                Icon(Icons.Outlined.ChevronRight, null)
                             }
                         }
                     }
@@ -219,26 +231,29 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
                     val actions = row.getAsJsonArray("allowedActions").map { it.asString }.toSet()
                     MateDetailSummary(post, postLabel(post.serverStatus.orEmpty()))
                     if (owner) {
-                        Text("참가 신청 관리", fontWeight = FontWeight.Bold)
+                        Text("참가 신청 관리", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         applicants.filter { it.value("userId") != userId }.forEach { applicant ->
-                            SoftCard {
-                                Text("${applicant.objectOrNull("applicant")?.value("nickname")} · ${applicationLabel(applicant.value("status"))}")
-                                if (applicant.value("status") == "PENDING" && post.serverStatus == "RECRUITING") Row {
-                                    listOf("accept" to "수락", "reject" to "거절").forEach { (command, label) ->
-                                        TextButton({ action { withContext(Dispatchers.IO) { server.decide(requireNotNull(postId), applicant.value("id"), command, applicant.get("version").asLong) } } }, enabled = !busy) { Text(label) }
-                                    }
+                            WorkoutCard {
+                                MateHost(applicant.objectOrNull("applicant")?.value("nickname").orEmpty())
+                                MateStatus(applicationLabel(applicant.value("status")), applicant.value("status") == "ACCEPTED")
+                                if (applicant.value("status") == "PENDING" && post.serverStatus == "RECRUITING") Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton({ action { withContext(Dispatchers.IO) { server.decide(requireNotNull(postId), applicant.value("id"), "reject", applicant.get("version").asLong) } } }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = !busy) { Text("거절") }
+                                    Button({ action { withContext(Dispatchers.IO) { server.decide(requireNotNull(postId), applicant.value("id"), "accept", applicant.get("version").asLong) } } }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = !busy, colors = mateButtonColors()) { Text("수락") }
                                 }
                             }
                         }
                         if (applicants.none { it.value("status") == "PENDING" }) Text("대기 중인 신청이 없습니다.")
+                        Text("참가 확정 인원에 모집자가 포함돼요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        MateSection("모집 관리") {
                         if (post.serverStatus in setOf("RECRUITING", "FULL")) {
-                            TextButton({ page = "수정" }, enabled = !busy) { Text("모집 정보 수정") }
-                            OutlinedButton({ confirm = "모집 마감" to { action { withContext(Dispatchers.IO) { server.action(requireNotNull(postId), "close", row.get("version").asLong) } } } }, enabled = !busy) { Text("모집 마감") }
+                            WorkoutSecondaryAction("모집 정보 수정", enabled = !busy) { page = "수정" }
+                            WorkoutSecondaryAction("모집 마감", enabled = !busy) { confirm = "모집 마감" to { action { withContext(Dispatchers.IO) { server.action(requireNotNull(postId), "close", row.get("version").asLong) } } } }
                         }
-                        if (post.serverStatus != "CANCELED") TextButton({ confirm = "모임 취소" to { action { withContext(Dispatchers.IO) { server.action(requireNotNull(postId), "cancel", row.get("version").asLong) } } } }, enabled = !busy) { Text("모임 취소") }
-                        OutlinedButton({ page = "문의 목록" }) { Text("받은 문의 채팅") }
+                        WorkoutSecondaryAction("받은 문의 채팅") { page = "문의 목록" }
+                        if (post.serverStatus != "CANCELED") TextButton({ confirm = "모임 취소" to { action { withContext(Dispatchers.IO) { server.action(requireNotNull(postId), "cancel", row.get("version").asLong) } } } }, enabled = !busy) { Text("모임 취소", color = MaterialTheme.colorScheme.error) }
+                        }
                     } else {
-                        mine?.let { Text("내 상태 · ${applicationLabel(it.value("status"))}") }
+                        mine?.let { WorkoutCard { Text("내 상태", style = MaterialTheme.typography.bodySmall); MateStatus(applicationLabel(it.value("status")), it.value("status") == "ACCEPTED") } }
                     }
                 }
             }
@@ -273,7 +288,7 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
     }
 }
 
-@Composable private fun ServerMateChat(modifier: Modifier, server: ServerMateApi, id: String, user: String) {
+@Composable private fun ServerMateChat(modifier: Modifier, server: ServerMateApi, id: String, user: String, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     var room by remember(id) { mutableStateOf<JsonObject?>(null) }
     var messages by remember(id) { mutableStateOf(emptyList<JsonObject>()) }
@@ -306,15 +321,19 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
             delay(3_000)
         }
     }
-    Screen(modifier) {
-        Text("메이트 문의", style = MaterialTheme.typography.titleLarge)
+    Column(modifier.fillMaxSize().imePadding()) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { MateHeader("메이트 문의", back) }
+        Screen(Modifier.weight(1f)) {
         ErrorText(error)
         if (error != null) TextButton({ error = null; refresh++ }) { Text("다시 연결") }
         if (room == null && error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
         messages.forEach { message ->
             val mine = message.value("senderId") == user
             Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
-                Surface(shape = MaterialTheme.shapes.medium, color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
+                Surface(shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = if (mine) 18.dp else 4.dp, bottomEnd = if (mine) 4.dp else 18.dp),
+                    color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                    contentColor = if (mine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    border = if (mine) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                     Column(Modifier.widthIn(max = 280.dp).padding(12.dp)) {
                         Text(message.value("body"))
                         if (mine) {
@@ -325,10 +344,14 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
                 }
             }
         }
+        }
         val writable = room?.get("writable")?.asBoolean == true
+        Surface(color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (room != null && !writable) Text("종료된 모임·신청 또는 접근 제한으로 읽기만 가능합니다.")
         OutlinedTextField(draft, { if (!sending) { draft = it; pending = null } }, Modifier.fillMaxWidth(), label = { Text("메시지") }, enabled = writable && !sending, maxLines = 5)
-        Button({
+        WorkoutAction(if (sending) "전송 중…" else if (pending != null) "다시 전송" else "전송",
+            enabled = writable && !sending && draft.isNotBlank() && draft.length <= 2000) {
             if (!sending) {
                 val attempt = pending ?: (UUID.randomUUID().toString() to draft.trim()).also { pending = it }
                 sending = true; error = null
@@ -342,6 +365,8 @@ internal fun difficultyFilterLabel(code: String) = when (code) { "BEGINNER" -> "
                     finally { sending = false }
                 }
             }
-        }, enabled = writable && !sending && draft.isNotBlank() && draft.length <= 2000) { Text(if (sending) "전송 중…" else if (pending != null) "다시 전송" else "전송") }
+        }
+        }
+        }
     }
 }

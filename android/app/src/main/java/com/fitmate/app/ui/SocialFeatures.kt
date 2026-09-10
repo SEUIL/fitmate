@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.FitnessCenter
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -225,8 +227,11 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
     var serverError by remember { mutableStateOf<String?>(null) }
     var feedCursor by remember { mutableStateOf<String?>(null) }
     var loadingMore by remember { mutableStateOf(false) }
-    LaunchedEffect(server) {
+    var loadingFeed by remember { mutableStateOf(server != null) }
+    var reload by remember { mutableIntStateOf(0) }
+    LaunchedEffect(server, reload) {
         if (server == null) return@LaunchedEffect
+        loadingFeed = true; serverError = null
         runCatching { withContext(Dispatchers.IO) { server.feedPage() to server.blocks() } }.onSuccess { (page, blocks) ->
             state.replaceServerFeed(page.rows("items"), myUserId)
             feedCursor = page.text("nextCursor").takeIf { page.get("hasNext")?.asBoolean == true && it.isNotBlank() }
@@ -234,6 +239,7 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
             state.blocked = blocks.map { it.text("nickname") }.toSet()
         }
             .onFailure { serverError = it.message ?: "커뮤니티를 불러오지 못했습니다." }
+        loadingFeed = false
     }
     val targetPost = remember { state.feed.firstOrNull { it.post.id == state.selectedPostId } }
     var tab by state.communityTab
@@ -272,39 +278,25 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                 .onFailure { error = it.message ?: "게시물을 삭제하지 못했습니다."; deleting = null }
         } else { state.feed.removeAll { it.post.id == id && it.mine }; deleting = null }
     } }
-    Screen(modifier, background = FeedBackground) {
-        SocialTitle("커뮤니티", Icons.Outlined.AddBox, "게시물 작성") {
-            composing = true; error = null
-        }
+    val screenLoading = loadingFeed
+    Screen(modifier, background = MaterialTheme.colorScheme.background) {
+        SocialScreenTitle("커뮤니티", action = {
+            FilledTonalIconButton({ composing = true; error = null }, shape = RoundedCornerShape(12.dp)) {
+                Icon(Icons.Outlined.AddBox, "게시물 작성")
+            }
+        })
         state.notice?.let { Text(it) }
+        if (screenLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
         ErrorText(serverError)
-        SocialTabs(listOf("전체 공개", "팔로잉", "내 게시물"), tab) { tab = it }
-        if (composing) SocialSheet({ if (!saving) composing = false }) {
-            Text(if (editing == null) "새 게시물" else "게시물 수정", fontWeight = FontWeight.Bold)
-            OutlinedTextField(draft, { draft = it.take(2000) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), label = { Text("오늘의 운동이나 생각") }, minLines = 3)
-            Choices(listOf("전체 공개", "맞팔 공개"), visibility) { if (!saving) visibility = it }
-            if (!saving) MultiplePhotoAction(selectedPhotos.size) { added -> photos = (selectedPhotos + added).distinct().take(10) }
-            selectedPhotos.forEachIndexed { index, uri ->
-                FitMatePhoto(uri, server)
-                TextButton({ photos = selectedPhotos.filterIndexed { i, _ -> i != index } }, enabled = !saving) { Text("${index + 1}번 사진 제거") }
-            }
-            Text("운동 기록 첨부", fontWeight = FontWeight.Bold)
-            if (workouts.isEmpty() && runs.isEmpty()) Text("완료한 운동이 없어요. 먼저 운동을 기록해 주세요.")
-            workouts.take(3).forEachIndexed { index, summary ->
-                val text = "헬스 ${index + 1} · ${summary.durationMinutes}분 · ${summary.sets.size}세트 · ${"%.0f".format(summary.totalVolumeKg)} kg"
-                FilterChip(workout == text, { workout = text }, { Text(text) })
-            }
-            runs.take(3).forEachIndexed { index, result ->
-                val text = "러닝 ${index + 1} · ${"%.2f".format(result.meters / 1000.0)} km · ${result.seconds / 60}분"
-                FilterChip(workout == text, { workout = text }, { Text(text) })
-            }
-            workout?.let { Text("선택: $it"); TextButton({ workout = null }) { Text("운동 첨부 제거") } }
-            Text("운동 요약만 공유하며 심박수·정확한 경로는 첨부하지 않습니다.", style = MaterialTheme.typography.bodySmall)
-            ErrorText(error)
-            Row {
-                TextButton({ composing = false }, enabled = !saving) { Text("나중에 쓰기") }
-                TextButton({ discard = true }, enabled = !saving) { Text("초안 삭제") }
-                Button({
+        if (serverError != null && !screenLoading) TextButton({ reload++ }) { Text("다시 불러오기") }
+        SocialTabs(listOf("전체 공개", "팔로잉", "내 게시물"), tab, accent = true) { tab = it }
+        if (composing) SocialPanelSheet(
+            title = if (editing == null) "새 게시물" else "게시물 수정",
+            dismiss = { if (!saving) composing = false }, enabled = !saving,
+            footer = {
+                ErrorText(error)
+                SocialPrimaryButton(if (saving) "저장 중…" else "게시 저장", Modifier.fillMaxWidth(), enabled = !saving) {
+
                     if (draft.isBlank() && selectedPhotos.isEmpty()) error = "내용 또는 사진을 추가하세요."
                     else if (server != null && editing == null) {
                         saving = true
@@ -346,15 +338,41 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                         if (old != null) state.feed[state.feed.indexOf(old)] = entry else state.feed.add(0, entry)
                         composing = false; tab = "내 게시물"; state.clearComposer()
                     }
-                }, enabled = !saving) { Text(if (saving) "저장 중…" else "게시 저장") }
+
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton({ composing = false }, enabled = !saving) { Text("나중에 쓰기") }
+                    TextButton({ discard = true }, enabled = !saving, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("초안 삭제") }
+                }
             }
+        ) {
+            OutlinedTextField(draft, { draft = it.take(2000) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), label = { Text("오늘의 운동이나 생각") }, minLines = 3,
+                shape = RoundedCornerShape(12.dp), supportingText = { Text("${draft.length} / 2,000") })
+            SocialVisibility(visibility, !saving) { visibility = it }
+            if (!saving) MultiplePhotoAction(selectedPhotos.size, redesigned = true) { added -> photos = (selectedPhotos + added).distinct().take(10) }
+            selectedPhotos.forEachIndexed { index, uri ->
+                FitMatePhoto(uri, server)
+                TextButton({ photos = selectedPhotos.filterIndexed { i, _ -> i != index } }, enabled = !saving) { Text("${index + 1}번 사진 제거") }
+            }
+            Text("운동 기록 첨부", fontWeight = FontWeight.Bold)
+            if (workouts.isEmpty() && runs.isEmpty()) SocialEmpty("완료한 운동이 없어요.", "먼저 운동을 기록해 주세요.", Icons.Outlined.FitnessCenter)
+            workouts.take(3).forEachIndexed { index, summary ->
+                val text = "헬스 ${index + 1} · ${summary.durationMinutes}분 · ${summary.sets.size}세트 · ${"%.0f".format(summary.totalVolumeKg)} kg"
+                FilterChip(workout == text, { workout = text }, { Text(text) }, enabled = !saving)
+            }
+            runs.take(3).forEachIndexed { index, result ->
+                val text = "러닝 ${index + 1} · ${"%.2f".format(result.meters / 1000.0)} km · ${result.seconds / 60}분"
+                FilterChip(workout == text, { workout = text }, { Text(text) }, enabled = !saving)
+            }
+            workout?.let { Text("선택: $it"); TextButton({ workout = null }, enabled = !saving) { Text("운동 첨부 제거") } }
+            Text("운동 요약만 공유하며 심박수·정확한 경로는 첨부하지 않습니다.", style = MaterialTheme.typography.bodySmall)
         }
         val visible = state.feed.filter { entry ->
             entry.post.authorName !in state.blocked &&
                 (entry.mine || entry.visibility == "전체 공개" || entry.post.authorName in state.mutual) &&
                 when (tab) { "내 게시물" -> entry.mine; "팔로잉" -> entry.mine || entry.post.authorName in state.following; else -> entry.visibility == "전체 공개" }
         }
-        if (visible.isEmpty()) SoftCard { Text("표시할 게시물이 없어요.") }
+        if (visible.isEmpty() && !screenLoading && serverError == null) SocialEmpty("표시할 게시물이 없어요.", "운동 이야기로 첫 게시물을 남겨보세요.")
         visible.take(limit).forEach { entry -> key(entry.post.id) {
             var commentsOpen by remember { mutableStateOf(entry.post.id == targetPost?.post?.id) }
             var comment by remember { mutableStateOf("") }
@@ -409,12 +427,30 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                             .onSuccess { state.replaceServerComments(entry.post.id, it, myUserId) }
                             .onFailure { serverError = it.message ?: "댓글을 불러오지 못했습니다." }
                     }
-                }, menu = menu, onAuthor = { if (!entry.mine) state.accounts.opened = entry.post.authorName }, server = server)
-            if (commentsOpen) SocialSheet({ commentsOpen = false }) {
-                Text("댓글", style = MaterialTheme.typography.titleLarge)
+                }, menu = menu, onAuthor = { if (!entry.mine) state.accounts.opened = entry.post.authorName }, server = server, redesigned = true)
+            if (commentsOpen) SocialPanelSheet("댓글", { commentsOpen = false }, footer = {
+                state.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                ErrorText(serverError)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(comment, { comment = it.take(500) }, label = { Text("댓글 남기기") }, modifier = Modifier.weight(1f), maxLines = 3, shape = RoundedCornerShape(12.dp), supportingText = { Text("${comment.length} / 500") })
+                    SocialPrimaryButton("게시", enabled = comment.isNotBlank()) {
+                        val serverId = state.serverPostId(entry.post.id)
+                        if (server != null && serverId != null) scope.launch {
+                            runCatching { withContext(Dispatchers.IO) {
+                                server.addComment(serverId, comment.trim())
+                                server.feed() to server.comments(serverId)
+                            } }.onSuccess { (posts, comments) ->
+                                state.replaceServerFeed(posts, myUserId)
+                                state.replaceServerComments(entry.post.id, comments, myUserId)
+                                comment = ""
+                            }.onFailure { serverError = it.message ?: "댓글을 저장하지 못했습니다." }
+                        } else { update { it.copy(comments = it.comments + FeedComment(state.nextId(), nickname, comment.trim(), true)) }; comment = "" }
+                    }
+                }
+            }) {
                 if (entry.comments.isEmpty()) Text("첫 댓글을 남겨보세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 entry.comments.forEach { reply -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SocialAvatar(reply.author, 32)
+                    SocialAccentAvatar(reply.author, 36)
                     Column(Modifier.weight(1f)) {
                         Text(reply.author, style = MaterialTheme.typography.labelLarge)
                         Text(reply.text, style = MaterialTheme.typography.bodyMedium)
@@ -435,22 +471,6 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                         else state.notice = "댓글 신고를 임시 접수했어요. 서버 연결 후 전송됩니다."
                     }) { Text(if (reply.mine) "삭제" else "신고") }
                 } }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(comment, { comment = it.take(500) }, label = { Text("댓글 남기기") }, modifier = Modifier.weight(1f), maxLines = 3)
-                    TextButton({
-                        val serverId = state.serverPostId(entry.post.id)
-                        if (server != null && serverId != null) scope.launch {
-                            runCatching { withContext(Dispatchers.IO) {
-                                server.addComment(serverId, comment.trim())
-                                server.feed() to server.comments(serverId)
-                            } }.onSuccess { (posts, comments) ->
-                                state.replaceServerFeed(posts, myUserId)
-                                state.replaceServerComments(entry.post.id, comments, myUserId)
-                                comment = ""
-                            }.onFailure { serverError = it.message ?: "댓글을 저장하지 못했습니다." }
-                        } else { update { it.copy(comments = it.comments + FeedComment(state.nextId(), nickname, comment.trim(), true)) }; comment = "" }
-                    }, enabled = comment.isNotBlank()) { Text("게시") }
-                }
             }
         } }
         if (visible.size > limit) OutlinedButton({ limit += 10 }) { Text("게시물 더 보기") }
@@ -499,31 +519,33 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
     }
 }
 
-@Composable internal fun DmListFlow(modifier: Modifier, state: SocialState, open: (ChatRoom) -> Unit, server: ServerSocialApi? = null) = Screen(modifier) {
-    LaunchedEffect(server) { if (server != null) runCatching { withContext(Dispatchers.IO) { server.conversations() } }.onSuccess(state::replaceServerConversations) }
-    SectionTitle("DM", "요청을 수락하고 메이트와 대화하세요.")
+@Composable internal fun DmListFlow(modifier: Modifier, state: SocialState, open: (ChatRoom) -> Unit, server: ServerSocialApi? = null) {
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(server != null) }
+    var reload by remember { mutableIntStateOf(0) }
+    LaunchedEffect(server, reload) {
+        if (server != null) {
+            loading = true; error = null
+            runCatching { withContext(Dispatchers.IO) { server.conversations() } }
+                .onSuccess(state::replaceServerConversations)
+                .onFailure { error = it.message ?: "대화 목록을 불러오지 못했습니다." }
+            loading = false
+        }
+    }
+    val screenLoading = loading
+    Screen(modifier, background = MaterialTheme.colorScheme.background) {
+    SocialScreenTitle("DM", "요청을 수락하고 메이트와 대화하세요.")
+    if (screenLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+    ErrorText(error)
+    if (error != null) TextButton({ reload++ }) { Text("다시 불러오기") }
     val requests = state.chats.filter { !it.left && it.status == "요청 대기" && it.name !in state.blocked }
     Text("메시지 요청 ${requests.size}개", fontWeight = FontWeight.Bold)
-    if (requests.isEmpty()) Text("새로운 메시지 요청이 없습니다.")
-    requests.forEach { room -> SoftCard {
-        Text("${room.name} · ${if (room.incoming) "받은 요청" else "보낸 요청"}")
-        Text(room.messages.lastOrNull()?.text ?: "첫 메시지를 작성해 주세요.")
-        OutlinedButton({ room.unread = 0; open(room) }) { Text("요청 보기") }
-    } }
-    Text("대화", fontWeight = FontWeight.Bold)
+    if (requests.isEmpty() && !screenLoading && error == null) SocialEmpty("새로운 메시지 요청이 없습니다.", "새 요청이 도착하면 여기에서 확인하세요.")
+    requests.forEach { room -> SocialRoomCard(room, request = true) { room.unread = 0; open(room) } }
+    Text("대화", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     val active = state.chats.filter { !it.left && it.status == "대화 가능" && it.name !in state.blocked }
-    if (active.isEmpty()) Text("아직 대화가 없습니다.")
-    active.forEach { room ->
-        Row(Modifier.fillMaxWidth().clickable { room.unread = 0; open(room) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SocialAvatar(room.name, 48)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("${room.name}${if (room.muted) " · 알림 끔" else ""}", fontWeight = FontWeight.Bold)
-                Text(room.messages.lastOrNull()?.let { if (it.photo != null) "사진" else it.text } ?: "첫 메시지를 보내보세요.", maxLines = 1)
-            }
-            if (room.unread > 0) Text("${room.unread}", color = MaterialTheme.colorScheme.primary)
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    }
+    if (active.isEmpty() && !screenLoading && error == null) SocialEmpty("아직 대화가 없습니다.", "메이트와 첫 대화를 시작해 보세요.")
+    active.forEach { room -> SocialRoomCard(room, request = false) { room.unread = 0; open(room) } }
     var toolsOpen by remember { mutableStateOf(false) }
     DebugOnly { TextButton({ toolsOpen = true }) { Text("개발 및 테스트 도구") } }
     if (toolsOpen && com.fitmate.app.BuildConfig.DEBUG) SocialSheet({ toolsOpen = false }) {
@@ -538,23 +560,31 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
             if (room.name in state.blocked) TextButton({ state.blocked = state.blocked - room.name }) { Text("차단 해제") }
         }
     }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
-@Composable internal fun DmChatFlow(modifier: Modifier, state: SocialState, room: ChatRoom, back: () -> Unit, server: ServerSocialApi? = null) {
+@Composable internal fun DmChatFlow(modifier: Modifier, state: SocialState, room: ChatRoom, back: () -> Unit, server: ServerSocialApi? = null, navigateUp: () -> Unit = back) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val serverConversationId = state.serverConversationId(room.id)
-    LaunchedEffect(serverConversationId) {
-        if (server != null && serverConversationId != null) runCatching { withContext(Dispatchers.IO) { server.messages(serverConversationId) } }.onSuccess { rows ->
-            room.messages = rows.map { row -> ChatEntry(row.text("messageId").hashCode().toLong(), row.text("content"), state.isMyServerMessage(room.id, row.text("senderUserId")), photo = row.text("mediaUrl").ifBlank { null }, time = row.text("createdAt").takeLast(8).take(5), read = row.text("readAt").isNotBlank()) }
-        }
-    }
     val scroll = rememberLazyListState()
     var limit by remember(room.id) { mutableStateOf(30) }
     var action by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Long?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(serverConversationId != null && server != null) }
+    var reload by remember { mutableIntStateOf(0) }
+    var loadFailed by remember { mutableStateOf(false) }
+    LaunchedEffect(serverConversationId, reload) {
+        if (server != null && serverConversationId != null) {
+            loading = true; loadFailed = false; notice = null
+            runCatching { withContext(Dispatchers.IO) { server.messages(serverConversationId) } }.onSuccess { rows ->
+                room.messages = rows.map { row -> ChatEntry(row.text("messageId").hashCode().toLong(), row.text("content"), state.isMyServerMessage(room.id, row.text("senderUserId")), photo = row.text("mediaUrl").ifBlank { null }, time = row.text("createdAt").takeLast(8).take(5), read = row.text("readAt").isNotBlank()) }
+            }.onFailure { loadFailed = true; notice = it.message ?: "메시지를 불러오지 못했습니다." }
+            loading = false
+        }
+    }
     var options by remember { mutableStateOf(false) }
     var testTools by remember { mutableStateOf(false) }
     var attachments by remember { mutableStateOf(false) }
@@ -599,30 +629,40 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
             ToggleLine("다음 이미지 전송 실패 재현", room.failNextImage) { room.failNextImage = it }
         }
     }
-    Column(modifier.fillMaxSize().imePadding().background(MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+    Column(modifier.fillMaxSize().imePadding().background(MaterialTheme.colorScheme.background)) {
+        Row(Modifier.fillMaxWidth().padding(end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconButton(navigateUp) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "뒤로") }
+            SocialAccentAvatar(room.name, 40)
+            Column(Modifier.weight(1f)) {
+                Text(room.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                if (room.muted) Text("알림 끔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             IconButton({ options = true }) { Icon(Icons.Outlined.MoreHoriz, "대화 옵션") }
         }
-        LazyColumn(Modifier.weight(1f), state = scroll, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        LazyColumn(Modifier.weight(1f), state = scroll, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
                 Column {
-                    if (blocked) Text("차단 상태에서는 메시지와 요청을 보낼 수 없어요.")
-                    if (room.status == "거절") Text("거절된 요청입니다. 추가 메시지를 보낼 수 없어요.")
-                    if (!blocked && room.status == "요청 대기") {
-                        Text(if (room.incoming) "받은 메시지 요청" else "최초 요청 메시지는 1개만 보낼 수 있어요.")
-                        if (room.incoming) Row {
-                            Button({
+                    if (blocked) WorkoutCard { Text("차단 상태에서는 메시지와 요청을 보낼 수 없어요.") }
+                    if (room.status == "거절") WorkoutCard { Text("거절된 요청입니다. 추가 메시지를 보낼 수 없어요.") }
+                    if (!blocked && room.status == "요청 대기") WorkoutCard {
+                        Text(if (room.incoming) "받은 메시지 요청" else "보낸 메시지 요청", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(if (room.incoming) "수락하면 메이트와 대화할 수 있어요." else if (room.requestSent) "요청을 보냈어요. 상대방의 수락을 기다려 주세요." else "최초 요청 메시지는 1개만 보낼 수 있어요.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        if (room.incoming) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SocialPrimaryButton("수락", Modifier.weight(1f)) {
                                 if (server != null && serverConversationId != null) scope.launch {
                                     runCatching { withContext(Dispatchers.IO) { server.respondToMessageRequest(serverConversationId, true) } }
                                         .onSuccess { room.status = "대화 가능" }.onFailure { notice = it.message ?: "요청을 수락하지 못했습니다." }
                                 } else { state.following = state.following + room.name; state.accounts.followers = state.accounts.followers + room.name; state.accounts.reconcile(state); room.status = "대화 가능" }
-                            }) { Text("수락") }
+                            }
                             TextButton({
                                 if (server != null && serverConversationId != null) scope.launch {
                                     runCatching { withContext(Dispatchers.IO) { server.respondToMessageRequest(serverConversationId, false) } }
                                         .onSuccess { room.status = "거절" }.onFailure { notice = it.message ?: "요청을 거절하지 못했습니다." }
                                 } else room.status = "거절"
-                            }) { Text("거절") }
+                            }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("거절") }
                         } else if (room.messages.any { it.mine && it.state == "전송 완료" }) {
                             Text("테스트: 상대방 응답")
                             Row {
@@ -631,20 +671,23 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                             }
                         }
                     }
-                    notice?.let { Text(it) }
                     if (room.messages.size > limit) TextButton({ limit += 30 }) { Text("이전 메시지 더 보기") }
                 }
             }
             items(room.messages.takeLast(limit), key = { it.id }) { message ->
                 Row(Modifier.fillMaxWidth().animateItem(), horizontalArrangement = if (message.mine) Arrangement.End else Arrangement.Start) {
-                    Column(horizontalAlignment = if (message.mine) Alignment.End else Alignment.Start) {
-                        Card(Modifier.widthIn(max = 280.dp).combinedClickable(onClickLabel = "메시지 옵션", onClick = { selectedMessage = message }, onLongClickLabel = "메시지 옵션", onLongClick = { selectedMessage = message }), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = if (message.mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
-                            Column(Modifier.padding(10.dp)) {
+                    Column(Modifier.widthIn(max = 300.dp), horizontalAlignment = if (message.mine) Alignment.End else Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Card(Modifier.combinedClickable(onClickLabel = "메시지 옵션", onClick = { selectedMessage = message }, onLongClickLabel = "메시지 옵션", onLongClick = { selectedMessage = message }),
+                            shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = if (message.mine) 4.dp else 18.dp, bottomStart = if (message.mine) 18.dp else 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = if (message.mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                contentColor = if (message.mine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                 message.photo?.let { FitMatePhoto(it, server, Modifier.width(220.dp)) }
                                 if (message.text.isNotEmpty()) Text(message.text)
                             }
                         }
-                        Text("${message.time}${if (message.mine) " · ${message.state} · ${if (message.read) "읽음" else "1"}" else ""}", style = MaterialTheme.typography.labelSmall)
+                        Text("${message.time}${if (message.mine) " · ${message.state} · ${if (message.read) "읽음" else "1"}" else ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row {
                             if (message.mine && message.state == "전송 실패") TextButton({ room.messages = room.messages.map { if (it.id == message.id) it.copy(state = "전송 중") else it } }, enabled = !blocked && (accepted || (room.status == "요청 대기" && !room.incoming && room.requestSent && message.photo == null))) { Text("재전송") }
                         }
@@ -652,15 +695,18 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                 }
             }
             item {
-                if (room.messages.isEmpty()) Text("첫 메시지를 보내보세요.")
+                if (room.messages.isEmpty() && !loading && !loadFailed && canSend) Text("첫 메시지를 보내보세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (canSend) Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(10.dp)) {
+        notice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (loadFailed) TextButton({ reload++ }) { Text("다시 불러오기") }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        if (canSend) Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
             room.photo?.let { Text("사진 1장 첨부됨"); TextButton({ room.photo = null }) { Text("첨부 취소") } }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (accepted) IconButton({ attachments = true }) { Icon(Icons.Outlined.Add, "사진 첨부") }
-                OutlinedTextField(room.draft, { room.draft = it.take(2000) }, Modifier.weight(1f), placeholder = { Text("메시지 입력") }, maxLines = 3)
-                Button({
+                if (accepted) FilledTonalIconButton({ attachments = true }, shape = RoundedCornerShape(12.dp)) { Icon(Icons.Outlined.Add, "사진 첨부") }
+                OutlinedTextField(room.draft, { room.draft = it.take(2000) }, Modifier.weight(1f), placeholder = { Text("메시지 입력") }, maxLines = 3, shape = RoundedCornerShape(14.dp))
+                SocialPrimaryButton("전송", enabled = room.draft.isNotBlank() || room.photo != null) {
                     if (server != null && serverConversationId != null && accepted && (room.draft.isNotBlank() || room.photo != null)) scope.launch {
                         runCatching { withContext(Dispatchers.IO) {
                             val mediaId = room.photo?.let { server.uploadImage(context, it, "DM") }
@@ -669,7 +715,7 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
                             room.messages = rows.map { row -> ChatEntry(row.text("messageId").hashCode().toLong(), row.text("content"), state.isMyServerMessage(room.id, row.text("senderUserId")), photo = row.text("mediaUrl").ifBlank { null }, time = row.text("createdAt").takeLast(8).take(5), read = row.text("readAt").isNotBlank()) }; room.draft = ""; room.photo = null
                         }.onFailure { notice = it.message ?: "메시지를 보내지 못했습니다." }
                     } else state.send(room)
-                }, enabled = room.draft.isNotBlank() || room.photo != null) { Text("전송") }
+                }
             }
         }
     }

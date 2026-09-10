@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.luminance
@@ -79,6 +80,39 @@ private fun muscularSilhouette() = Path().apply {
     cubicTo(85f, 10f, 81f, 3f, 70f, 4f); close()
 }
 
+// Fixed, fuller contour for the fat section; never derived from a person's measurements.
+private fun fatSilhouette() = Path().apply {
+    moveTo(70f, 8f)
+    cubicTo(48f, 7f, 48f, 38f, 57f, 47f); lineTo(56f, 56f)
+    cubicTo(44f, 61f, 29f, 59f, 21f, 78f)
+    cubicTo(13f, 96f, 15f, 116f, 10f, 130f)
+    cubicTo(3f, 145f, 6f, 167f, 1f, 186f)
+    cubicTo(-3f, 201f, 0f, 215f, 7f, 210f)
+    lineTo(12f, 197f); lineTo(13f, 210f); quadraticTo(19f, 214f, 22f, 193f)
+    cubicTo(21f, 178f, 31f, 159f, 34f, 141f)
+    cubicTo(25f, 162f, 21f, 183f, 27f, 205f)
+    cubicTo(20f, 229f, 29f, 260f, 34f, 278f)
+    cubicTo(28f, 297f, 37f, 323f, 38f, 336f)
+    cubicTo(32f, 345f, 34f, 352f, 45f, 352f)
+    cubicTo(60f, 356f, 61f, 346f, 57f, 336f)
+    cubicTo(58f, 314f, 66f, 292f, 61f, 276f)
+    cubicTo(69f, 260f, 66f, 236f, 70f, 220f)
+    cubicTo(74f, 236f, 71f, 260f, 79f, 276f)
+    cubicTo(74f, 292f, 82f, 314f, 83f, 336f)
+    cubicTo(79f, 346f, 80f, 356f, 95f, 352f)
+    cubicTo(106f, 352f, 108f, 345f, 102f, 336f)
+    cubicTo(103f, 323f, 112f, 297f, 106f, 278f)
+    cubicTo(111f, 260f, 120f, 229f, 113f, 205f)
+    cubicTo(119f, 183f, 115f, 162f, 106f, 141f)
+    cubicTo(109f, 159f, 119f, 178f, 118f, 193f)
+    quadraticTo(121f, 214f, 127f, 210f); lineTo(128f, 197f); lineTo(133f, 210f)
+    cubicTo(140f, 215f, 143f, 201f, 139f, 186f)
+    cubicTo(134f, 167f, 137f, 145f, 130f, 130f)
+    cubicTo(125f, 116f, 127f, 96f, 119f, 78f)
+    cubicTo(111f, 59f, 96f, 61f, 84f, 56f); lineTo(83f, 47f)
+    cubicTo(92f, 38f, 92f, 7f, 70f, 8f); close()
+}
+
 @Composable internal fun InbodyDetailsDesign(
     modifier: Modifier, date: String, weight: String, muscle: String, fat: String,
     extras: Map<String, String>
@@ -89,6 +123,7 @@ private fun muscularSilhouette() = Path().apply {
     val segmentFatKeys = parts.map { "$it 지방량 (kg)" }
     val goals = listOf("권장 체중 (kg)", "체중 조절 (kg)")
     val remaining = inbodyExtraFields.keys.filter { it !in fatKeys + muscleKeys + segmentFatKeys + goals }
+    val largeText = LocalDensity.current.fontScale > 1.3f
     LazyColumn(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(20.dp, 16.dp, 20.dp, 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -104,9 +139,14 @@ private fun muscularSilhouette() = Path().apply {
         }
         item {
             DetailPanel("핵심 요약", Icons.Outlined.BarChart) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    listOf(Triple("체중", weight, "kg"), Triple("골격근량", muscle, "kg"), Triple("체지방률", fat, "%")).forEach { (label, value, unit) ->
-                        Column(Modifier.weight(1f)) { DetailValue(label, value, unit, compact = true) }
+                val metrics = listOf(Triple("체중", weight, "kg"), Triple("골격근량", muscle, "kg"), Triple("체지방률", fat, "%"))
+                if (largeText) {
+                    metrics.forEach { (label, value, unit) -> DetailValue(label, value, unit, compact = true) }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        metrics.forEach { (label, value, unit) ->
+                            Column(Modifier.weight(1f)) { DetailValue(label, value, unit, compact = true) }
+                        }
                     }
                 }
             }
@@ -150,9 +190,9 @@ private fun muscularSilhouette() = Path().apply {
 }
 
 @Composable private fun DetailPanel(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface,
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, detailBorderColor())) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(icon, null, Modifier.size(23.dp), tint = MaterialTheme.colorScheme.primary)
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -177,15 +217,16 @@ private fun muscularSilhouette() = Path().apply {
 }
 
 @Composable private fun MeasurementGrid(keys: List<String>, values: Map<String, String>) {
+    val columns = if (LocalDensity.current.fontScale > 1.3f) 1 else 2
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        keys.chunked(2).forEachIndexed { index, row ->
+        keys.chunked(columns).forEachIndexed { index, row ->
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 row.forEachIndexed { column, key ->
                     if (column > 0) VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                     Column(Modifier.weight(1f)) { DetailValue(key.substringBefore(" ("), values[key].orEmpty(), if ('(' in key) key.substringAfter('(').substringBefore(')') else "") }
                 }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
+                if (columns == 2 && row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -208,45 +249,24 @@ private fun muscularSilhouette() = Path().apply {
 }
 
 @Composable private fun SegmentFigure(values: List<String>, muscular: Boolean = true) {
+    if (LocalDensity.current.fontScale > 1.3f) {
+        val labels = listOf("왼팔", "오른팔", "몸통", "왼다리", "오른다리")
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            labels.forEachIndexed { index, label -> DetailValue(label, values[index], "kg", compact = true, accent = true) }
+        }
+        return
+    }
     val accent = MaterialTheme.colorScheme.primary
     val outline = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .5f)
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Column(Modifier.weight(1f).heightIn(min = 320.dp).padding(top = 48.dp, bottom = 18.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            DetailValue("오른팔", values[1], "kg", compact = true, accent = true, alignment = Alignment.End, modifier = Modifier.width(50.dp))
-            DetailValue("오른다리", values[4], "kg", compact = true, accent = true, alignment = Alignment.End, modifier = Modifier.width(50.dp))
+            DetailValue("오른팔", values[1], "kg", compact = true, accent = true, alignment = Alignment.End)
+            DetailValue("오른다리", values[4], "kg", compact = true, accent = true, alignment = Alignment.End)
         }
-        Canvas(Modifier.weight(1.35f).fillMaxHeight()) {
+        Canvas(Modifier.weight(if (muscular) 1.35f else 1.8f).fillMaxHeight()) {
             withTransform({ scale(size.width / 140f, size.height / 360f, Offset.Zero) }) {
                 // Curved symmetric contour, front view. Subject's right is viewer's left.
-                val body = Path().apply {
-                    moveTo(70f, 9f); cubicTo(49f, 8f, 49f, 27f, 51f, 43f)
-                    cubicTo(48f, 46f, 50f, 56f, 55f, 58f); lineTo(57f, 70f)
-                    cubicTo(46f, 76f, 32f, 77f, 28f, 91f)
-                    cubicTo(24f, 113f, 22f, 140f, 17f, 158f)
-                    lineTo(5f, 204f); cubicTo(1f, 216f, 2f, 231f, 8f, 229f)
-                    lineTo(15f, 216f); lineTo(16f, 223f); lineTo(20f, 216f)
-                    lineTo(31f, 166f); lineTo(40f, 125f)
-                    cubicTo(43f, 151f, 39f, 167f, 38f, 185f)
-                    cubicTo(34f, 208f, 40f, 237f, 42f, 259f)
-                    cubicTo(38f, 282f, 45f, 317f, 47f, 333f)
-                    cubicTo(39f, 341f, 40f, 350f, 52f, 351f)
-                    cubicTo(66f, 354f, 64f, 342f, 62f, 332f)
-                    lineTo(64f, 267f); lineTo(70f, 216f)
-                    lineTo(76f, 267f); lineTo(78f, 332f)
-                    cubicTo(76f, 342f, 74f, 354f, 88f, 351f)
-                    cubicTo(100f, 350f, 101f, 341f, 93f, 333f)
-                    cubicTo(95f, 317f, 102f, 282f, 98f, 259f)
-                    cubicTo(100f, 237f, 106f, 208f, 102f, 185f)
-                    cubicTo(101f, 167f, 97f, 151f, 100f, 125f)
-                    lineTo(109f, 166f); lineTo(120f, 216f); lineTo(124f, 223f)
-                    lineTo(125f, 216f); lineTo(132f, 229f)
-                    cubicTo(138f, 231f, 139f, 216f, 135f, 204f)
-                    lineTo(123f, 158f); cubicTo(118f, 140f, 116f, 113f, 112f, 91f)
-                    cubicTo(108f, 77f, 94f, 76f, 83f, 70f); lineTo(85f, 58f)
-                    cubicTo(90f, 56f, 92f, 46f, 89f, 43f)
-                    cubicTo(91f, 27f, 91f, 8f, 70f, 9f); close()
-                }
-                val silhouette = if (muscular) muscularSilhouette() else body
+                val silhouette = if (muscular) muscularSilhouette() else fatSilhouette()
                 drawPath(silhouette, accent.copy(alpha = .16f)); drawPath(silhouette, outline, style = Stroke(1f))
                 if (muscular) {
                     val muscles = Path().apply {
@@ -263,9 +283,16 @@ private fun muscularSilhouette() = Path().apply {
                     }
                     drawPath(muscles, outline.copy(alpha = .7f), style = Stroke(.85f))
                 }
-                if (!muscular) listOf(Offset(40f, 86f) to Offset(70f, 95f), Offset(70f, 95f) to Offset(100f, 86f),
-                    Offset(70f, 95f) to Offset(70f, 173f), Offset(40f, 183f) to Offset(70f, 213f),
-                    Offset(70f, 213f) to Offset(100f, 183f)).forEach { (a,b) -> drawLine(outline.copy(alpha = .25f), a,b,1f) }
+                if (!muscular) {
+                    val folds = Path().apply {
+                        moveTo(38f, 105f); cubicTo(34f, 123f, 37f, 135f, 40f, 142f)
+                        moveTo(102f, 105f); cubicTo(106f, 123f, 103f, 135f, 100f, 142f)
+                        moveTo(35f, 147f); cubicTo(24f, 175f, 27f, 193f, 35f, 202f)
+                        moveTo(105f, 147f); cubicTo(116f, 175f, 113f, 193f, 105f, 202f)
+                        moveTo(58f, 218f); quadraticTo(70f, 222f, 82f, 218f)
+                    }
+                    drawPath(folds, outline, style = Stroke(.8f))
+                }
                 // Leaders extend into the side gutters, leaving the labels at the card edges.
                 listOf(
                     Triple(Offset(29f, 108f), Offset(0f, 88f), Offset(-48f, 88f)),
@@ -280,9 +307,9 @@ private fun muscularSilhouette() = Path().apply {
             }
         }
         Column(Modifier.weight(1f).heightIn(min = 320.dp).padding(top = 48.dp, bottom = 18.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) {
-            DetailValue("왼팔", values[0], "kg", compact = true, accent = true, alignment = Alignment.Start, modifier = Modifier.width(50.dp))
-            DetailValue("몸통", values[2], "kg", compact = true, accent = true, alignment = Alignment.Start, modifier = Modifier.width(50.dp))
-            DetailValue("왼다리", values[3], "kg", compact = true, accent = true, alignment = Alignment.Start, modifier = Modifier.width(50.dp))
+            DetailValue("왼팔", values[0], "kg", compact = true, accent = true, alignment = Alignment.Start)
+            DetailValue("몸통", values[2], "kg", compact = true, accent = true, alignment = Alignment.Start)
+            DetailValue("왼다리", values[3], "kg", compact = true, accent = true, alignment = Alignment.Start)
         }
     }
 }

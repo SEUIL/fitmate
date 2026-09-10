@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="fitmate_launch_background">#F6F8FA</color>
+    <bool name="fitmate_launch_light_bars">true</bool>
+    <item type="drawable" name="fitmate_launch_symbol">@drawable/fitmate_launch_symbol_light</item>
+    <style name="Theme.Fitmate.Starting" parent="Theme.Fitmate">
+        <item name="android:windowBackground">@drawable/fitmate_launch_background</item>
+        <item name="android:statusBarColor">@color/fitmate_launch_background</item>
+        <item name="android:navigationBarColor">@color/fitmate_launch_background</item>
+        <item name="android:windowLightStatusBar">@bool/fitmate_launch_light_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/fitmate_launch_light_bars</item>
+    </style>
+</resources>

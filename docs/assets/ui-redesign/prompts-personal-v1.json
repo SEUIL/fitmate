@@ -1,0 +1,77 @@
+{
+  "version": "v1",
+  "date": "2026-09-10",
+  "status": "review",
+  "generator": "built-in image_gen",
+  "purpose": "FitMate personal workout UI mockups. Existing functionality retained. Samsung Health internal settings UI excluded. Synthetic independent examples.",
+  "reference": "03-workout-dark-v1.png",
+  "darkStyle": "Use case: ui-mockup. Reference image is STYLE ONLY, not content to retain. Create one polished FitMate Android app screen, flat portrait 853x1844, full screen including 9:41 status icons and bottom gesture bar, no phone bezel, no presentation labels, no external annotations. Match reference: charcoal #1C2025 background, slightly lighter #282E35 cards, sharp white headings, muted cool gray secondary text, vivid mint #16DFC1 primary action with black text, restrained borders, outline icons, generous clean spacing and large readable Korean typography. No gradients, no photos, no anatomy drawings, no maps, no AI features, no invented stats or social sharing. No bottom navigation on these deeper screens. Render all exact Korean text cleanly and within safe margins. Every screen below is a proposal preserving existing functionality.",
+  "lightThemeEdit": "Use case: ui-mockup. Convert this DARK FitMate screenshot to the exact LIGHT theme counterpart. Preserve all wording, numbers, selection states, icons, positions, sizes, hierarchy, safe margins and the source image dimensions. Only change colors: background #F6F8FA, white #FFFFFF cards, subtle #E1E6EC outlines, dark #182129 primary text, #5D6874 secondary text. Main mint filled buttons and selected chips #16DFC1 with black text; mint text/icons/selected underline becomes dark teal #007D70 on light surfaces. Status icons and bottom gesture bar dark. OFF toggles visibly neutral gray; ON remains mint. No new features, no arrows added to read-only rows. Sharp Korean text, preserve full screenshot.",
+  "screens": [
+    {
+      "id": "04-workout-select",
+      "title": "운동 선택",
+      "darkPrompt": "Header back arrow and '운동 선택'. Intro large '오늘은 어떤 운동을 할까요?' smaller '운동에 맞춰 기록을 시작해 보세요.' Two spacious stacked cards. Card1 outlined dumbbell icon, title '헬스', description '세트별 중량과 반복 횟수를 기록해요.', short secondary '루틴 선택 → 운동 준비', full mint button '헬스 시작' with arrow. Card2 outlined running icon, title '러닝', description '거리·시간·페이스 목표를 설정해요.', secondary '목표 설정 → 러닝 시작', full outlined button '러닝 설정' with arrow. Calm generous unused space below, no fake recommendations, no third sport, no global bottom button. Both cards visually important, only health button filled.",
+      "outputs": [
+        "04-workout-select-light-v1.png",
+        "04-workout-select-dark-v1.png"
+      ]
+    },
+    {
+      "id": "05-workout-prep",
+      "title": "운동 준비",
+      "darkPrompt": "Header back arrow '운동 준비'. Eyebrow '선택한 루틴', title '전신 기본 루틴', secondary '운동 4개'. A card lists 4 simple numbered rows: '01 스쿼트', '02 벤치프레스', '03 랫 풀다운', '04 플랭크', with outline exercise icons and thin separators. No target weights, no detail chevrons, no new reorder controls. Secondary card 'Samsung Health Data' with OFF toggle right, description '이번 운동에서만 선택적으로 사용합니다.', small 'FitMate 직접 기록으로 기본 리포트를 만들 수 있어요.' This is existing optional preparation toggle, not excluded internal Health settings screen. Another compact card title '시작 전 안내', body '가벼운 워밍업 후 시작하세요. 통증이 느껴지면 운동을 중단하고 쉬세요.' Bottom full width mint CTA '운동 시작' play icon. No invented duration or start countdown.",
+      "outputs": [
+        "05-workout-prep-light-v1.png",
+        "05-workout-prep-dark-v1.png"
+      ]
+    },
+    {
+      "id": "06-running-setup",
+      "title": "러닝 설정",
+      "darkPrompt": "Header back arrow '러닝 설정'. Title '오늘의 목표', five outlined choice chips across two rows: '자유', '거리' selected mint with check, '시간', '페이스', '인터벌'. Large card labeled '목표 거리' numeric input '5.0' suffix 'km', helper '0.1~100 km'. Section '기록 설정' with rows: '자동 일시정지' ON switch; '경로 기록' OFF switch; tiny persistent honest helper '거리·시간·랩만 기록하며 지도 경로와 GPS 좌표는 저장하지 않아요.'; 'Samsung Health 사용' OFF switch. Small text 'Samsung Health 수신 값은 연결 관리에서 확인하세요.' Another small shield/location note '시작 시 위치정보 이용 동의와 위치 권한을 확인해요.' Compact collapsible row '개발 및 테스트 도구' with chevron, tiny 'Debug 전용'. Sticky full mint bottom CTA '러닝 시작'. No map, no assumed permissions granted, no new GPS signal test button.",
+      "outputs": [
+        "06-running-setup-light-v1.png",
+        "06-running-setup-dark-v1.png"
+      ]
+    },
+    {
+      "id": "07-running-active",
+      "title": "러닝 진행",
+      "darkPrompt": "Header back arrow '러닝 진행'. Small mint dot pill '달리는 중' and 'GPS 정상' right. Tiny '실제 GPS 기록 중'. Dominant centered elapsed time '00:14:24' label '운동 시간'. Below huge '2.40' and 'km' label '이동 거리'. Metrics card two columns: '현재 페이스' '6:00 /km'; '평균 페이스' '6:00 /km'; small '속도 10.0 km/h'. Goal card '거리 목표 5.00 km', '48%' and exactly half-ish (48%) mint progress bar. 'GPS 정확도 약 8m' subtle row. Section '1 km 자동 랩', two rows '1랩' '1.00 km' '6:00 /km', '2랩' '1.00 km' '6:00 /km'. Tiny note '앱을 닫아도 알림에서 기록 상태를 확인할 수 있어요.' Bottom big mint '일시정지' pause icon and outlined '종료' stop icon side-by-side. Below them subtle text action '기록 취소'. No heart rate, map, calories or new fields. Fit all safely.",
+      "outputs": [
+        "07-running-active-light-v1.png",
+        "07-running-active-dark-v1.png"
+      ]
+    },
+    {
+      "id": "08-health-report",
+      "title": "헬스 완료 리포트",
+      "darkPrompt": "Header back arrow '헬스 리포트'. Date '2026.09.10 · 18:30'. Small mint check label '운동 완료'. Strong title '오늘의 운동 기록'. A compact summary card three columns '운동 시간' '34분'; '완료 세트' '3세트'; '총 볼륨' '900 kg'. Section '운동별 요약'. Row '스쿼트' '2세트 · 20회' '400 kg'; row '벤치프레스' '1세트 · 10회' '500 kg'. Under each exercise smaller '비교할 이전 기록 없음'. Section '세트별 기록', three rows: '스쿼트 · 1세트' '20 kg × 10회 · RPE 7'; '스쿼트 · 2세트' '20 kg × 10회 · RPE 8'; '벤치프레스 · 1세트' '50 kg × 10회 · RPE 8'. Small memo under last '메모 · 천천히 내려오기'. Full bottom mint '홈으로'. This is existing SERVER completed-session report, not local summary: no new weekly aggregate, target achievement, export/share, calorie or Samsung Health section.",
+      "correction": "Use case: precise-object-edit. Edit this screenshot with ONE change only: REMOVE all five right-facing chevron arrows from the 2 exercise summary rows and 3 set rows. These are read-only records with NO drill-down action. Keep top back arrow. Preserve every Korean text, value, existing row size, spacing, theme, bottom button and dimensions exactly. Do not replace arrows with any icon.",
+      "outputs": [
+        "08-health-report-light-v1.png",
+        "08-health-report-dark-v1.png"
+      ]
+    },
+    {
+      "id": "08b-running-report",
+      "title": "러닝 종료·저장",
+      "darkPrompt": "Header back arrow '러닝 리포트'. Small mint check '목표 달성', tiny neutral '저장 전'. Large summary '2.00 km' and '12분 00초'. Two compact metrics '평균 페이스 6:00 /km' and '최고 랩 6:00 /km'. Section '구간별 기록' two rows '1랩 · 1 km · 6:00 /km' and '2랩 · 1 km · 6:00 /km'. Small '동일 거리의 이전 기록이 없습니다.' Section '오늘의 컨디션'. Label 'RPE · 운동 강도 (1~10)' chips1through10 in two rows, 5 selected mint. Label '컨디션 (1 나쁨 ~ 5 좋음)' five chips1..5,3selected. Outlined multiline input label '메모' value '일정한 속도로 달렸어요.'. Small subdued '칼로리·심박수·케이던스·고도: 수신 데이터 없음'. Bottom mint button exact '기록 저장하고 홈으로'. No saved-success banner, no automatic save, no route map, no share button. Keep dense contents legible, smaller cards than reference where needed.",
+      "correction": "Use case: ui-mockup. Edit this exact screenshot. Change the RPE 1..10 choices from one narrow 10-button row to TWO rows of FIVE wide equal buttons: top 1 2 3 4 5, bottom 6 7 8 9 10. Keep 5 selected mint. Make each button comfortably large. Fit this by slightly compressing vertical padding in the summary and lap cards, not by reducing text legibility. Preserve all other text, values, field selection, dark theme and 853x1844 portrait. Keep condition3 selected and bottom '기록 저장하고 홈으로' fully visible. No new features.",
+      "outputs": [
+        "08b-running-report-light-v1.png",
+        "08b-running-report-dark-v1.png"
+      ]
+    },
+    {
+      "id": "09-workout-history",
+      "title": "운동 이력",
+      "darkPrompt": "Header back arrow '운동 기록', top right text '새로고침' with refresh icon. Two tabs '헬스' selected mint underline and '러닝' unselected. Small source label '서버에 저장된 내 운동 기록'. Three clean list cards separated vertically. Card1 date '2026.09.10 · 18:30', title '전신 기본 루틴', secondary '운동 2종 · 3세트', right chevron. Card2 date '2026.09.08 · 19:10', title '상체 루틴', secondary '운동 4종 · 12세트', right chevron. Card3 date '2026.09.06 · 10:20', title '하체 루틴', secondary '운동 3종 · 9세트', right chevron. Bottom of list outlined '더 보기' for pagination. Modest dumbbell outline icons. Preserve generous white space at bottom, no graph, calendar, month selector, totals, search, new filters or new exercise action. This is independent entry to existing personal server history, not a merged local list.",
+      "outputs": [
+        "09-workout-history-light-v1.png",
+        "09-workout-history-dark-v1.png"
+      ]
+    }
+  ]
+}

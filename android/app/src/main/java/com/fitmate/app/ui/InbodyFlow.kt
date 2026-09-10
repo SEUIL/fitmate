@@ -2,14 +2,19 @@ package com.fitmate.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import com.fitmate.app.data.remote.ServerInbodyApi
 import com.google.gson.JsonObject
 import kotlinx.coroutines.delay
@@ -147,7 +152,7 @@ internal fun recordEntry(row: JsonObject) = BodyEntry(
     LaunchedEffect(Unit) { refresh() }
     DisposableEffect(Unit) { onDispose { busy = false } }
     BackHandler(busy || phase != "목록") { if (!busy) { phase = if (phase == "상세") "검수" else "목록"; error = null } }
-    deleting?.let { entry -> ConfirmAction("측정 기록 삭제", "${entry.date} 기록을 삭제할까요? 삭제 후 변화 차트에도 반영됩니다.", { if (!busy) deleting = null }) {
+    deleting?.let { entry -> StateConfirm("측정 기록 삭제", "${entry.date} 기록을 삭제할까요? 삭제 후 변화 차트에도 반영됩니다.", { if (!busy) deleting = null }, destructive = true, busy = busy) {
         if (!busy) {
             busy = true
             scope.launch {
@@ -168,51 +173,59 @@ internal fun recordEntry(row: JsonObject) = BodyEntry(
             entry?.extras?.mapValues { it.value.toString() } ?: extras)
         return@with
     }
-    Screen(modifier) {
+    val screenRefreshing = refreshing
+    Screen(modifier, background = MaterialTheme.colorScheme.background) {
         Text("의료 진단이 아닌 운동 기록입니다. 측정값을 직접 확인하세요.", style = MaterialTheme.typography.bodySmall)
         when (phase) {
             "목록" -> {
-                if (refreshing || busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                ErrorText(listError)
+                if (screenRefreshing || busy) {
+                    Text(if (busy) "기록 변경 사항을 처리하고 있어요." else "기록을 불러오고 있어요.", style = MaterialTheme.typography.bodySmall)
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+                listError?.let { StateWarning(it) }
                 TextButton({ refresh() }, enabled = !refreshing && !busy) { Text("기록 새로고침") }
                 if (analysisId != null && analysisStatus !in setOf("COMPLETED", "REVIEW_REQUIRED")) {
                     OutlinedButton({ phase = "판독 중" }) { Text("진행 중인 판독 확인") }
                 }
-                SoftCard {
+                WorkoutCard {
                     Text("결과표 등록", fontWeight = FontWeight.Bold)
                     Text("사진을 업로드해 판독한 뒤 측정값을 직접 검수합니다.", style = MaterialTheme.typography.bodySmall)
-                    if (!busy) PhotoActions(::selectPhoto, camera = true)
+                    if (!busy) PhotoActions(::selectPhoto, camera = true, redesigned = true)
                     OutlinedButton(::openManual, Modifier.fillMaxWidth(), enabled = !busy) { Text("직접 입력") }
                 }
                 val sorted = records.sortedByDescending { it.date }
-                if (loaded && !refreshing && listError == null && sorted.isEmpty()) SoftCard { Text("아직 측정 기록이 없어요. 첫 기록을 등록해 보세요.") }
-                else {
+                if (loaded && !refreshing && listError == null && sorted.isEmpty()) StateCard("아직 측정 기록이 없어요.", "첫 기록을 등록해 보세요.", Icons.Outlined.Assessment)
+                else if (sorted.isNotEmpty()) {
                     sorted.firstOrNull()?.let { latest ->
-                        SoftCard {
+                        WorkoutCard {
                             Text("최근 인바디", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text("${latest.date} · ${latest.source}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                InbodySummaryMetric("체중", latest.weight, "kg")
-                                InbodySummaryMetric("골격근량", latest.muscle, "kg")
-                                InbodySummaryMetric("체지방률", latest.fat, "%")
-                            }
-                            TextButton({ selectedRecord = latest; phase = "기록 상세" }) { Text("상세 결과 보기") }
+                            InbodySummaryMetrics(latest)
+                            WorkoutSecondaryAction("상세 결과 보기") { selectedRecord = latest; phase = "기록 상세" }
                         }
                     }
-                    SoftCard {
+                    WorkoutCard {
                         Text("변화 차트", fontWeight = FontWeight.Bold)
-                        Choices(listOf("체중", "골격근량", "체지방률"), metric) { metric = it }
+                        WorkoutChoices(listOf("체중", "골격근량", "체지방률"), metric) { metric = it }
                         val chronological = sorted.reversed()
                         val values = chronological.map { when (metric) { "골격근량" -> it.muscle; "체지방률" -> it.fat; else -> it.weight } }
                         val color = MaterialTheme.colorScheme.primary
+                        val grid = MaterialTheme.colorScheme.outlineVariant
                         Canvas(Modifier.fillMaxWidth().height(150.dp)) {
+                            repeat(4) { line -> val y = 12f + line / 3f * (size.height - 24f); drawLine(grid, Offset(12f, y), Offset(size.width - 12f, y), strokeWidth = 1f) }
                             val min = values.minOrNull() ?: 0.0
                             val span = ((values.maxOrNull() ?: 0.0) - min).coerceAtLeast(1.0)
                             val points = values.mapIndexed { i, value -> Offset(12f + i.toFloat() / (values.size - 1).coerceAtLeast(1) * (size.width - 24f), size.height - 12f - ((value - min) / span).toFloat() * (size.height - 24f)) }
                             points.zipWithNext().forEach { (a, b) -> drawLine(color, a, b, strokeWidth = 4f) }
                             points.forEach { drawCircle(color, 6f, it) }
                         }
-                        chronological.forEachIndexed { i, entry -> Text("${entry.date} · ${values[i]} ${if (metric == "체지방률") "%" else "kg"}", style = MaterialTheme.typography.bodySmall) }
+                        chronological.forEachIndexed { i, entry ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(entry.date.toString(), style = MaterialTheme.typography.bodySmall)
+                                Text("${values[i]} ${if (metric == "체지방률") "%" else "kg"}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            }
+                            HorizontalDivider(color = grid)
+                        }
                         if (sorted.size == 1) Text("두 번째 기록부터 변화가 연결됩니다.")
                     }
                     Text("측정 기록", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -227,11 +240,14 @@ internal fun recordEntry(row: JsonObject) = BodyEntry(
                 }
             }
             "사진 확인", "판독 실패" -> {
-                photo?.let { LocalPhoto(it) }
-                Text("전체 결과표의 글자가 선명하게 보이는지 확인하세요.")
-                Text("판독 시작 시 결과표 사진이 서버와 외부 AI 서비스로 전송될 수 있습니다.", style = MaterialTheme.typography.bodySmall)
+                SocialScreenTitle(if (phase == "판독 실패") "판독 상태 확인" else "인바디 사진 확인")
+                WorkoutCard {
+                    photo?.let { LocalPhoto(it) }
+                    Text("전체 결과표의 글자가 선명하게 보이는지 확인하세요.")
+                    Text("판독 시작 시 결과표 사진이 서버와 외부 AI 서비스로 전송될 수 있습니다.", style = MaterialTheme.typography.bodySmall)
+                }
                 ErrorText(error)
-                if (!busy) PhotoActions(::selectPhoto, camera = true)
+                if (!busy) PhotoActions(::selectPhoto, camera = true, redesigned = true)
                 Button({
                     if (busy) return@Button
                     val uri = photo ?: return@Button
@@ -257,16 +273,16 @@ internal fun recordEntry(row: JsonObject) = BodyEntry(
                             error = if (createUncertain) "판독 요청의 접수 여부를 확인하지 못했습니다. 중복 분석을 막기 위해 자동 재요청하지 않습니다. 잠시 후 확인하거나 직접 입력하세요." else e.message
                         } finally { busy = false }
                     }
-                }, enabled = !busy && !createUncertain) { Text(if (busy) "요청 중…" else if (analysisId != null) "상태 확인 / 실패한 판독 재시도" else "사진 전송 및 판독 시작") }
+                }, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer), enabled = !busy && !createUncertain) { Text(if (busy) "요청 중…" else if (analysisId != null) "상태 확인 / 실패한 판독 재시도" else "사진 전송 및 판독 시작") }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 OutlinedButton(::openManual, enabled = !busy) { Text("직접 입력으로 전환") }
                 OutlinedButton({ phase = "목록" }, enabled = !busy) { Text("목록으로") }
             }
             "업로드 준비", "판독 중" -> {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("결과표를 분석하고 있습니다. 1분 후에도 완료되지 않으면 다시 상태를 확인할 수 있어요.")
-                OutlinedButton({ phase = "목록" }) { Text("목록에서 기다리기") }
-                Text("화면을 나가도 서버의 분석은 계속됩니다.", style = MaterialTheme.typography.bodySmall)
+                StateCard("결과표를 분석하고 있어요", "결과표를 분석하고 있습니다. 1분 후에도 완료되지 않으면 다시 상태를 확인할 수 있어요.", Icons.Outlined.DocumentScanner, loading = true) {
+                    OutlinedButton({ phase = "목록" }, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) { Text("목록에서 기다리기") }
+                    Text("화면을 나가도 서버의 분석은 계속됩니다.", style = MaterialTheme.typography.bodySmall)
+                }
                 LaunchedEffect(analysisId, phase) {
                     val id = analysisId ?: run { phase = "사진 확인"; return@LaunchedEffect }
                     try {
@@ -306,8 +322,8 @@ internal fun recordEntry(row: JsonObject) = BodyEntry(
                             } finally { busy = false }
                         }
                     }
-                }, enabled = !busy && !saveUncertain) { Text(if (busy) "저장 중…" else "검수 후 저장") }
-                if (!busy && source != "직접 입력") PhotoActions(::selectPhoto, camera = true)
+                }, Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer), enabled = !busy && !saveUncertain) { Text(if (busy) "저장 중…" else "검수 후 저장") }
+                if (!busy && source != "직접 입력") PhotoActions(::selectPhoto, camera = true, redesigned = true)
                 OutlinedButton({ phase = "목록"; error = null; refresh() }, enabled = !busy) { Text(if (saveUncertain) "목록에서 저장 여부 확인" else "목록으로") }
 
             }
@@ -336,26 +352,27 @@ internal fun recordEntry(row: JsonObject) = BodyEntry(
         )
     }
     Text("인바디 결과 검수", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-    SoftCard {
+    if (saveUncertain && !busy) error?.let { StateWarning(it) }
+    WorkoutCard {
         Text(if (source == "직접 입력") "직접 입력 기록" else "AI 판독 완료", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        Text("측정일 $date · 사진 속 수치를 확인·수정해 주세요.", style = MaterialTheme.typography.bodySmall)
+        Text("측정일 $date · ${if (source == "직접 입력") "입력한 수치를 확인해 주세요." else "사진 속 수치를 확인·수정해 주세요."}", style = MaterialTheme.typography.bodySmall)
         if (source != "직접 입력") {
             Text(reviewNotice, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             photo?.let { LocalPhoto(it) }
         }
     }
-    SoftCard {
+    WorkoutCard {
         Text("핵심 요약", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        ReviewMetricRow("체중", "$weight kg", "지난 기록 대비는 저장 후 확인", { editingKey = "체중" })
+        ReviewMetricRow("체중", if (weight.isBlank()) "입력" else "$weight kg", "지난 기록 대비는 저장 후 확인", { editingKey = "체중" })
         HorizontalDivider()
-        ReviewMetricRow("골격근량", "$muscle kg", "운동 변화의 핵심 지표", { editingKey = "골격근량" })
+        ReviewMetricRow("골격근량", if (muscle.isBlank()) "입력" else "$muscle kg", "운동 변화의 핵심 지표", { editingKey = "골격근량" })
         HorizontalDivider()
-        ReviewMetricRow("체지방률", "$fat %", "사진의 수치와 비교해 주세요", { editingKey = "체지방률" })
+        ReviewMetricRow("체지방률", if (fat.isBlank()) "입력" else "$fat %", (if (source == "직접 입력") "입력한 수치를 확인해 주세요" else "사진의 수치와 비교해 주세요"), { editingKey = "체지방률" })
     }
     OutlinedButton({ editingKey = "측정일" }, Modifier.fillMaxWidth()) { Text("측정일 수정") }
     OutlinedButton({ phase = "상세" }, Modifier.fillMaxWidth()) { Text("신체 구성 상세 보기") }
     if (showDetails) {
-        SoftCard {
+        WorkoutCard {
             Text("상세 측정 항목 수정", fontWeight = FontWeight.Bold)
             inbodyExtraFields.keys.forEach { label ->
                 OutlinedTextField(extras[label].orEmpty(), { extras = extras + (label to it) }, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -364,13 +381,19 @@ internal fun recordEntry(row: JsonObject) = BodyEntry(
     }
     OutlinedButton({ showDetails = !showDetails }, Modifier.fillMaxWidth()) { Text(if (showDetails) "상세 항목 수정 닫기" else "상세 항목 직접 수정") }
     if (source != "직접 입력") ToggleLine("결과표 수치를 직접 확인했어요", acknowledged) { acknowledged = it }
-    ErrorText(error)
+    if (!saveUncertain || busy) error?.let { StateWarning(it) }
 }
 
 @Composable private fun ReviewMetricRow(label: String, value: String, helper: String, edit: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Text(label, fontWeight = FontWeight.SemiBold); Text(helper, style = MaterialTheme.typography.bodySmall) }
-        TextButton(edit) { Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+    Column(Modifier.fillMaxWidth().clickable(onClickLabel = "$label 수정", onClick = edit).padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (LocalDensity.current.fontScale > 1.3f) {
+            Text(label, fontWeight = FontWeight.SemiBold)
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text(label, fontWeight = FontWeight.SemiBold)
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        }
+        Text(helper, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -382,20 +405,17 @@ internal fun inbodySaveBody(state: InbodyState): Map<String, Any?> = with(state)
         }.toMap())
 }
 
-@Composable private fun InbodySummaryMetric(label: String, value: Double, unit: String) = Column {
-    Text(label, style = MaterialTheme.typography.bodySmall)
-    Text("${"%.1f".format(value)} $unit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-}
+@Composable private fun InbodySummaryMetrics(entry: BodyEntry) = WorkoutMetrics(
+    "체중" to "${"%.1f".format(entry.weight)} kg", "골격근량" to "${"%.1f".format(entry.muscle)} kg", "체지방률" to "${"%.1f".format(entry.fat)} %")
 
-@Composable private fun BodyRecordCard(entry: BodyEntry, previous: BodyEntry?, open: () -> Unit, delete: () -> Unit) = SoftCard {
+@Composable private fun BodyRecordCard(entry: BodyEntry, previous: BodyEntry?, open: () -> Unit, delete: () -> Unit) = WorkoutCard {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Column { Text(entry.date.toString(), fontWeight = FontWeight.Bold); Text(entry.source, style = MaterialTheme.typography.bodySmall) }
         Text(previous?.let { "체중 ${"%+.1f".format(entry.weight - it.weight)} kg" } ?: "첫 기록", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
     }
+    InbodySummaryMetrics(entry)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        InbodySummaryMetric("체중", entry.weight, "kg")
-        InbodySummaryMetric("골격근량", entry.muscle, "kg")
-        InbodySummaryMetric("체지방률", entry.fat, "%")
+        TextButton(open) { Text("상세 결과 보기") }
+        TextButton(delete, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("삭제") }
     }
-    Row { TextButton(open) { Text("상세 결과 보기") }; TextButton(delete) { Text("삭제") } }
 }
