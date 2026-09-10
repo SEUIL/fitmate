@@ -34,10 +34,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fitmate.app.data.model.*
+import com.fitmate.app.data.remote.FitMateApiClient
 import com.fitmate.app.data.remote.ServerSocialApi
 import com.fitmate.app.R
 import com.fitmate.app.ui.theme.FitMateColors
 import com.fitmate.app.ui.theme.FitMateShapes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme.surfaceContainerLow
 
@@ -256,12 +259,32 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     TextButton(community, Modifier.fillMaxWidth()) { Text("커뮤니티에서 더 보기", color = FitMateColors.TextPrimary) }
 }
 
-@Composable internal fun ProfileOverview(profile: UserProfile, social: SocialState, workouts: List<WorkoutSummary>, runs: List<RunResult>, edit: () -> Unit, inbody: () -> Unit, samsung: () -> Unit, admin: () -> Unit, account: () -> Unit, history: () -> Unit, notifications: () -> Unit, reports: () -> Unit, openSettings: () -> Unit, server: ServerSocialApi? = null, recordApi: com.fitmate.app.data.remote.FitMateApiClient? = null) {
+@Composable internal fun ProfileOverview(profile: UserProfile, social: SocialState, workouts: List<WorkoutSummary>, runs: List<RunResult>, edit: () -> Unit, inbody: () -> Unit, samsung: () -> Unit, admin: () -> Unit, account: () -> Unit, history: () -> Unit, notifications: () -> Unit, reports: () -> Unit, openSettings: () -> Unit, server: ServerSocialApi? = null, recordApi: FitMateApiClient? = null, selfUserId: String = "") {
     var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("게시물") }
     var opened by remember { mutableStateOf<FeedEntry?>(null) }
     val mine = social.feed.filter { it.mine }
+    val fallbackCounts = listOf(
+        (workouts.size + runs.size).toString(),
+        social.accounts.followers.size.toString(),
+        social.following.size.toString(),
+    )
+    var serverCounts by remember(server, recordApi, selfUserId) { mutableStateOf<List<String>?>(null) }
+    LaunchedEffect(server, recordApi, selfUserId) {
+        if (server == null || recordApi == null || selfUserId.isBlank()) return@LaunchedEffect
+        runCatching {
+            withContext(Dispatchers.IO) {
+                val serverProfile = server.profile(selfUserId)
+                val records = ServerRecordApi(recordApi)
+                listOf(
+                    (records.completedCount("workout-sessions?status=COMPLETED") + records.completedCount("running-records")).toString(),
+                    (serverProfile.get("followerCount")?.asLong ?: 0L).toString(),
+                    (serverProfile.get("followingCount")?.asLong ?: 0L).toString(),
+                )
+            }
+        }.onSuccess { serverCounts = it }
+    }
     SocialTitle(profile.nickname, Icons.Outlined.Menu, "프로필 설정", openSettings)
-    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo, listOf((workouts.size + runs.size).toString(), social.accounts.followers.size.toString(), social.following.size.toString()), server) {
+    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo, serverCounts ?: fallbackCounts, server) {
         if (it == "운동 기록") tab = it else social.accounts.directory = it
     }
     Text(profile.displayName.ifBlank { profile.nickname }, fontWeight = FontWeight.SemiBold)
@@ -301,16 +324,20 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     onProfileEdit: () -> Unit,
     onSamsungHealth: () -> Unit,
     onAccount: () -> Unit,
+    onLogout: () -> Unit,
     onAppearance: () -> Unit,
     onNotifications: () -> Unit,
     onFollowRequests: () -> Unit,
     onReports: () -> Unit,
     onOpenAdmin: () -> Unit,
 ) = Screen(modifier) {
+    var confirmLogout by remember { mutableStateOf(false) }
     SettingsGroup("계정 및 프로필") {
         SettingsRow(Icons.Outlined.PersonOutline, "프로필 편집", "이름, 활동 지역, 소개를 관리해요", onProfileEdit)
         SettingsRow(Icons.Outlined.Lock, "공개 범위", if (profile.isPrivate) "현재 비공개 계정" else "현재 공개 계정", onProfileEdit)
         SettingsRow(Icons.Outlined.Image, "프로필 사진", "프로필 편집에서 사진을 변경해요", onProfileEdit)
+        SettingsRow(Icons.Outlined.Lock, "계정·개인정보", "비밀번호, 동의와 기기 데이터를 관리해요", onAccount)
+        SettingsRow(Icons.Outlined.Logout, "로그아웃", "이 기기에서 안전하게 로그아웃합니다", { confirmLogout = true })
     }
     SettingsGroup("운동 및 기기") {
         SettingsRow(Icons.Outlined.FitnessCenter, "운동 프로필", "관심 운동, 목표, 가능 시간을 설정해요", onProfileEdit)
@@ -325,6 +352,12 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         SettingsRow(Icons.Outlined.GppMaybe, "내 신고 내역", "신고 처리 상태를 확인해요", onReports)
     }
     DebugOnly { SettingsGroup("개발") { SettingsRow(Icons.Outlined.AdminPanelSettings, "운영자 데모", "개발 환경에서만 표시됩니다", onOpenAdmin) } }
+    if (confirmLogout) ConfirmAction(
+        "로그아웃",
+        "현재 기기의 로그인 세션을 종료하고 로그인 화면으로 이동합니다. 기기 내 운동 기록은 유지됩니다.",
+        { confirmLogout = false },
+        { confirmLogout = false; onLogout() }
+    )
 }
 
 @Composable private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {

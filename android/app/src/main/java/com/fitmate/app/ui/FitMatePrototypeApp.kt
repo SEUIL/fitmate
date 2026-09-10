@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -82,6 +83,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.fitmate.app.data.model.MatePost
@@ -150,7 +157,7 @@ fun FitMatePrototypeApp(
     var generation by remember { mutableStateOf(0) }
     key(generation) {
         val api = rememberFitMateApiClient()
-        ServerSessionGate(api, signup = { done -> OnboardingScreen(Modifier.safeDrawingPadding(), api) { done() } }) { account ->
+        ServerSessionGate(api, signup = { done -> OnboardingScreen(Modifier.safeDrawingPadding(), api, onExit = done) { done() } }) { account ->
             key(account.text("id")) {
                 FitMateAppContent(onOpenSamsungTest, samsungHealthState, onRefreshSamsungHealth, api, account) { generation++ }
             }
@@ -263,7 +270,7 @@ fun FitMatePrototypeApp(
     }
     if (!signedIn) {
         BackHandler(route == PrototypeRoute.ONBOARDING) { route = PrototypeRoute.LOGIN }
-        if (route == PrototypeRoute.ONBOARDING) OnboardingScreen(Modifier.safeDrawingPadding(), apiClient, onHealthConsent = { healthConsent = it }) {
+        if (route == PrototypeRoute.ONBOARDING) OnboardingScreen(Modifier.safeDrawingPadding(), apiClient, onHealthConsent = { healthConsent = it }, onExit = { route = PrototypeRoute.LOGIN }) {
             profile = it; registered = true; signedIn = true; route = PrototypeRoute.HOME
         } else LoginFlow(Modifier.safeDrawingPadding(), if (registered) profile.email else null,
             login = { signedIn = true; route = PrototypeRoute.HOME }, signup = { route = PrototypeRoute.ONBOARDING })
@@ -305,7 +312,8 @@ fun FitMatePrototypeApp(
             PrototypeRoute.MATE_LIST, PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE -> if (mateServerState.back()) PrototypeRoute.MATE_LIST else PrototypeRoute.HOME
             PrototypeRoute.HEALTH_ROUTINE, PrototypeRoute.RUNNING -> PrototypeRoute.SOLO
             PrototypeRoute.WORKOUT_PREP -> PrototypeRoute.HEALTH_ROUTINE
-            PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.FOLLOW_REQUESTS, PrototypeRoute.ACCOUNT, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
+            PrototypeRoute.ACCOUNT -> PrototypeRoute.SETTINGS
+            PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.FOLLOW_REQUESTS, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
             else -> PrototypeRoute.HOME
         }
     }
@@ -334,7 +342,8 @@ fun FitMatePrototypeApp(
                                 PrototypeRoute.WORKOUT_PREP -> PrototypeRoute.HEALTH_ROUTINE
                                 PrototypeRoute.WORKOUT -> PrototypeRoute.WORKOUT_PREP
                                 PrototypeRoute.RUNNING -> PrototypeRoute.SOLO
-                                PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.FOLLOW_REQUESTS, PrototypeRoute.ACCOUNT, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
+                                PrototypeRoute.ACCOUNT -> PrototypeRoute.SETTINGS
+                                PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.FOLLOW_REQUESTS, PrototypeRoute.HISTORY, PrototypeRoute.REPORTS -> PrototypeRoute.PROFILE
                                 else -> PrototypeRoute.HOME
                             }
                         }, style = MaterialTheme.typography.headlineMedium)
@@ -367,6 +376,17 @@ fun FitMatePrototypeApp(
                 onProfileEdit = { profileEditRequest++; route = PrototypeRoute.PROFILE },
                 onSamsungHealth = onOpenSamsungTest,
                 onAccount = { route = PrototypeRoute.ACCOUNT },
+                onLogout = {
+                    integrationScope.launch {
+                        withContext(Dispatchers.IO) {
+                            runCatching { apiClient.logout() }
+                            apiClient.clearSession()
+                        }
+                        workoutSession?.pause()
+                        RunTrackingService.stop(context)
+                        resetApp()
+                    }
+                },
                 onAppearance = { route = PrototypeRoute.APPEARANCE },
                 onNotifications = { route = PrototypeRoute.NOTIFICATIONS },
                 onFollowRequests = { route = PrototypeRoute.FOLLOW_REQUESTS },
@@ -548,6 +568,7 @@ fun FitMatePrototypeApp(
                 onOpenAdminDemo = { route = PrototypeRoute.ADMIN },
                 editRequest = profileEditRequest,
                 onOpenSettings = { route = PrototypeRoute.SETTINGS },
+                selfUserId = serverAccount.text("id"),
             )
             PrototypeRoute.SAFETY -> SafetyScreen(Modifier.padding(padding))
             PrototypeRoute.ADMIN -> AdminScreen(Modifier.padding(padding)) { route = PrototypeRoute.ADS }
@@ -621,8 +642,73 @@ private fun FitMatePrototypePreview() {
         interactionSource = interaction, shape = FitMateShapes.Button) { Text(label, style = MaterialTheme.typography.labelLarge) }
 }
 
-@Composable private fun OnboardingScreen(modifier: Modifier, apiClient: FitMateApiClient, onHealthConsent: (Boolean) -> Unit = {}, done: (UserProfile) -> Unit) = Screen(modifier) {
+@Composable private fun SignupStepHeader(step: Int, label: String) {
+    Text("$step / 4  $label", color = Mint, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(4) { index ->
+            Box(
+                Modifier.weight(1f).height(5.dp)
+                    .background(if (index < step) Mint else FitMateColors.Outline, CircleShape)
+            )
+        }
+    }
+}
+
+@Composable private fun SignupBirthField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    maxLength: Int,
+    modifier: Modifier,
+    isError: Boolean,
+    focusRequester: FocusRequester,
+    nextFocusRequester: FocusRequester? = null
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = {
+            val digits = it.filter(Char::isDigit).take(maxLength)
+            onValueChange(digits)
+            if (digits.length == maxLength) nextFocusRequester?.requestFocus()
+        },
+        modifier = modifier.focusRequester(focusRequester),
+        placeholder = { Text(placeholder) },
+        singleLine = true,
+        isError = isError,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = if (nextFocusRequester == null) ImeAction.Done else ImeAction.Next),
+        keyboardActions = KeyboardActions(onNext = { nextFocusRequester?.requestFocus() })
+    )
+}
+
+@Composable private fun SignupConsentRow(
+    label: String,
+    detailLabel: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onDetail: () -> Unit
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked, onCheckedChange)
+        Text(label, modifier = Modifier.weight(1f).padding(start = 10.dp), style = MaterialTheme.typography.bodyMedium)
+        TextButton(onDetail) { Text("$detailLabel ›", style = MaterialTheme.typography.labelMedium) }
+    }
+}
+
+@Composable private fun OnboardingScreen(
+    modifier: Modifier,
+    apiClient: FitMateApiClient,
+    onHealthConsent: (Boolean) -> Unit = {},
+    onExit: () -> Unit = {},
+    done: (UserProfile) -> Unit
+) = Screen(modifier) {
     val scope = rememberCoroutineScope()
+    val emailDomainFocus = remember { FocusRequester() }
+    val passwordFocus = remember { FocusRequester() }
+    val nameFocus = remember { FocusRequester() }
+    val birthYearFocus = remember { FocusRequester() }
+    val birthMonthFocus = remember { FocusRequester() }
+    val birthDayFocus = remember { FocusRequester() }
+    val nicknameFocus = remember { FocusRequester() }
     var submitting by remember { mutableStateOf(false) }
     var referenceError by remember { mutableStateOf<String?>(null) }
     var terms by remember { mutableStateOf(emptyList<com.google.gson.JsonObject>()) }
@@ -638,6 +724,7 @@ private fun FitMatePrototypePreview() {
     var verified by remember { mutableStateOf(false) }
     var checkedNickname by remember { mutableStateOf<String?>(null) }
     var signupError by remember { mutableStateOf<String?>(null) }
+    var signupErrors by remember { mutableStateOf(emptySet<String>()) }
     var policy by remember { mutableStateOf<String?>(null) }
     var step by remember { mutableStateOf(1) }
     var emailLocalPart by remember { mutableStateOf("") }
@@ -646,7 +733,9 @@ private fun FitMatePrototypePreview() {
     var isEmailDomainMenuOpen by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
-    var birthDate by remember { mutableStateOf("") }
+    var birthYear by remember { mutableStateOf("") }
+    var birthMonth by remember { mutableStateOf("") }
+    var birthDay by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("") }
     var isAdultVerified by remember { mutableStateOf(false) }
     var nickname by remember { mutableStateOf("") }
@@ -658,31 +747,52 @@ private fun FitMatePrototypePreview() {
     var customInterests by remember { mutableStateOf(emptySet<String>()) }
     var customInterestDraft by remember { mutableStateOf("") }
     var isCustomInterestInputVisible by remember { mutableStateOf(false) }
-    var experience by remember { mutableStateOf("입문") }
-    var goals by remember { mutableStateOf(setOf("운동 습관 만들기")) }
+    var experience by remember { mutableStateOf("처음이에요") }
+    var goals by remember { mutableStateOf(emptySet<String>()) }
     var availableTime by remember { mutableStateOf("평일 저녁") }
     var agreedToTerms by remember { mutableStateOf(false) }
     var agreedToPrivacy by remember { mutableStateOf(false) }
     var agreedToHealthData by remember { mutableStateOf(false) }
     val emailDomain = if (selectedEmailDomain == "직접 입력") customEmailDomain else selectedEmailDomain
     val email = if (emailLocalPart.isBlank() || emailDomain.isBlank()) "" else "$emailLocalPart@$emailDomain"
-    Text("FITMATE", color = Mint, fontWeight = FontWeight.Bold)
+    val birthDate = if (birthYear.length == 4 && birthMonth.length == 2 && birthDay.length == 2) "$birthYear.$birthMonth.$birthDay" else ""
+    val goBack = {
+        if (step > 1) {
+            step -= 1
+            signupError = null
+            signupErrors = emptySet()
+        } else onExit()
+    }
+    BackHandler { goBack() }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("‹", modifier = Modifier.clickable { goBack() }, style = MaterialTheme.typography.headlineMedium, color = FitMateColors.TextPrimary)
+        Text("FITMATE", color = Mint, fontWeight = FontWeight.Bold)
+    }
     ErrorText(signupError)
     referenceError?.let { ErrorText(it); TextButton({ referenceAttempt++ }) { Text("가입 정보 다시 불러오기") } }
     policy?.let { title -> SocialSheet({ policy = null }) { PolicyDetail(title) } }
     when (step) {
         1 -> {
             SectionTitle("계정을 만들어요", "서비스 이용을 위한 기본 정보를 입력하세요.")
-            Text("1 / 4  계정 정보", color = Mint)
+            SignupStepHeader(1, "계정 정보")
             Text("이메일", style = MaterialTheme.typography.labelLarge)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(emailLocalPart, { emailLocalPart = it }, Modifier.weight(1f), label = { Text("아이디") }, singleLine = true)
+            Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(
+                    emailLocalPart,
+                    { emailLocalPart = it; signupErrors = signupErrors - "email" },
+                    Modifier.weight(1f).fillMaxHeight(),
+                    label = { Text("아이디") },
+                    singleLine = true,
+                    isError = "email" in signupErrors,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { if (selectedEmailDomain == "직접 입력") emailDomainFocus.requestFocus() else passwordFocus.requestFocus() })
+                )
                 Text("@", style = MaterialTheme.typography.titleMedium)
-                Box(Modifier.weight(1.25f)) {
+                Box(Modifier.weight(1.25f).fillMaxHeight()) {
                     OutlinedTextField(
                         value = if (selectedEmailDomain == "직접 입력") customEmailDomain else selectedEmailDomain,
-                        onValueChange = { if (selectedEmailDomain == "직접 입력") customEmailDomain = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        onValueChange = { if (selectedEmailDomain == "직접 입력") { customEmailDomain = it; signupErrors = signupErrors - "email" } },
+                        modifier = Modifier.fillMaxSize().focusRequester(emailDomainFocus),
                         label = { Text("도메인") },
                         readOnly = selectedEmailDomain != "직접 입력",
                         trailingIcon = {
@@ -690,7 +800,9 @@ private fun FitMatePrototypePreview() {
                                 Icon(Icons.Filled.ArrowDropDown, contentDescription = "도메인 선택")
                             }
                         },
-                        singleLine = true
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() })
                     )
                     DropdownMenu(expanded = isEmailDomainMenuOpen, onDismissRequest = { isEmailDomainMenuOpen = false }) {
                         listOf("naver.com", "gmail.com", "daum.net", "hanmail.net", "nate.com", "직접 입력").forEach { domain ->
@@ -701,40 +813,75 @@ private fun FitMatePrototypePreview() {
                         }
                     }
                 }
+                OutlinedButton(
+                    onClick = {
+                        val submittedEmail = email
+                        if (!validDemoEmail(submittedEmail)) {
+                            signupErrors = signupErrors + "email"
+                            signupError = null
+                        } else scope.launch {
+                            try {
+                                val available = withContext(Dispatchers.IO) { apiClient.checkEmailAvailability(submittedEmail).available }
+                                if (email == submittedEmail) { verified = available; signupError = if (available) null else "이미 가입한 이메일입니다." }
+                            } catch (failure: Exception) { signupError = failure.message }
+                        }
+                    },
+                    modifier = Modifier.padding(top = 8.dp).fillMaxHeight(),
+                    shape = FitMateShapes.Button,
+                    enabled = !submitting
+                ) { Text(if (verified) "확인됨" else "중복 확인") }
             }
-            Text("로그인 아이디로 사용해요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
+            if ("email" in signupErrors) ErrorText("올바른 이메일을 입력한 뒤 중복 확인해 주세요.")
+            else Text("로그인 아이디로 사용해요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
             LaunchedEffect(email) { verified = false }
-            TextButton({ val submittedEmail = email; scope.launch {
-                try { val available = withContext(Dispatchers.IO) { apiClient.checkEmailAvailability(submittedEmail).available }; if (email == submittedEmail) { verified = available; signupError = if (available) null else "이미 가입한 이메일입니다." } }
-                catch (failure: Exception) { signupError = failure.message }
-            } }, enabled = validDemoEmail(email)) { Text(if (verified) "사용 가능한 이메일" else "이메일 중복 확인") }
-            SecretField(password, { password = it }, "비밀번호")
+            OutlinedTextField(password, { password = it; signupErrors = signupErrors - "password" }, Modifier.fillMaxWidth().focusRequester(passwordFocus), label = { Text("비밀번호") }, singleLine = true, isError = "password" in signupErrors, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { nameFocus.requestFocus() }))
+            if ("password" in signupErrors) ErrorText("영문·숫자를 포함한 8자 이상 비밀번호를 입력해 주세요.")
             Text("영문·숫자 포함 8~64자. 이메일 소유 인증은 아직 지원하지 않습니다.", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(displayName, { displayName = it }, Modifier.fillMaxWidth(), label = { Text("이름") }, singleLine = true)
-            OutlinedTextField(birthDate, { birthDate = it }, Modifier.fillMaxWidth(), label = { Text("생년월일 (YYYY.MM.DD)") }, singleLine = true)
+            OutlinedTextField(displayName, { displayName = it; signupErrors = signupErrors - "name" }, Modifier.fillMaxWidth().focusRequester(nameFocus), label = { Text("이름") }, singleLine = true, isError = "name" in signupErrors, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { birthYearFocus.requestFocus() }))
+            if ("name" in signupErrors) ErrorText("이름을 입력해 주세요.")
+            Text("생년월일", style = MaterialTheme.typography.labelLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SignupBirthField(birthYear, { birthYear = it; signupErrors = signupErrors - "birth" }, "YYYY", 4, Modifier.weight(1.25f), "birth" in signupErrors, birthYearFocus, birthMonthFocus)
+                Text("·", style = MaterialTheme.typography.titleMedium)
+                SignupBirthField(birthMonth, { birthMonth = it; signupErrors = signupErrors - "birth" }, "MM", 2, Modifier.weight(0.8f), "birth" in signupErrors, birthMonthFocus, birthDayFocus)
+                Text("·", style = MaterialTheme.typography.titleMedium)
+                SignupBirthField(birthDay, { birthDay = it; signupErrors = signupErrors - "birth" }, "DD", 2, Modifier.weight(0.8f), "birth" in signupErrors, birthDayFocus)
+            }
+            if ("birth" in signupErrors) ErrorText("생년월일을 정확히 입력해 주세요. 만 18세 이상만 가입할 수 있어요.")
             Text("성별", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("남성", "여성", "선택 안 함").forEach { option -> FilterChip(gender == option, { gender = option }, { Text(option) }) }
+                listOf("남성", "여성", "선택 안 함").forEach { option -> FilterChip(gender == option, { gender = option; signupErrors = signupErrors - "gender" }, { Text(option) }) }
             }
+            if ("gender" in signupErrors) ErrorText("성별을 선택해 주세요.")
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("만 18세 이상입니다.", style = MaterialTheme.typography.bodyMedium)
-                Switch(isAdultVerified, { isAdultVerified = it })
+                Switch(isAdultVerified, { isAdultVerified = it; signupErrors = signupErrors - "adult" })
             }
+            if ("adult" in signupErrors) ErrorText("만 18세 이상 여부를 확인해 주세요.")
             PrimaryAction("다음") {
                 val birth = runCatching { java.time.LocalDate.parse(birthDate.replace('.', '-')) }.getOrNull()
-                if (verified && validDemoPassword(password) && password.length <= 64 && password.toByteArray().size <= 72 && displayName.isNotBlank() && birth != null && !birth.isAfter(java.time.LocalDate.now().minusYears(18)) && isAdultVerified) { signupError = null; step = 2 }
-                else signupError = "이메일 중복 확인, 비밀번호, 생년월일과 만 18세 이상 여부를 확인하세요."
+                val errors = buildSet {
+                    if (!verified || !validDemoEmail(email)) add("email")
+                    if (!validDemoPassword(password) || password.length > 64 || password.toByteArray().size > 72) add("password")
+                    if (displayName.isBlank()) add("name")
+                    if (birth == null || birth.isAfter(java.time.LocalDate.now().minusYears(18))) add("birth")
+                    if (gender.isBlank()) add("gender")
+                    if (!isAdultVerified) add("adult")
+                }
+                signupErrors = errors
+                if (errors.isEmpty()) { signupError = null; step = 2 }
             }
         }
         2 -> {
             SectionTitle("내 프로필을 꾸며요", "다른 사용자에게는 닉네임과 대략적인 지역만 보여요.")
-            Text("2 / 4  프로필", color = Mint)
-            OutlinedTextField(nickname, { nickname = it }, Modifier.fillMaxWidth(), label = { Text("닉네임") }, singleLine = true)
-            TextButton({
+            SignupStepHeader(2, "프로필")
+            Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(nickname, { nickname = it; signupErrors = signupErrors - "nickname" }, Modifier.weight(1f).fillMaxHeight().focusRequester(nicknameFocus), label = { Text("닉네임") }, singleLine = true, isError = "nickname" in signupErrors, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done))
+                OutlinedButton({
                 val value = nickname.trim()
                 if (value.isBlank()) {
                     checkedNickname = null
-                    signupError = "닉네임을 입력하세요."
+                    signupErrors = signupErrors + "nickname"
                 } else {
                     scope.launch {
                         val available = runCatching { withContext(Dispatchers.IO) { apiClient.checkNicknameAvailability(value).available } }.getOrNull()
@@ -746,15 +893,25 @@ private fun FitMatePrototypePreview() {
                         }
                     }
                 }
-            }) { Text(if (checkedNickname == nickname.trim()) "사용 가능" else "닉네임 중복 확인") }
+                }, modifier = Modifier.padding(top = 8.dp).fillMaxHeight(), shape = FitMateShapes.Button) { Text(if (checkedNickname == nickname.trim()) "확인됨" else "중복 확인") }
+            }
+            when {
+                "nickname" in signupErrors -> ErrorText("닉네임을 입력한 뒤 중복 확인해 주세요.")
+                checkedNickname == nickname.trim() -> Text("사용할 수 있는 닉네임이에요.", color = Mint, style = MaterialTheme.typography.bodySmall)
+            }
             ServerRegionPicker(apiClient, region) { id, name -> regionId = id; region = name }
+            if ("region" in signupErrors) ErrorText("활동 지역을 선택해 주세요.")
             ServerFacilityPicker(apiClient, regionId, facilityName) { facilityName = it }
             OutlinedTextField(bio, { bio = it }, Modifier.fillMaxWidth(), label = { Text("자기소개 (선택)") }, minLines = 2)
-            PrimaryAction("다음") { if (nickname.isNotBlank() && checkedNickname == nickname.trim() && region.isNotBlank()) { signupError = null; step = 3 } else signupError = "닉네임 중복 확인과 활동 지역을 입력하세요." }
+            PrimaryAction("다음") {
+                val errors = buildSet { if (nickname.isBlank() || checkedNickname != nickname.trim()) add("nickname"); if (region.isBlank()) add("region") }
+                signupErrors = errors
+                if (errors.isEmpty()) { signupError = null; step = 3 }
+            }
         }
         3 -> {
             SectionTitle("운동 정보를 알려주세요", "추천 루틴과 운동 메이트를 맞추는 데 사용해요.")
-            Text("3 / 4  운동 프로필", color = Mint)
+            SignupStepHeader(3, "운동 프로필")
             Text("관심 운동 · 복수 선택", style = MaterialTheme.typography.labelLarge)
             Sport.entries.chunked(3).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -794,37 +951,39 @@ private fun FitMatePrototypePreview() {
             } else {
                 OutlinedButton({ isCustomInterestInputVisible = true }, shape = FitMateShapes.Button) { Text("+ 직접 추가", color = Mint) }
             }
-            Text("운동 경력", style = MaterialTheme.typography.labelLarge)
+            Text("운동 경험", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("입문", "6개월 미만", "1년 이상").forEach { option -> FilterChip(experience == option, { experience = option }, { Text(option) }) }
+                listOf("처음이에요", "가끔 해요", "꾸준히 해요").forEach { option -> FilterChip(experience == option, { experience = option }, { Text(option) }) }
             }
             Text("운동 목표 · 복수 선택", style = MaterialTheme.typography.labelLarge)
-            Text("주 목표: ${goals.firstOrNull() ?: "목표를 선택하세요"} · 먼저 선택한 목표를 기준으로 추천해요.", style = MaterialTheme.typography.bodySmall)
-            listOf("다이어트", "근육 증가", "체력 향상", "기록 향상", "운동 습관 만들기").chunked(3).forEach { goalRow ->
+            listOf("체력 향상", "근육 증가", "체중 감량", "습관 만들기").chunked(2).forEach { goalRow ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     goalRow.forEach { goal -> FilterChip(goals.contains(goal), { goals = if (goals.contains(goal)) goals - goal else goals + goal }, { Text(goal) }) }
                 }
             }
-            Text("주 운동 가능 시간", style = MaterialTheme.typography.labelLarge)
-            Text("평일 아침 06~09시 · 평일 저녁 18~22시 · 주말 09~18시", style = MaterialTheme.typography.bodySmall)
+            if ("sports" in signupErrors) ErrorText("관심 운동을 하나 이상 선택해 주세요.")
+            if ("goals" in signupErrors) ErrorText("운동 목표를 하나 이상 선택해 주세요.")
+            Text("선호 시간", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("평일 아침", "평일 저녁", "주말").forEach { option -> FilterChip(availableTime == option, { availableTime = option }, { Text(option) }) }
             }
-            PrimaryAction("다음") { if ((selectedSports.isNotEmpty() || customInterests.isNotEmpty()) && goals.isNotEmpty()) step = 4 }
+            PrimaryAction("다음") {
+                val errors = buildSet { if (selectedSports.isEmpty() && customInterests.isEmpty()) add("sports"); if (goals.isEmpty()) add("goals") }
+                signupErrors = errors
+                if (errors.isEmpty()) step = 4
+            }
         }
         else -> {
             SectionTitle("약관과 정보를 확인해요", "필수 약관 동의 후 FitMate를 시작할 수 있어요.")
-            Text("4 / 4  가입 완료", color = Mint)
-            TextButton({ policy = "이용약관" }) { Text("이용약관 상세") }
-            TextButton({ policy = "개인정보 처리방침" }) { Text("개인정보 처리방침 상세") }
+            SignupStepHeader(4, "가입 완료")
             SoftCard {
                 Text("$displayName · $nickname", fontWeight = FontWeight.Bold)
                 Text("활동 지역 · $region${if (facilityName.isNotBlank()) " · $facilityName" else ""}")
                 Text("관심 운동 · ${(selectedSports.map { it.label } + customInterests).joinToString()}")
                 Text("운동 목표 · ${goals.joinToString()}")
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text("이용약관 동의 (필수)"); Switch(agreedToTerms, { agreedToTerms = it }) }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text("개인정보 수집·이용 동의 (필수)"); Switch(agreedToPrivacy, { agreedToPrivacy = it }) }
+                SignupConsentRow("이용약관 동의 (필수)", "이용약관 보기", agreedToTerms, { agreedToTerms = it }) { policy = "이용약관" }
+                SignupConsentRow("개인정보 수집·이용 동의 (필수)", "개인정보 처리방침 보기", agreedToPrivacy, { agreedToPrivacy = it }) { policy = "개인정보 처리방침" }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text("건강정보 처리 동의 (선택)"); Switch(agreedToHealthData, { agreedToHealthData = it }) }
             }
             Button(onClick = {
@@ -1174,6 +1333,178 @@ private fun FitMatePrototypePreview() {
 
 private enum class TimePickerTarget { START_TIME, DURATION }
 
+private fun applyWorkoutComposition(session: WorkoutSession, response: com.google.gson.JsonObject) {
+    val names = response.rows("exercises").map { it.text("exerciseName") }
+    val selectedName = session.sessionExercises.getOrNull(session.selectedExerciseIndex)
+    session.sessionExercises.clear()
+    session.sessionExercises.addAll(names)
+    session.selectedExerciseIndex = names.indexOf(selectedName).takeIf { it >= 0 } ?: 0
+    session.exerciseName = names.getOrElse(session.selectedExerciseIndex) { "" }
+}
+
+/** Separate management from set entry so the in-progress screen keeps one primary action. */
+@Composable private fun WorkoutOverviewContent(
+    session: WorkoutSession,
+    history: List<WorkoutSummary>,
+    availableExercises: List<ApiExercise>,
+    serverWorkout: ServerWorkout?,
+    saveRoutine: (SavedRoutine) -> Boolean,
+    onBack: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var catalogExpanded by remember { mutableStateOf(false) }
+    var selectedServerExercise by remember { mutableStateOf<ApiExercise?>(null) }
+    val serverExercises = session.serverState?.let { com.google.gson.JsonParser.parseString(it).asJsonObject.rows("exercises") }.orEmpty()
+    fun select(index: Int) {
+        session.selectedExerciseIndex = index
+        session.exerciseName = session.sessionExercises.getOrElse(index) { "" }
+    }
+    fun update(action: () -> com.google.gson.JsonObject) {
+        if (saving) return
+        saving = true
+        session.syncError = null
+        scope.launch {
+            try { applyWorkoutComposition(session, withContext(Dispatchers.IO) { action() }) }
+            catch (failure: Exception) {
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                session.syncError = failure.message ?: "운동 구성을 저장하지 못했습니다."
+            } finally { saving = false }
+        }
+    }
+
+    SectionTitle("전체 운동", "오늘의 구성을 확인하고 필요한 운동만 관리하세요.")
+    TextButton(onBack) { Text("‹ 운동 진행으로 돌아가기") }
+    session.syncError?.let { ErrorText(it) }
+    SoftCard {
+        Text("오늘의 세트 목표", fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(3, 6, 9).forEach { count ->
+                FilterChip(session.targetSetCount == count, { session.targetSetCount = count }, label = { Text("${count}세트") })
+            }
+        }
+    }
+    SoftCard {
+        Text("운동 순서 · ${session.sessionExercises.size}개", fontWeight = FontWeight.Bold)
+        session.sessionExercises.forEachIndexed { index, name ->
+            val selected = session.selectedExerciseIndex == index
+            Row(
+                Modifier.fillMaxWidth().clickable { select(index) }.background(if (selected) Mint.copy(alpha = .10f) else Color.Transparent, FitMateShapes.Button).padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("${index + 1}", color = if (selected) Mint else FitMateColors.TextSecondary, fontWeight = FontWeight.Bold)
+                Column(Modifier.weight(1f)) {
+                    Text(name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                    Text("${session.recordedSets.count { it.exerciseName == name }}세트 기록", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
+                }
+                Text(if (selected) "진행 중" else "선택", color = Mint, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+    SoftCard {
+        Text("선택한 운동 관리", fontWeight = FontWeight.Bold)
+        Text(session.exerciseName.ifBlank { "운동을 먼저 추가해 주세요." }, style = MaterialTheme.typography.titleMedium, color = Mint)
+        val selectedIndex = session.selectedExerciseIndex
+        val canChangeSelected = session.exerciseName.isNotBlank() && session.recordedSets.none { it.exerciseName == session.exerciseName }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton({
+                if (selectedIndex > 0) {
+                    if (session.serverState != null) {
+                        val row = serverExercises.getOrNull(selectedIndex) ?: return@OutlinedButton
+                        update { requireNotNull(serverWorkout).moveExercise(row.text("id"), row.get("version").asLong, selectedIndex) }
+                    } else {
+                        val previous = session.sessionExercises[selectedIndex - 1]
+                        session.sessionExercises[selectedIndex - 1] = session.exerciseName
+                        session.sessionExercises[selectedIndex] = previous
+                        select(selectedIndex - 1)
+                    }
+                }
+            }, Modifier.weight(1f), enabled = !saving && selectedIndex > 0, shape = FitMateShapes.Button) { Text("위로") }
+            OutlinedButton({
+                if (selectedIndex < session.sessionExercises.lastIndex) {
+                    if (session.serverState != null) {
+                        val row = serverExercises.getOrNull(selectedIndex) ?: return@OutlinedButton
+                        update { requireNotNull(serverWorkout).moveExercise(row.text("id"), row.get("version").asLong, selectedIndex + 2) }
+                    } else {
+                        val next = session.sessionExercises[selectedIndex + 1]
+                        session.sessionExercises[selectedIndex + 1] = session.exerciseName
+                        session.sessionExercises[selectedIndex] = next
+                        select(selectedIndex + 1)
+                    }
+                }
+            }, Modifier.weight(1f), enabled = !saving && selectedIndex < session.sessionExercises.lastIndex, shape = FitMateShapes.Button) { Text("아래로") }
+            OutlinedButton({
+                if (!canChangeSelected || session.sessionExercises.size <= 1) {
+                    session.syncError = if (!canChangeSelected) "세트가 기록된 운동은 삭제할 수 없습니다." else "마지막 운동은 삭제할 수 없습니다."
+                } else if (session.serverState != null) {
+                    val row = serverExercises.getOrNull(selectedIndex) ?: return@OutlinedButton
+                    update { requireNotNull(serverWorkout).deleteExercise(row.text("id"), row.get("version").asLong) }
+                } else {
+                    session.sessionExercises.removeAt(selectedIndex)
+                    select(selectedIndex.coerceAtMost(session.sessionExercises.lastIndex))
+                }
+            }, Modifier.weight(1f), enabled = !saving, shape = FitMateShapes.Button) { Text("삭제", color = MaterialTheme.colorScheme.error) }
+        }
+        OutlinedTextField(session.exerciseDraft, { next ->
+            if (next != selectedServerExercise?.name) selectedServerExercise = null
+            session.exerciseDraft = next
+        }, Modifier.fillMaxWidth(), label = { Text("추가하거나 대체할 운동") }, singleLine = true)
+        if (session.serverState != null) Box {
+            OutlinedButton({ catalogExpanded = true }, enabled = !saving, shape = FitMateShapes.Button) { Text("운동 목록에서 선택") }
+            DropdownMenu(catalogExpanded, { catalogExpanded = false }) {
+                availableExercises.filter { it.name.contains(session.exerciseDraft, ignoreCase = true) }.take(30).forEach { candidate ->
+                    DropdownMenuItem(text = { Text(candidate.name) }, onClick = {
+                        selectedServerExercise = candidate; session.exerciseDraft = candidate.name; catalogExpanded = false
+                    })
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton({
+                val candidate = selectedServerExercise
+                if (session.exerciseDraft.isBlank()) return@OutlinedButton
+                if (session.serverState != null) {
+                    if (candidate == null || candidate.name != session.exerciseDraft) session.syncError = "서버 운동 목록에서 운동을 선택해 주세요."
+                    else if (session.sessionExercises.contains(candidate.name)) session.syncError = "같은 운동은 한 번만 추가할 수 있어요."
+                    else { update { requireNotNull(serverWorkout).addExercise(candidate.id, session.sessionExercises.size + 1) }; session.exerciseDraft = ""; selectedServerExercise = null }
+                } else { session.sessionExercises += session.exerciseDraft; select(session.sessionExercises.lastIndex); session.exerciseDraft = "" }
+            }, Modifier.weight(1f), enabled = !saving, shape = FitMateShapes.Button) { Text("운동 추가", color = Mint) }
+            OutlinedButton({
+                val candidate = selectedServerExercise
+                if (session.exerciseDraft.isBlank()) return@OutlinedButton
+                if (!canChangeSelected) { session.syncError = "세트가 기록된 운동은 대체할 수 없습니다." }
+                else if (session.serverState != null) {
+                    val row = serverExercises.getOrNull(selectedIndex)
+                    if (candidate == null || candidate.name != session.exerciseDraft) session.syncError = "서버 운동 목록에서 운동을 선택해 주세요."
+                    else if (session.sessionExercises.withIndex().any { it.index != selectedIndex && it.value == candidate.name }) session.syncError = "같은 운동으로 대체할 수 없어요."
+                    else if (row != null) { update { requireNotNull(serverWorkout).replaceExercise(row.text("id"), row.get("version").asLong, candidate.id) }; session.exerciseDraft = ""; selectedServerExercise = null }
+                } else { session.sessionExercises[selectedIndex] = session.exerciseDraft; session.exerciseName = session.exerciseDraft; session.exerciseDraft = "" }
+            }, Modifier.weight(1f), enabled = !saving, shape = FitMateShapes.Button) { Text("선택 운동 대체", color = Mint) }
+        }
+        ExerciseHelp(session, history, saveRoutine)
+    }
+    if (session.recordedSets.isNotEmpty()) SoftCard {
+        Text("기록한 세트", fontWeight = FontWeight.Bold)
+        session.recordedSets.forEachIndexed { index, set ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${index + 1}세트 · ${set.exerciseName} · ${set.weightKg} kg × ${set.repetitions}회", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                TextButton({
+                    select(session.sessionExercises.indexOf(set.exerciseName).coerceAtLeast(0))
+                    session.weightText = (if (session.unit == "lb") set.weightKg * 2.2046226218 else set.weightKg).toString()
+                    session.repetitionText = set.repetitions.toString(); session.rpeText = set.rpe?.toString().orEmpty(); session.memo = set.memo; session.editingSetIndex = index
+                    onBack()
+                }) { Text("수정") }
+                TextButton({
+                    session.recordedSets.removeAt(index)
+                    if (session.editingSetIndex == index) session.editingSetIndex = -1 else if (session.editingSetIndex > index) session.editingSetIndex -= 1
+                }) { Text("삭제", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+    }
+    OutlinedButton(onBack, Modifier.fillMaxWidth(), shape = FitMateShapes.Button) { Text("운동 진행으로 돌아가기", color = Mint) }
+}
+
 @Composable private fun WorkoutScreen(
     modifier: Modifier,
     session: WorkoutSession,
@@ -1187,48 +1518,13 @@ private enum class TimePickerTarget { START_TIME, DURATION }
 ) = with(session) { Screen(modifier) {
     val uploadScope = rememberCoroutineScope()
     var completing by remember { mutableStateOf(false) }
-    var compositionSaving by remember { mutableStateOf(false) }
-    var catalogExpanded by remember { mutableStateOf(false) }
-    var selectedServerExercise by remember { mutableStateOf<ApiExercise?>(null) }
-    fun applyServerComposition(response: com.google.gson.JsonObject) {
-        val names = response.rows("exercises").map { it.text("exerciseName") }
-        val selectedName = sessionExercises.getOrNull(selectedExerciseIndex)
-        sessionExercises.clear()
-        sessionExercises.addAll(names)
-        selectedExerciseIndex = names.indexOf(selectedName).takeIf { it >= 0 } ?: 0
-        exerciseName = names.getOrElse(selectedExerciseIndex) { "" }
-    }
-    fun editServerComposition(action: () -> com.google.gson.JsonObject) {
-        if (compositionSaving) return
-        compositionSaving = true
-        syncError = null
-        uploadScope.launch {
-            try {
-                applyServerComposition(withContext(Dispatchers.IO) { action() })
-            } catch (failure: Exception) {
-                if (failure is kotlinx.coroutines.CancellationException) throw failure
-                syncError = failure.message ?: "운동 구성을 저장하지 못했습니다."
-            } finally { compositionSaving = false }
-        }
-    }
-    if (serverState != null) {
-        Text("운동 구성과 세트 기록을 서버에 저장합니다.")
-        syncError?.let { ErrorText(it) }
-    } else Text("직접 구성 운동은 이 기기에 저장됩니다.")
-    var recordEvent by remember(session) { mutableStateOf(0) }
-    var highlightedSet by remember(session) { mutableStateOf(-1) }
+    var showWorkoutOverview by remember(session) { mutableStateOf(false) }
+    BackHandler(enabled = showWorkoutOverview) { showWorkoutOverview = false }
     var recordConfirmation by remember(session) { mutableStateOf<String?>(null) }
-    val highlight = recordHighlight(recordEvent)
-    LaunchedEffect(recordEvent) {
-        if (recordEvent > 0) {
-            delay(1400)
-            recordConfirmation = null
-            highlightedSet = -1
-        }
-    }
     val currentVolume = recordedSets.sumOf { it.weightKg * it.repetitions }
     val elapsedTime = "%02d:%02d:%02d".format(elapsedSeconds / 3600, elapsedSeconds / 60 % 60, elapsedSeconds % 60)
     val displayedRestSeconds = if (remainingRestSeconds > 0) remainingRestSeconds else restPresetSeconds
+    var showSetDetails by remember(session) { mutableStateOf(false) }
 
     LaunchedEffect(isTimerRunning) {
         while (isTimerRunning) {
@@ -1248,184 +1544,65 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         }
     }
 
+    if (showWorkoutOverview) {
+        WorkoutOverviewContent(session, history, availableExercises, serverWorkout, saveRoutine) { showWorkoutOverview = false }
+    } else {
+
     SoftCard {
-        Text("Samsung Health Data", fontWeight = FontWeight.Bold)
-        Text(if (useSamsung) "기기에서 먼저 운동 시작 → FitMate 기록 → 기기 종료 후 상세 로그 동기화" else "FitMate 직접 기록으로 기본 리포트를 생성합니다.")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("${if (serverState != null) "오늘의 운동" else "직접 구성"} · ${selectedExerciseIndex + 1}/${sessionExercises.size} 진행", fontWeight = FontWeight.SemiBold)
+            Text(elapsedTime.drop(3), color = Mint, fontWeight = FontWeight.Bold)
+        }
+        ProgressBar((selectedExerciseIndex + 1).toFloat() / sessionExercises.size.coerceAtLeast(1))
+        Text("기록 ${recordedSets.size}세트 · 총 볼륨 ${"%.0f".format(currentVolume)} kg", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
     }
     SoftCard {
-        Text("오늘의 세트 목표", fontWeight = FontWeight.Bold)
-        Text("완료한 세트 수를 기준으로 리포트에서 달성 여부를 보여드려요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(3, 6, 9).forEach { count ->
-                FilterChip(
-                    selected = targetSetCount == count,
-                    onClick = { targetSetCount = count },
-                    label = { Text("${count}세트") }
-                )
+        Text("현재 운동 · ${selectedExerciseIndex + 1}/${sessionExercises.size}", style = MaterialTheme.typography.labelLarge, color = FitMateColors.TextSecondary)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(Modifier.size(42.dp).background(Mint.copy(alpha = .12f), CircleShape), contentAlignment = Alignment.Center) {
+                Text("✦", color = Mint, style = MaterialTheme.typography.titleLarge)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(exerciseName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                val previous = history.asReversed().firstNotNullOfOrNull { summary -> summary.sets.lastOrNull { it.exerciseName == exerciseName } }
+                Text(previous?.let { "이전 기록 · ${it.weightKg} kg × ${it.repetitions}회" } ?: "이전 동일 운동 기록 없음", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
             }
         }
-    }
-    SoftCard {
-        Text("운동 구성", fontWeight = FontWeight.Bold)
-        ExerciseHelp(session, history, saveRoutine)
-        if (sessionExercises.isEmpty()) Text("첫 운동을 추가한 뒤 세트를 기록하세요.", color = Mint)
-        Text("운동을 추가하고 순서를 바꾸거나 대체 운동으로 변경할 수 있어요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-        val serverExercises = serverState?.let { com.google.gson.JsonParser.parseString(it).asJsonObject.rows("exercises") }.orEmpty()
-        sessionExercises.forEachIndexed { index, name ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${index + 1}. $name", modifier = Modifier.weight(1f), color = if (selectedExerciseIndex == index) Mint else FitMateColors.TextPrimary, fontWeight = if (selectedExerciseIndex == index) FontWeight.Bold else FontWeight.Normal)
-                Text("선택", color = Mint, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { selectedExerciseIndex = index; exerciseName = name })
-                Text("↑", color = if (index > 0) Mint else FitMateColors.TextSecondary, style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable {
-                    if (index > 0) {
-                        if (serverState != null) {
-                            val row = serverExercises.getOrNull(index) ?: return@clickable
-                            editServerComposition { requireNotNull(serverWorkout).moveExercise(row.text("id"), row.get("version").asLong, index) }
-                            return@clickable
-                        }
-                        val previous = sessionExercises[index - 1]
-                        sessionExercises[index - 1] = name
-                        sessionExercises[index] = previous
-                        if (selectedExerciseIndex == index) selectedExerciseIndex -= 1 else if (selectedExerciseIndex == index - 1) selectedExerciseIndex += 1
-                    }
-                })
-                Text("↓", color = if (index < sessionExercises.lastIndex) Mint else FitMateColors.TextSecondary, style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable {
-                    if (index < sessionExercises.lastIndex) {
-                        if (serverState != null) {
-                            val row = serverExercises.getOrNull(index) ?: return@clickable
-                            editServerComposition { requireNotNull(serverWorkout).moveExercise(row.text("id"), row.get("version").asLong, index + 2) }
-                            return@clickable
-                        }
-                        val next = sessionExercises[index + 1]
-                        sessionExercises[index + 1] = name
-                        sessionExercises[index] = next
-                        if (selectedExerciseIndex == index) selectedExerciseIndex += 1 else if (selectedExerciseIndex == index + 1) selectedExerciseIndex -= 1
-                    }
-                })
-                Text("삭제", color = if (sessionExercises.size > 1) MaterialTheme.colorScheme.error else FitMateColors.TextSecondary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable {
-                    if (sessionExercises.size > 1) {
-                        if (recordedSets.any { it.exerciseName == name }) {
-                            syncError = "세트가 기록된 운동은 삭제할 수 없습니다. 세트를 먼저 삭제하거나 운동을 완료해 주세요."
-                            return@clickable
-                        }
-                        if (serverState != null) {
-                            val row = serverExercises.getOrNull(index) ?: return@clickable
-                            editServerComposition { requireNotNull(serverWorkout).deleteExercise(row.text("id"), row.get("version").asLong) }
-                            return@clickable
-                        }
-                        sessionExercises.removeAt(index)
-                        selectedExerciseIndex = selectedExerciseIndex.coerceAtMost(sessionExercises.lastIndex)
-                        exerciseName = sessionExercises[selectedExerciseIndex]
-                    }
-                })
-            }
-        }
-        OutlinedTextField(exerciseDraft, { next ->
-            if (next != selectedServerExercise?.name) selectedServerExercise = null
-            exerciseDraft = next
-        }, Modifier.fillMaxWidth(), label = { Text("추가하거나 대체할 운동명") }, singleLine = true)
-        if (serverState != null) Box {
-            OutlinedButton({ catalogExpanded = true }, enabled = !compositionSaving, shape = FitMateShapes.Button) { Text("운동 목록에서 선택") }
-            DropdownMenu(catalogExpanded, { catalogExpanded = false }) {
-                availableExercises.filter { it.name.contains(exerciseDraft, ignoreCase = true) }.take(30).forEach { candidate ->
-                    DropdownMenuItem(text = { Text(candidate.name) }, onClick = {
-                        selectedServerExercise = candidate
-                        exerciseDraft = candidate.name
-                        catalogExpanded = false
-                    })
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton({
-                if (exerciseDraft.isNotBlank()) {
-                    if (serverState != null) {
-                        val candidate = selectedServerExercise
-                        if (candidate == null || candidate.name != exerciseDraft) {
-                            syncError = "서버 운동 목록에서 운동을 선택해 주세요."
-                        } else if (sessionExercises.contains(candidate.name)) {
-                            syncError = "같은 운동은 한 번만 추가할 수 있어요."
-                        } else {
-                            editServerComposition { requireNotNull(serverWorkout).addExercise(candidate.id, sessionExercises.size + 1) }
-                            exerciseDraft = ""; selectedServerExercise = null
-                        }
-                        return@OutlinedButton
-                    }
-                    sessionExercises += exerciseDraft
-                    selectedExerciseIndex = sessionExercises.lastIndex
-                    exerciseName = exerciseDraft
-                    exerciseDraft = ""
-                }
-            }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("운동 추가", color = Mint) }
-            OutlinedButton({
-                if (exerciseDraft.isNotBlank() && sessionExercises.isNotEmpty()) {
-                    if (recordedSets.any { it.exerciseName == sessionExercises[selectedExerciseIndex] }) {
-                        syncError = "세트가 기록된 운동은 대체할 수 없습니다."
-                        return@OutlinedButton
-                    }
-                    if (serverState != null) {
-                        val candidate = selectedServerExercise
-                        val row = serverExercises.getOrNull(selectedExerciseIndex)
-                        if (candidate == null || candidate.name != exerciseDraft) {
-                            syncError = "서버 운동 목록에서 운동을 선택해 주세요."
-                        } else if (sessionExercises.withIndex().any { it.index != selectedExerciseIndex && it.value == candidate.name }) {
-                            syncError = "같은 운동으로 대체할 수 없어요."
-                        } else if (row != null) {
-                            editServerComposition { requireNotNull(serverWorkout).replaceExercise(row.text("id"), row.get("version").asLong, candidate.id) }
-                            exerciseDraft = ""; selectedServerExercise = null
-                        }
-                        return@OutlinedButton
-                    }
-                    sessionExercises[selectedExerciseIndex] = exerciseDraft
-                    exerciseName = exerciseDraft
-                    exerciseDraft = ""
-                }
-            }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("선택 운동 대체", color = Mint) }
-        }
-    }
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Ink), shape = RoundedCornerShape(24.dp)) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("운동 중", color = Color(0xFF6FF1D0), fontWeight = FontWeight.Bold)
-            Text(elapsedTime, style = MaterialTheme.typography.headlineLarge, color = Color.White, fontWeight = FontWeight.Bold)
-            Text("기록 ${recordedSets.size}세트 · 총 볼륨 ${"%.0f".format(currentVolume)} kg", color = Color(0xFFD3E4DF))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ isTimerRunning = !isTimerRunning }, shape = FitMateShapes.Button) { Text(if (isTimerRunning) "일시정지" else "재개", color = Color.White) }
-                OutlinedButton({ elapsedSeconds = 0 }, shape = FitMateShapes.Button) { Text("초기화", color = Color.White) }
-            }
-        }
+        TextButton({ showWorkoutOverview = true }) { Text("전체 운동 보기  ›", color = Mint) }
     }
     SoftCard {
         Text("세트 기록", fontWeight = FontWeight.Bold)
-        Text("선택 운동 · $exerciseName", style = MaterialTheme.typography.titleMedium, color = Mint)
-        Choices(listOf("kg", "lb"), unit) { changeUnit(it) }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(exerciseName, style = MaterialTheme.typography.titleMedium, color = Mint)
+            Choices(listOf("kg", "lb"), unit) { changeUnit(it) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             OutlinedTextField(weightText, { weightText = it }, Modifier.weight(1f), label = { Text("중량 ($unit)") }, singleLine = true)
             OutlinedTextField(repetitionText, { repetitionText = it }, Modifier.weight(1f), label = { Text("반복 횟수") }, singleLine = true)
+            OutlinedTextField(rpeText, { rpeText = it }, Modifier.weight(1f), label = { Text("RPE") }, singleLine = true)
         }
-        OutlinedTextField(rpeText, { rpeText = it }, Modifier.fillMaxWidth(), label = { Text("RPE (선택 · 1~10)") }, supportingText = { Text("운동 강도와 힘든 정도를 기록하세요.") }, singleLine = true)
-        OutlinedTextField(memo, { memo = it }, Modifier.fillMaxWidth(), label = { Text("세트 메모 (선택)") }, minLines = 2)
+        if (showSetDetails) OutlinedTextField(memo, { memo = it }, Modifier.fillMaxWidth(), label = { Text("세트 메모 (선택)") }, singleLine = true)
+        TextButton({ showSetDetails = !showSetDetails }) { Text(if (showSetDetails) "메모 닫기" else "메모 추가", color = Mint) }
         SetRecordAction(if (editingSetIndex >= 0) "세트 수정" else "이 세트 기록", recordConfirmation) {
             val wasEditing = editingSetIndex in recordedSets.indices
             val index = if (wasEditing) editingSetIndex else recordedSets.size
             if (recordSet()) {
-                highlightedSet = index
                 recordConfirmation = "✓ ${index + 1}세트 ${if (wasEditing) "수정" else "기록"} 완료"
-                recordEvent += 1
             } else {
                 recordConfirmation = null
-                highlightedSet = -1
             }
         }
         ErrorText(error)
     }
     SoftCard {
-        Text("휴식 타이머", fontWeight = FontWeight.Bold)
-        Text("${if (remainingRestSeconds > 0) "휴식 중" else "다음 휴식"} · ${displayedRestSeconds / 60}:${(displayedRestSeconds % 60).toString().padStart(2, '0')}", style = MaterialTheme.typography.titleLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(30 to "30초", 60 to "1분", 90 to "1분 30초").forEach { (seconds, label) ->
-                OutlinedButton({ restPresetSeconds = seconds; remainingRestSeconds = 0; isRestTimerRunning = false }, Modifier.weight(1f), shape = FitMateShapes.Button, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp)) { Text(label, maxLines = 1) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text("휴식 타이머", fontWeight = FontWeight.Bold)
+                Text("${if (remainingRestSeconds > 0) "휴식 중" else "다음 휴식"}", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
             }
+            Text("${displayedRestSeconds / 60}:${(displayedRestSeconds % 60).toString().padStart(2, '0')}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton({
                 if (isRestTimerRunning) isRestTimerRunning = false
                 else {
@@ -1433,35 +1610,15 @@ private enum class TimePickerTarget { START_TIME, DURATION }
                     isRestTimerRunning = true
                 }
             }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text(if (isRestTimerRunning) "일시정지" else if (remainingRestSeconds > 0) "재개" else "휴식 시작") }
-            OutlinedButton({ remainingRestSeconds = 0; isRestTimerRunning = false }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("휴식 종료") }
+            OutlinedButton({ remainingRestSeconds = (remainingRestSeconds.takeIf { it > 0 } ?: restPresetSeconds) + 30 }, Modifier.weight(1f), shape = FitMateShapes.Button) { Text("+ 30초") }
+            TextButton({ restPresetSeconds = if (restPresetSeconds == 30) 60 else if (restPresetSeconds == 60) 90 else 30; remainingRestSeconds = 0; isRestTimerRunning = false }) { Text("설정", color = Mint) }
         }
     }
-    if (recordedSets.isNotEmpty()) {
-        SoftCard {
-            Text("기록한 세트", fontWeight = FontWeight.Bold)
-            recordedSets.forEachIndexed { index, set ->
-                Row(Modifier.fillMaxWidth().background(Mint.copy(alpha = if (highlightedSet == index) highlight * .16f else 0f), FitMateShapes.Button), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${index + 1}세트 · ${set.exerciseName} · ${set.weightKg} kg × ${set.repetitions}회", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton({
-                        recordConfirmation = null
-                        highlightedSet = -1
-                        exerciseName = set.exerciseName
-                        weightText = (if (unit == "lb") set.weightKg * 2.2046226218 else set.weightKg).toString()
-                        repetitionText = set.repetitions.toString()
-                        rpeText = set.rpe?.toString().orEmpty()
-                        memo = set.memo
-                        editingSetIndex = index
-                    }, shape = FitMateShapes.Button) { Text("수정") }
-                    OutlinedButton({
-                        recordConfirmation = null
-                        highlightedSet = -1
-                        recordedSets.removeAt(index)
-                        if (editingSetIndex == index) editingSetIndex = -1
-                        else if (editingSetIndex > index) editingSetIndex -= 1
-                    }, shape = FitMateShapes.Button) { Text("삭제") }
-                }
-            }
-        }
+    if (recordedSets.isNotEmpty()) SoftCard {
+        val last = recordedSets.last()
+        Text("방금 기록", fontWeight = FontWeight.Bold)
+        Text("${last.weightKg} kg × ${last.repetitions}회 · 오늘 ${recordedSets.size}세트", color = Mint)
+        TextButton({ showWorkoutOverview = true }) { Text("기록 수정·삭제는 전체 운동에서", color = Mint) }
     }
     OutlinedButton({ isSafetyNoticeVisible = !isSafetyNoticeVisible }, Modifier.fillMaxWidth(), shape = FitMateShapes.Button) { Text("통증·불편 시 운동 중단", color = Mint) }
     if (isSafetyNoticeVisible) {
@@ -1481,6 +1638,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         }
     }, Modifier.fillMaxWidth(), enabled = !completing) { Text(if (completing) "기록 저장 중…" else "운동 종료하고 리포트 보기") }
     if (completing) AlertDialog(onDismissRequest = {}, title = { Text("운동 기록을 저장하고 있어요") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
+    }
 } }
 
 @Composable private fun ReportScreen(
@@ -1598,6 +1756,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
     onOpenAdminDemo: () -> Unit,
     editRequest: Int,
     onOpenSettings: () -> Unit,
+    selfUserId: String,
 ) = Screen(modifier) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1702,7 +1861,7 @@ private enum class TimePickerTarget { START_TIME, DURATION }
         if (saveError != null) TextButton({ saving = true; scope.launch { try { onReload(); saveError = null; isEditing = false } catch (failure: Exception) { saveError = failure.message } finally { saving = false } } }, enabled = !saving) { Text("편집 취소하고 서버 최신 정보 불러오기") }
         if (saving) AlertDialog(onDismissRequest = {}, title = { Text("프로필 저장 중") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
     } else {
-        ProfileOverview(profile, social, workouts, runs, { isEditing = true }, onOpenInbody, onSamsungTest, onOpenAdminDemo, onAccount, onHistory, onNotifications, onReports, onOpenSettings, serverSocial, recordApi = api)
+        ProfileOverview(profile, social, workouts, runs, { isEditing = true }, onOpenInbody, onSamsungTest, onOpenAdminDemo, onAccount, onHistory, onNotifications, onReports, onOpenSettings, serverSocial, recordApi = api, selfUserId = selfUserId)
     }
 }
 

@@ -18,8 +18,8 @@ import java.nio.charset.StandardCharsets
 
 internal fun JsonObject.text(key: String): String = get(key)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
 internal fun JsonObject.rows(key: String): List<JsonObject> = getAsJsonArray(key)?.map { it.asJsonObject }.orEmpty()
-internal val goalCodes = linkedMapOf("다이어트" to "DIET", "근육 증가" to "MUSCLE_GAIN", "체력 향상" to "FITNESS", "기록 향상" to "RECORD_IMPROVEMENT", "운동 습관 만들기" to "HABIT")
-internal val skillCodes = linkedMapOf("입문" to "BEGINNER", "6개월 미만" to "UNDER_6_MONTHS", "6개월~1년" to "SIX_MONTHS_TO_ONE_YEAR", "1년 이상" to "ONE_TO_THREE_YEARS", "3년 이상" to "OVER_THREE_YEARS")
+internal val goalCodes = linkedMapOf("다이어트" to "DIET", "체중 감량" to "DIET", "근육 증가" to "MUSCLE_GAIN", "체력 향상" to "FITNESS", "기록 향상" to "RECORD_IMPROVEMENT", "운동 습관 만들기" to "HABIT", "습관 만들기" to "HABIT")
+internal val skillCodes = linkedMapOf("입문" to "BEGINNER", "처음이에요" to "BEGINNER", "6개월 미만" to "UNDER_6_MONTHS", "가끔 해요" to "UNDER_6_MONTHS", "6개월~1년" to "SIX_MONTHS_TO_ONE_YEAR", "1년 이상" to "ONE_TO_THREE_YEARS", "꾸준히 해요" to "ONE_TO_THREE_YEARS", "3년 이상" to "OVER_THREE_YEARS")
 internal fun Sport.apiCode() = if (this == Sport.FITNESS) "HEALTH" else name
 
 @Composable internal fun ServerRegionPicker(api: FitMateApiClient, label: String, choose: (String, String) -> Unit) {
@@ -174,8 +174,6 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
         catch (failure: Exception) { confirmLocalDeletion = false; message = failure.message }
     }
     TextButton({ action = "비밀번호 변경" }, enabled = !busy) { Text("비밀번호 변경") }
-    TextButton({ action = "로그아웃" }, enabled = !busy) { Text("로그아웃") }
-    TextButton({ action = "전체 기기 로그아웃" }, enabled = !busy) { Text("전체 기기 로그아웃") }
     TextButton({ action = "회원 탈퇴" }, enabled = !busy) { Text("회원 탈퇴") }
     action?.let { selected -> SocialSheet({ if (!busy) { action = null; current = ""; next = ""; repeat = "" } }) {
         Text(selected, style = MaterialTheme.typography.titleLarge)

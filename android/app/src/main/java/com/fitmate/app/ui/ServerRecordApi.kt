@@ -6,8 +6,22 @@ import java.time.Instant
 
 /** Completed records use the same authenticated client as live workout sessions. */
 internal class ServerRecordApi(private val api: FitMateApiClient) {
-    fun page(path: String, cursor: String = "0"): JsonObject =
-        api.request("GET", "$path${if ('?' in path) '&' else '?'}cursor=$cursor&size=20").asJsonObject
+    fun page(path: String, cursor: String = "0", size: Int = 20): JsonObject =
+        api.request("GET", "$path${if ('?' in path) '&' else '?'}cursor=$cursor&size=$size").asJsonObject
+
+    /** 프로필 상단 표시에 사용할 완료 기록 수입니다. 페이지 전체를 합산합니다. */
+    fun completedCount(path: String): Int {
+        var cursor = "0"
+        var count = 0
+        repeat(10_000) {
+            val result = page(path, cursor, size = 100)
+            count += result.rows("items").size
+            val next = result.text("nextCursor")
+            if (result.get("hasNext")?.asBoolean != true || next.isBlank() || next == cursor) return count
+            cursor = next
+        }
+        error("운동 기록 페이지를 모두 불러오지 못했습니다.")
+    }
 
     fun run(id: String) = api.request("GET", "running-records/$id").asJsonObject
     fun report(id: String) = api.request("GET", "workout-sessions/$id/report").asJsonObject
