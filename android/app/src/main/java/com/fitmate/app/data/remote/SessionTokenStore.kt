@@ -13,6 +13,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 internal data class SessionTokens(val accessToken: String, val refreshToken: String)
+internal data class RememberedAccount(val email: String, val refreshToken: String)
+internal data class StoredSession(val tokens: SessionTokens? = null, val rememberedAccount: RememberedAccount? = null)
 
 /** Tokens never enter the profile snapshot or Android backup. */
 internal class SessionTokenStore(context: Context) {
@@ -30,20 +32,32 @@ internal class SessionTokenStore(context: Context) {
         }.generateKey()
     }
 
-    @Synchronized fun read(): SessionTokens? {
-        if (!file.baseFile.exists()) return null
+    @Synchronized fun read(): SessionTokens? = readState().tokens
+
+    @Synchronized fun readState(): StoredSession {
+        if (!file.baseFile.exists()) return StoredSession()
         val bytes = file.openRead().use { it.readBytes() }
         require(bytes.size > 12) { "저장된 로그인 정보를 읽지 못했습니다." }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
-        return gson.fromJson(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8), SessionTokens::class.java)
+        val json = String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
+        val objectValue = gson.fromJson(json, com.google.gson.JsonObject::class.java)
+        // Preserve sessions saved by versions predating remembered accounts.
+        val state = if (objectValue.has("accessToken")) StoredSession(gson.fromJson(objectValue, SessionTokens::class.java))
+            else gson.fromJson(objectValue, StoredSession::class.java)
+        state.tokens?.let { require(!it.accessToken.isNullOrBlank() && !it.refreshToken.isNullOrBlank()) }
+        state.rememberedAccount?.let { require(!it.email.isNullOrBlank() && !it.refreshToken.isNullOrBlank()) }
+        return state
     }
 
-    @Synchronized fun write(tokens: SessionTokens?) {
-        if (tokens == null) { file.delete(); return }
+    @Synchronized fun write(tokens: SessionTokens?) = writeState(StoredSession(tokens))
+
+    @Synchronized fun writeState(state: StoredSession) {
+        if (state.tokens == null && state.rememberedAccount == null) { file.delete(); return }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        val bytes = cipher.iv + cipher.doFinal(gson.toJson(tokens).toByteArray(Charsets.UTF_8))
+        // Active and remembered refresh tokens rotate in one atomic encrypted write.
+        val bytes = cipher.iv + cipher.doFinal(gson.toJson(state).toByteArray(Charsets.UTF_8))
         val stream = file.startWrite()
         try { stream.write(bytes); file.finishWrite(stream) }
         catch (error: Exception) { file.failWrite(stream); throw error }
