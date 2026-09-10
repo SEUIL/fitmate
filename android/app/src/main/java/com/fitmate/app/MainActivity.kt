@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private var showSamsungHealthTest by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_Fitmate)
         super.onCreate(savedInstanceState)
         manager = SamsungHealthManager(applicationContext)
         enableEdgeToEdge()

@@ -27,6 +27,53 @@ class InbodyRecordServiceTest {
     private val service = InbodyRecordService(records, analyses, jacksonObjectMapper())
 
     @Test
+    fun `기존 부위별 지방량 항목이 있는 기록도 목록과 상세에서 수치를 보존한다`() {
+        val userId = UUID.randomUUID()
+        val record = InbodyRecord(id = UUID.randomUUID(), userId = userId, optionalValuesJson = """
+            {"TRUNK_FAT_MASS_KG":7.9,"LEFT_ARM_FAT_MASS_KG":0.8,"RIGHT_ARM_FAT_MASS_KG":0.7,
+             "LEFT_LEG_FAT_MASS_KG":2.1,"RIGHT_LEG_FAT_MASS_KG":2.0,"BMI":23.7}
+        """.trimIndent())
+        val original = record.optionalValuesJson
+        `when`(records.findAllByUserIdOrderByMeasuredDateDescCreatedAtDesc(userId)).thenReturn(listOf(record))
+        `when`(records.findByIdAndUserId(requireNotNull(record.id), userId)).thenReturn(record)
+
+        val expected = mapOf(InbodyFieldCode.TRUNK_FAT_KG to BigDecimal("7.9"),
+            InbodyFieldCode.LEFT_ARM_FAT_KG to BigDecimal("0.8"), InbodyFieldCode.RIGHT_ARM_FAT_KG to BigDecimal("0.7"),
+            InbodyFieldCode.LEFT_LEG_FAT_KG to BigDecimal("2.1"), InbodyFieldCode.RIGHT_LEG_FAT_KG to BigDecimal("2.0"),
+            InbodyFieldCode.BMI to BigDecimal("23.7"))
+        assertThat(service.list(userId).single().optionalValues).isEqualTo(expected)
+        assertThat(service.get(userId, requireNotNull(record.id)).optionalValues).isEqualTo(expected)
+        assertThat(record.optionalValuesJson).isEqualTo(original)
+    }
+
+    @Test
+    fun `현재 코드와 기존 코드가 함께 있으면 JSON 순서와 무관하게 현재 코드 값을 사용한다`() {
+        val userId = UUID.randomUUID()
+        val rows = listOf(
+            """{"TRUNK_FAT_KG":8.1,"TRUNK_FAT_MASS_KG":7.9}""",
+            """{"TRUNK_FAT_MASS_KG":7.9,"TRUNK_FAT_KG":8.1}""",
+        ).map { InbodyRecord(id = UUID.randomUUID(), userId = userId, optionalValuesJson = it) }
+        `when`(records.findAllByUserIdOrderByMeasuredDateDescCreatedAtDesc(userId)).thenReturn(rows)
+        service.list(userId).forEach {
+            assertThat(it.optionalValues).containsOnlyKeys(InbodyFieldCode.TRUNK_FAT_KG)
+            assertThat(it.optionalValues[InbodyFieldCode.TRUNK_FAT_KG]).isEqualByComparingTo("8.1")
+        }
+    }
+
+    @Test
+    fun `현재 항목 코드와 선택 항목 없는 기록은 그대로 조회한다`() {
+        val userId = UUID.randomUUID()
+        val values = InbodyFieldCode.entries.associateWith { BigDecimal("1.25") }
+        `when`(records.findAllByUserIdOrderByMeasuredDateDescCreatedAtDesc(userId)).thenReturn(listOf(
+            InbodyRecord(id = UUID.randomUUID(), userId = userId, optionalValuesJson = jacksonObjectMapper().writeValueAsString(values)),
+            InbodyRecord(id = UUID.randomUUID(), userId = userId),
+        ))
+        val result = service.list(userId)
+        assertThat(result[0].optionalValues).isEqualTo(values)
+        assertThat(result[1].optionalValues).isEmpty()
+    }
+
+    @Test
     fun `AI가 못 읽은 체지방률을 사용자가 입력해 최종 기록으로 저장한다`() {
         val userId = UUID.randomUUID()
         val analysisId = UUID.randomUUID()

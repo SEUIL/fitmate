@@ -28,7 +28,8 @@ class IdempotencyCreateRaceException : RuntimeException()
 @Service class MateService(private val posts:MatePostRepository, private val participations:MateParticipationRepository, private val sports:SportRepository, private val regions:RegionRepository, private val keys:IdempotencyKeyRepository, private val notifications:NotificationWriter, private val clock:Clock, private val rooms:MateChatRoomRepository, private val profiles:UserProfileRepository, private val objectMapper:ObjectMapper, private val access:MateAccessPolicy) {
  @Transactional(readOnly=true) fun list(viewer:UUID,sportCode:String?,regionId:UUID?,from:Instant?,to:Instant?,difficulty:MateDifficulty?,status:MatePostStatus?,cursor:String?,size:Int):CursorPageResponse<MatePostResponse>{
   val boundary=decodeCursor(cursor); val limit=size.coerceIn(1,100)
-  val selected=posts.findPage(sportCode,regionId?.let(::db),from,to,difficulty,status,boundary?.first,boundary?.second,PageRequest.of(0,limit+1),viewer)
+  val sport=sportCode?.let { code -> runCatching { SportCode.valueOf(code) }.getOrElse { bad("지원하지 않는 종목입니다.") } }
+  val selected=posts.findPage(sport,regionId?.let(::db),from,to,difficulty,status,boundary?.first,boundary?.second,PageRequest.of(0,limit+1),viewer)
   val hasNext=selected.size>limit; val values=selected.take(limit); return CursorPageResponse(values.map(::response),if(hasNext) encodeCursor(values.last().createdAt,requireNotNull(values.last().id)) else null,hasNext)
  }
  @Transactional(readOnly=true) fun get(id:UUID)=response(post(id))

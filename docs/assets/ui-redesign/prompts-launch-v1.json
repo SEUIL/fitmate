@@ -1,0 +1,35 @@
+{
+  "version": "v1",
+  "date": "2026-09-10",
+  "status": "검토 중",
+  "tool": "built-in image_gen",
+  "logoSource": "android/app/src/main/res/drawable/fitmate_symbol.xml",
+  "logoReferenceMethod": "Existing vector paths rendered for reference only; production should reuse vector geometry.",
+  "sharedDarkPrompt": "Use case: ui-mockup. Create one premium FitMate Android APP LAUNCH screen, portrait 853x1844, no device frame, no collage, no versionletter/watermark. Input image is existing FitMate HEART WITH DUMBBELL symbol reference: preserve its exact heart contour and dumbbell proportions, original white left heart/dumbbell and mutedgreen right heart; do not redesign shape. Render symbol cleanly as flat vectorlike graphic (no squaretile behind it). Appbackground charcoal #1C2025, text #F5F7FA, muted #AFBAC6, accentmint #16DFC1. Calm sportapp style, generous space. Statusbar 9:41 and Android gesturebar. NO button, no startbutton, no signin, no backarrow, no tabs, no permissions, no workoutstats, no spurious data. This auto advances after account check; loader is only pending state.",
+  "screens": [
+    {
+      "id": "00a-launch-minimal",
+      "title": "A안 — 로고 중심",
+      "prompt": "Extremely restrained composition. Center vertically slightly above midpoint: existing logo about150px wide then generous gap and wordmark 'FitMate' in elegant bold modern sans about76px; below single helperline '나의 운동을 함께 기록하다' in mutedgray about27px. Near bottom at 84%height thin short mint indeterminate loadingbar width140px withoutpercentage, then muted '계정 정보를 확인하고 있어요.' at26px. Background perfectly flat and uniform, no gradient, no illustration, no card. Logo alone at xcenter y700, FitMate baseline around930. Keepbalance generous.",
+      "outputs": [
+        "00a-launch-minimal-light-v1.png",
+        "00a-launch-minimal-dark-v1.png"
+      ],
+      "darkCorrections": [
+        "Edit only bottom Korean loading caption to EXACT '계정 정보를 확인하고 있어요.' The first two syllables are 계정, not 계의. Preserve all other wordmark, logo, layout, size and colors. Crisp legible caption.",
+        "Replace the ENTIRE bottom Korean caption beneath loading bar with exactly: '잠시만 기다려 주세요.' Delete old caption completely. This is UI copy correction. Preserve logo, main FitMate wordmark, slogan, all layout and size."
+      ],
+      "lightPrompt": "Convert this launch screen to LIGHT: background #F6F8FA; wordmark #182129, helpers #5D6874; logo white strokes become charcoal #232B2D, rightgreen #49766C, negative gaps backgroundcolor. Preserve exact logo contours and layout. Mint progressbar and darksystemicons/gesture. Replace the ENTIRE bottom Korean caption beneath loading bar with exactly: '잠시만 기다려 주세요.' Delete old caption completely. This is UI copy correction. Preserve logo, main FitMate wordmark, slogan, all layout and size."
+    },
+    {
+      "id": "00b-launch-message",
+      "title": "B안 — 메시지 중심",
+      "prompt": "Editorial brand opening. Top-left compact existinglogo 65px beside wordmark 'FitMate' at42px below statusbar. Uppermiddle left-aligned huge Korean headline on two lines EXACT '오늘의 운동,' newline '함께 꾸준히.' at68px, secondline mint. Below helper '기록이 쌓이면 변화가 보여요.' mutedgray28px. Lower-middle existing heartdumbbellsymbol large260px centered, with extremely subtle oversized darkmint circular arc behind, flatgraphic no3D. Bottom left subtle thin indeterminate mint line width140px and text '계정 정보를 확인하고 있어요.'26px. Space comfortable, no calltoaction or slogan extras.",
+      "outputs": [
+        "00b-launch-message-light-v1.png",
+        "00b-launch-message-dark-v1.png"
+      ]
+    }
+  ],
+  "lightThemePrompt": "Convert this FitMate launch mockup to matching LIGHT theme. Preserve all geometry, content and heart-dumbbell symbol SHAPE EXACTLY. Background #F6F8FA. White wordmark/headline becomes #182129. Mint headline becomes DARKTEAL #007D70 for readability. Helper #5D6874. Logo: change white left-heart and white dumbbell strokes to DARK CHARCOAL #232B2D, retain right-heart green #49766C; negative gaps become background color. Do NOT change logo contours/proportions; both small and large logos must match. Arc decoration very faint pale mint. Mint loader, exact bottom text '계정 정보를 확인하고 있어요.' Dark systemicons and gesturebar. No new labels/buttons. Preserve reference dimensions."
+}

@@ -1,0 +1,111 @@
+{
+  "version": "v1",
+  "date": "2026-09-10",
+  "status": "review",
+  "generator": "built-in image_gen",
+  "purpose": "FitMate mate UI; preserve existing functionality, API and authorization. Synthetic data; Samsung Health internal UI excluded.",
+  "reference": "03-workout-dark-v1.png",
+  "darkStyle": "Use case: ui-mockup. Input is a STYLE reference only. Create one polished Korean FitMate Android screenshot, portrait 853x1844, full safe area with status 9:41 and gesture bar, no phone frame or external captions. Same visual system as reference: charcoal #1C2025, #282E35 cards, white primary text, cool gray secondary, vivid mint #16DFC1 filled primary buttons with BLACK text. Outlined secondary buttons, simple consistent outline icons. Clean native UI, sharp exact Korean labels, readable spacing. Do not add features: no photos, maps, stars, ratings, payments, AI matching, likes, profile navigation, attachments or calls unless specified. Synthetic names/content. Only the list has bottom navigation; all other screens have back header. Keep ALL specified text and actions.",
+  "lightThemeEdit": "Use case: ui-mockup. Convert this DARK FitMate screenshot to the exact LIGHT theme counterpart. Preserve all wording, numbers, selection states, icons, positions, sizes, hierarchy, safe margins and the source image dimensions. Only change colors: background #F6F8FA, white #FFFFFF cards, subtle #E1E6EC outlines, dark #182129 primary text, #5D6874 secondary text. Main mint filled buttons and selected chips #16DFC1 with black text; mint text/icons/selected underline becomes dark teal #007D70 on light surfaces. Status icons and bottom gesture bar dark. OFF toggles visibly neutral gray; ON remains mint. No new features, no arrows added to read-only rows. Sharp Korean text, preserve full screenshot.",
+  "correctedScreensLightSuffix": " Preserve amber pending-state badges as pale amber with dark brown text, confirmed-state badges as pale green with dark green text. Preserve coral cancel action with dark red text.",
+  "lightCorrections": [
+    {
+      "id": "10a-mate-filter",
+      "prompt": "Use case: precise-object-edit. Add ONE dark gray right-facing chevron at the far right inside the '전체 지역' selector row, matching its DARK counterpart. This row is interactive. Preserve all other pixels/layout, selected chips, Korean text, source dimensions and light theme. No other changes."
+    },
+    {
+      "id": "12-mate-write",
+      "prompt": "Use case: precise-object-edit. Add exactly THREE small dark gray right-facing chevrons to the right inside these interactive selector boxes: '서울 성동구', '시작 시간 19:30', '예상 시간 1시간'. Keep existing values and icons. All other text, field geometry, colors, selection, scroll position and dimensions identical. Do not add chevrons to plain text inputs."
+    },
+    {
+      "id": "12b-mate-write-details",
+      "prompt": "Use case: precise-object-edit. In the bottom '러닝 상세 조건' card restore SEVEN right-facing dark gray chevrons at the far right of its seven editable rows, one each after 거리 목표, 5, 6분/km, 함께 달리기, 공원, 사용, 협의. Shift values a little left to make room. These are author-editable selectors or input opening rows, not read-only report rows. Keep every word, value, field, selection, spacing and LIGHT theme otherwise identical. Preserve original size. Do NOT add character counters or any other new content."
+    }
+  ],
+  "screens": [
+    {
+      "id": "10-mate-list",
+      "title": "메이트 모집 목록",
+      "darkPrompt": "Header '같이 운동하기', right text '문의함' and refresh icon. Filters '전체 지역' downcaret, '7일 이내' downcaret, sliders icon. Horizontal scroll sport chips '전체' selected mint, '헬스', '러닝', '배드민턴', '클라이밍', next clipped edge indicates scroll. Section '모집 중인 모임', right '최신순' plain noninteractive label. Two cards. Card1 eyebrow '러닝' and badge '모집 중', title '퇴근 후 가볍게 5 km 함께 달려요', rows '09.11 19:30 · 1시간', '서울숲 인근', tags '초보 환영' '무료', footer initialavatar '달' and '달리미', right '2 / 4명 참여'. Card2 '헬스' and '모집 중', title '주말 오전 전신 운동 함께해요', rows '09.12 10:00 · 1시간 30분', '성수역 인근', tags '초보 환영' '10,000원', footer '민트' with initialcircle, '1 / 3명 참여'. Small outlined '모집 글 더 보기'. Floating mint '+ 모임 만들기' above bottom nav. Bottomnav five labels '홈', '메이트' SELECTED, '커뮤니티', 'DM', '프로필'. No exact private meeting place.",
+      "lightUsesSuffix": false,
+      "outputs": [
+        "10-mate-list-light-v1.png",
+        "10-mate-list-dark-v1.png"
+      ]
+    },
+    {
+      "id": "10a-mate-filter",
+      "title": "모집 필터",
+      "darkPrompt": "Back header '필터' and right '초기화'. Clean grouped sections. '언제 운동할까요?' four chips '전체 기간', '오늘', '내일', '7일 이내' selected mint check. '어디서 운동할까요?' outlined picker '전체 지역' chevron. '운동 종목' chips across rows '전체' selected, '헬스','러닝','배드민턴','클라이밍','등산','골프'. '운동 수준' chips '전체' selected, '초보','중급','상급'. '모집 상태' chips '전체','모집 중' selected,'정원 마감','모집 마감'. Bottom fixed full mint button '선택한 조건 적용'. No numeric resultcount, no distance radius, no map or location auto access.",
+      "correction": "Use case: precise-object-edit. Change ONLY selection in top date choices. Make '전체 기간' UNSELECTED dark outlined with no check. Make '7일 이내' SELECTED mint fill black text and check. Preserve all other selections, labels, layout, geometry and dimensions exactly. No other changes.",
+      "lightUsesSuffix": true,
+      "outputs": [
+        "10a-mate-filter-light-v1.png",
+        "10a-mate-filter-dark-v1.png"
+      ]
+    },
+    {
+      "id": "11-mate-detail",
+      "title": "모임 상세·신청자",
+      "darkPrompt": "Back header '모임 상세', refresh icon. Eyebrow '러닝', mint badge '모집 중'. Large title '퇴근 후 가볍게 5 km 함께 달려요'. Initialcircleavatar '달' and host '달리미', no chevron or profile tap hint. Metrics 2x2 card: '일정' '09.11 19:30'; '예상 시간' '1시간'; '참여 인원' '2 / 4명'; '예상 비용' '무료'. Section '어디서 만나나요?' placeicon '서울숲 인근', muted lock box exact '정확한 집결 위치는 참가 확정 후 공개돼요.' Section '어떤 운동을 하나요?' body '6분/km 정도로 함께 달려요. 편한 운동화와 물을 준비해 주세요.' Tags '초보' '초보 환영' '전체 공개'. Compact READ ONLY key-value rows: '러닝 유형' '거리 목표'; '목표 거리' '5 km'; '목표 페이스' '6분/km'; '진행 방식' '함께 달리기'; '코스' '공원'; 'GPS 기록' '사용'; '우천 시' '협의'. Sticky bottom outlined '문의하기' and dominant mint '참가 신청'. Viewer has not applied. No exact meeting point, no share, no bookmark, no clickable sport detail rows.",
+      "lightUsesSuffix": false,
+      "outputs": [
+        "11-mate-detail-light-v1.png",
+        "11-mate-detail-dark-v1.png"
+      ]
+    },
+    {
+      "id": "12-mate-write",
+      "title": "모집 작성·기본 조건",
+      "darkPrompt": "This is TOP VIEWPORT of a SINGLE scrollable form, not a new multi-step wizard. Back header '모임 만들기'. Small '기본 정보와 모집 조건을 입력해 주세요.' Regionpicker '활동 지역' '서울 성동구' chevron. Field '모집 제목' value '퇴근 후 가볍게 5 km 함께 달려요'. '운동 종목' six chips in 2 rows: '헬스','러닝' SELECTED mint,'배드민턴','클라이밍','등산','골프'. Section '모집 조건'. Datechips '오늘','내일' selected,'토요일','일요일'. Two side-by-side outlined selectors '시작 시간' '19:30' and '예상 시간' '1시간'. Input '모집 인원' '4' suffix '명', helper '본인을 포함한 전체 인원'. Label '난이도' chips '초보' selected,'초중급','중급+'. Toggle '초보자 환영' ON, helper '처음 참여하는 메이트도 신청할 수 있어요.' At bottom show start of next section '상세 안내' and a faint scrollbar to indicate content continues. No next-step button, no publish button yet because it is BELOW in the same long form. Keep all content within top viewport.",
+      "lightUsesSuffix": false,
+      "outputs": [
+        "12-mate-write-light-v1.png",
+        "12-mate-write-dark-v1.png"
+      ]
+    },
+    {
+      "id": "12b-mate-write-details",
+      "title": "모집 작성·장소와 상세 조건",
+      "darkPrompt": "This is LOWER VIEWPORT of same scrollable form. Back header '모임 만들기'. Compact legible form, use efficiently sized typography. Multiline field '운동 내용과 준비물' value '6분/km로 함께 달려요. 운동화와 물을 준비해 주세요.'. Section '장소·비용·공개 범위'. Field '공개 장소' value '서울숲 인근'. Field '확정자에게 공개할 집결 위치' value '공원 안내소 앞', lock helper '참가 확정자에게만 공개됩니다.'. Numeric field '1인 예상 비용' value '0' suffix '원'. Two selectionchips '전체 공개' SELECTED and '맞팔 공개'. Section '러닝 상세 조건'. Compact selected-value picker rows with chevrons for existing choice sets: '러닝 유형' '거리 목표'; numeric inputrow '목표 거리 (km)' '5'; '목표 페이스' '6분/km'; '진행 방식' '함께 달리기'; '코스' '공원'; 'GPS 기록' '사용'; '우천 시' '협의'. Bottom full mint '모집 게시'. All fields are author inputs; private meeting place legitimately visible here. No new payment action, no wizard step, no extra field. Fit all with smaller spacing than workout reference, preserving readability.",
+      "correction": "Use case: precise-object-edit. Remove ONLY the extra character counter '29/500' under the description text field. There is no such limit in this form. Leave that area empty. Preserve all other exact Korean text, fields, colors, geometry and dimensions. No other changes.",
+      "lightUsesSuffix": true,
+      "outputs": [
+        "12b-mate-write-details-light-v1.png",
+        "12b-mate-write-details-dark-v1.png"
+      ]
+    },
+    {
+      "id": "13-mate-manage",
+      "title": "모집자·신청 관리",
+      "darkPrompt": "A viewport of OWNER's existing '모임 상세', scrolled to management section, not a new app feature. Back header '모임 상세', refresh icon. Compact top summary '내가 만든 모임', '퇴근 후 가볍게 5 km 함께 달려요', badge '모집 중', '참여 2 / 4명'. Section title '참가 신청 관리'. Three applicant cards with initial avatars, no profile chevrons. '러너봄' badge '신청 대기', side-by-side outlined '거절' and mint '수락'. '초록' badge '신청 대기', outlined '거절' and mint '수락'. '바람' badge '참가 확정', NO accept/reject buttons. Small helper '참가 확정 인원에 모집자가 포함돼요.' Lower section '모집 관리', full outlined '모집 정보 수정', full outlined '모집 마감', full outlined '받은 문의 채팅'. Subtle coral text action '모임 취소'. No bulk accept, no kick, no remove applicant, no rating, no reopen, no attendee DM action. Owner has no '참가 신청' button.",
+      "correction": "Use case: precise-object-edit. Remove ONLY the three '신청일 2024. 10. 28. ...' date/time lines in all three applicant cards. Existing screen does not display application dates. Preserve names 러너봄, 초록, 바람, all status badges and buttons, applicant card sizes, color, typography, rest of page and source dimensions exactly. Do not add any new text or icon.",
+      "lightUsesSuffix": true,
+      "outputs": [
+        "13-mate-manage-light-v1.png",
+        "13-mate-manage-dark-v1.png"
+      ]
+    },
+    {
+      "id": "14-mate-inbox",
+      "title": "메이트 문의 목록",
+      "darkPrompt": "Back header '문의함', refresh icon. Three minimal list rows, comfortable spacing and thin separators. Row1 initialavatar '달', nickname '달리미', lastmessage '처음 참여하셔도 괜찮아요!', numeric mint unread badge '2', chevron. Row2 avatar '민', nickname '민트', lastmessage '운동화와 물을 준비해 주세요.', unread badge '1', chevron. Row3 avatar '바', nickname '바람', lastmessage '대화를 시작해 보세요.', no unreadbadge, chevron. Small label '메이트 문의' above rows. No timestamps, no online dots, no exact meetingplace, no search, no tabs for all/unread, no new message compose FAB, no delete swipe. Generous calm empty space beneath. This is existing list of inquiry rooms, not DM inbox.",
+      "correction": "Use case: precise-object-edit. REMOVE the entire bottom app navigation bar containing 홈 / 운동 찾기 / 문의함 / 마이페이지 and its separator line. This is a nested screen and has NO bottom navigation. Extend the existing charcoal background smoothly into that area. Keep only the white Android gesture bar at very bottom. Preserve all header, refresh button, nicknames, message rows, unread badges, avatars, spacing and dimensions exactly. No other changes.",
+      "lightUsesSuffix": true,
+      "outputs": [
+        "14-mate-inbox-light-v1.png",
+        "14-mate-inbox-dark-v1.png"
+      ]
+    },
+    {
+      "id": "15-mate-chat",
+      "title": "메이트 문의 대화",
+      "darkPrompt": "Back header '메이트 문의'. Writable text-only conversation. NO username info absent in existing roomheader, no extra actions. Left gray bubble '안녕하세요. 러닝을 처음 시작했는데 참여해도 될까요?'. Right mint toned bubble with dark readable text '네, 괜찮아요. 6분/km 정도로 천천히 달릴 예정이에요.' with small '읽음'. Left gray bubble '준비물이 따로 있을까요?'. Right mint toned bubble '편한 운동화와 물을 준비해 주세요.' with small '전송됨'. Bottom full-width input labeled '메시지', draft '내일 뵙겠습니다!' and mint '전송' button. No keyboard in this mockup. No timestamps, attachment, photos, voice, call, emoji button, shared location, typing dots, social reactions or exact private meeting place. Large open space between bubbles and bottom composer. Only existing text send and read/delivered states.",
+      "lightUsesSuffix": false,
+      "outputs": [
+        "15-mate-chat-light-v1.png",
+        "15-mate-chat-dark-v1.png"
+      ]
+    }
+  ]
+}

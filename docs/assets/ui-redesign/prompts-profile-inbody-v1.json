@@ -1,0 +1,127 @@
+{
+  "version": "v1.1",
+  "status": "검토 중",
+  "date": "2026-09-10",
+  "tool": "built-in image_gen",
+  "styleReference": "19-dm-list-dark-v1.png",
+  "sharedDarkStyle": "Use case: ui-mockup. One high fidelity FitMate Android flat screenshot, 853x1844 portrait, no phone frame, no poster. Input is STYLE REFERENCE ONLY; replace all content with the specified screen. Charcoal #1C2025 background, #282E35 cards, white primary text, gray secondary, mint #16DFC1 buttons with BLACK text, subtle outlines. Crisp Korean type, ample safe margins, 9:41 Android status bar and gesture bar. No invented features, no AI advice/health assessment/normal ranges/scores/rings, no share/export/search buttons unless specified. Synthetic data only. Each image is a single viewport of a scrolling existing screen, not new steps or pages. Only profile and profile-edit screens have bottom navigation exactly 홈 (house), 메이트 (two people), 커뮤니티 (two speech bubbles), DM (single speech bubble), 프로필 (person, selected mint). Other screens have NO bottom navigation. Noninteractive metric cards have no chevrons.",
+  "lightThemeEdit": "Use case: ui-mockup. Convert the supplied DARK FitMate screenshot to exact LIGHT counterpart. Only recolor background #F6F8FA, cards #FFFFFF, borders #D7DEE6, primary text #182129, secondary #5D6874. Filled mint buttons/chips #16DFC1 BLACK text; mint text/icons/lines on white DARK TEAL #007D70. Danger darkred; amber notice paleamber/darkbrown. Statusicons/gesture dark. Preserve ALL Korean words, values, selected states, arrows only where already present, body diagram laterality, photo, spacing, dimensions 853x1844. Do not add or remove features. Blank values 미측정. Keep OFF switches gray and checkbox UNCHECKED. Photos stay identical. Crisp Korean type.",
+  "darkCorrections": [
+    {
+      "id": "23b-inbody-records",
+      "prompt": "Use case: precise-object-edit. Repair ONLY header spacing of SECOND/middle card: move '직접 입력' DOWN to y=864 so it sits clearly below '2026.09.03', with same 30px gap as top card. It currently overlaps date. Preserve all card geometry, all values, all text, all buttons and theme. Crucially THIRD card retains 첫 기록 and has NO 체중 증감 line. Exact 853x1844. Do not move date or add elements."
+    },
+    {
+      "id": "23b-inbody-records",
+      "prompt": "Use case: precise-object-edit. In the THIRD/bottom card dated 2026.08.27, DELETE ONLY the mint line '체중 -1.0 kg' below '직접 입력'. Keep '첫 기록' badge. First record has no prior change. Leave resulting whitespace. Preserve ALL other pixels/labels/values, two top cards and their change lines, layout, theme and 853x1844 dimensions. Do not replace with zero or another change."
+    }
+  ],
+  "lightRecordSuffix": " Keep first record 2026.08.27 with NO delta line. Preserve clear vertical spacing between dates and source labels.",
+  "revisions": [
+    {
+      "id": "24b-inbody-detail-more",
+      "version": "v2",
+      "prompt": "Use case: precise-object-edit. Edit ONLY the human silhouette inside the top '부위별 지방량' card of this FitMate UI screenshot. Replace slim figure with a clearly obese, soft full-bodied adult silhouette: noticeably wide rounded belly and waist, fuller hips, thick fleshy upper arms and thighs, thick neck and rounded face outline. Neutral respectful medical infographic symbol, not a caricature, no facial features, no muscle definition, no clothes details. Preserve front-facing symmetrical pose, same height and center, arms slightly separated from belly so the five leader lines remain clear. Use the SAME existing outline color/thickness and subtle flat fill consistent with this theme. Keep all five existing annotation labels and numeric values exactly unchanged and in the same positions (오른팔0.7kg, 왼팔0.7kg, 몸통7.9kg, 오른다리2.0kg, 왼다리2.0kg); lines may only have their endpoints adjusted to meet the wider body. Preserve subject laterality. Preserve ALL other pixels: title, card geometry, 68kg, -2kg, 2/8, explanatory note that body is only for item distinction, system bars, theme, every Korean word. Absolutely no new labels, weight classifications, recommendations or icons. Same exact 853x1844 screenshot. Make the fleshy round abdomen visually distinct from the muscular silhouette on the separate muscle screen.",
+      "inputFiles": [
+        "24b-inbody-detail-more-dark-v1.png",
+        "24b-inbody-detail-more-light-v1.png"
+      ],
+      "outputFiles": [
+        "24b-inbody-detail-more-dark-v2.png",
+        "24b-inbody-detail-more-light-v2.png"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "21-profile",
+      "title": "프로필",
+      "darkPrompt": "Header '민트', right hamburger menu. Identity row circle avatar '민', three interactive counts '12 운동 기록', '8 팔로워', '10 팔로잉'. Name '민트', bio '무리하지 않고 꾸준히 운동해요.', subline '서울 성동구 · 헬스 · 러닝'. Equal outlined buttons '프로필 편집', '인바디 기록'. Two tabs '게시물' SELECTED mint underline, '운동 기록'. Centered empty state with grid icon '나의 첫 운동 이야기', '커뮤니티에 작성한 글이 여기에 모여요.' Large calm whitespace. Five bottomnav profile selected. No create-post button, badge or photos. Counts do not mean posts.",
+      "outputs": [
+        "21-profile-light-v1.png",
+        "21-profile-dark-v1.png"
+      ]
+    },
+    {
+      "id": "22a-profile-edit-basic",
+      "title": "프로필 수정 — 기본 정보",
+      "darkPrompt": "Profile-edit first viewport. Header '프로필 수정', helper '내 운동 정보와 공개 범위를 관리하세요.' NO back arrow, no new steps/tabs. Basic fields: 이름 '민트', 닉네임 '민트', selector 활동 지역 '서울 성동구 성수동1가' rightchevron, selector 운동 시설 '선택 안 함' rightchevron, 자기소개 (선택) multiline '무리하지 않고 꾸준히 운동해요.' Card '프로필 사진', outlined '사진 선택', note '새 사진을 선택하면 즉시 변경됩니다.' No camera/removal actions. Lower edge next heading '관심 운동' with a little clipping to communicate scroll. NO save/cancel buttons in this upper viewport; they are at actual form end. Five bottomnav profile selected. No counters.",
+      "outputs": [
+        "22a-profile-edit-basic-light-v1.png",
+        "22a-profile-edit-basic-dark-v1.png"
+      ]
+    },
+    {
+      "id": "22b-profile-edit-sports",
+      "title": "프로필 수정 — 운동·공개 범위",
+      "darkPrompt": "Profile-edit lower scrolled viewport, compact title '프로필 수정'. Card '관심 운동' six chips 2 rows: 헬스 SELECTED, 러닝 SELECTED, 배드민턴, 클라이밍, 등산, 골프. Input '직접 추가할 운동' empty; outlined '관심 운동 추가'; selected removable customchip '수영 ×'. Card '운동 정보': '운동 경력' choices 입문 / 6개월 미만 SELECTED / 1년 이상; '운동 목표 · 복수 선택' choices 다이어트, 근육 증가, 체력 향상 SELECTED, 기록 향상, 운동 습관 만들기 SELECTED; '주 운동 가능 시간' 평일 아침 / 평일 저녁 SELECTED / 주말. Card '비공개 계정' switch OFF neutralgray, explanation '프로필 상세는 승인된 팔로워에게 공개됩니다. 게시물의 공개 범위는 별도로 설정해요.' Bottom form outlined 취소 and mint 저장. Five bottomnav profile selected. No steps/counters/back arrow.",
+      "outputs": [
+        "22b-profile-edit-sports-light-v1.png",
+        "22b-profile-edit-sports-dark-v1.png"
+      ]
+    },
+    {
+      "id": "23a-inbody-list",
+      "title": "인바디 목록 — 등록·변화",
+      "darkPrompt": "Header back '인바디 기록', small '기록 새로고침'. Existing info '의료 진단이 아닌 운동 기록입니다. 측정값을 직접 확인하세요.' Card '결과표 등록', helper '사진을 업로드해 판독한 뒤 측정값을 직접 검수합니다.', buttons 사진 선택 / 촬영, full outlined 직접 입력. Card '최근 인바디', '2026.09.10 · 사진 판독', three equal metrics 체중 70.0 kg / 골격근량 30.0 kg / 체지방률 20.0 %, outlined '상세 결과 보기'. Card '변화 차트', tabs 체중 SELECTED / 골격근량 / 체지방률. Simple mint line EXACTLY three points descending evenly from 72.0 to71.0 to70.0. Under chart rows '2026.08.27 · 72.0 kg', '2026.09.03 · 71.0 kg', '2026.09.10 · 70.0 kg'. Bottom edge next heading '측정 기록' clipped scroll continuation. NO nav/save/floatingplus. No goal normal or trendforecast.",
+      "outputs": [
+        "23a-inbody-list-light-v1.png",
+        "23a-inbody-list-dark-v1.png"
+      ]
+    },
+    {
+      "id": "23b-inbody-records",
+      "title": "인바디 목록 — 측정 기록",
+      "darkPrompt": "Scrolled lower viewport of same Inbody list. Header back '인바디 기록'. Heading '측정 기록'. Three cards: first '2026.09.10', source '사진 판독', neutral mint text '체중 -1.0 kg', values 체중70.0kg 골격근량30.0kg 체지방률20.0%, actions 상세 결과 보기 / 삭제. second '2026.09.03', source '직접 입력', '체중 -1.0 kg', values71.0kg/29.8kg/21.0%, sameactions. third '2026.08.27', source '직접 입력', badge '첫 기록', values72.0kg/29.5kg/22.0%, sameactions. All deletetextsoftcoral. No more button because ONLY3records. No new add/search/filter/nav. Spacious readable cards.",
+      "outputs": [
+        "23b-inbody-records-light-v1.png",
+        "23b-inbody-records-dark-v1.png"
+      ]
+    },
+    {
+      "id": "24a-inbody-detail",
+      "title": "신체 구성 상세 — 요약·근육",
+      "darkPrompt": "Header back '신체 구성 상세'. Datepill '2026.09.10' noarrow. Card '핵심 요약' 70 kg체중 /30 kg골격근량 /20 %체지방률. Card '체지방 · 비만' 2x2 values 체지방량14kg / BMI23.7 / 복부지방률0.85 / 비만도 미측정. Card '부위별 근육량': stylized neutral front-view human outline with subtle muscle contours as category diagram, NOT real person/bodyassessment. On VIEWER LEFT rightarmlabel '오른팔 3.1 kg' upper and rightleg '오른다리 8.2 kg' lower; on VIEWER RIGHT leftarm '왼팔 3.0 kg' upper, trunk '몸통 24.5 kg' middle, leftleg '왼다리 8.1 kg' lower. Leader lines connect correct parts. Text '좌우는 측정 대상자의 신체 기준입니다'. Bottom edge nextheading '부위별 지방량' clipped. No recommendations, idealbody, arrows, editbuttons,save/nav. Missingvalueas미측정 NOT zero.",
+      "outputs": [
+        "24a-inbody-detail-light-v1.png",
+        "24a-inbody-detail-dark-v1.png"
+      ]
+    },
+    {
+      "id": "24b-inbody-detail-more",
+      "title": "신체 구성 상세 — 지방·참고 수치",
+      "darkPrompt": "Scrolled lower viewport. Header back '신체 구성 상세'. Card '부위별 지방량', neutral front-facing body outline NOT athlete photo. VIEWER LEFT labels 오른팔0.7kg upper /오른다리2.0kg lower; VIEWER RIGHT 왼팔0.7kg upper /몸통7.9kg middle /왼다리2.0kg lower, correctleaderlines. Note '신체 그림은 항목 구분용이며 실제 체형을 나타내지 않습니다'. Card '체중 목표' two READONLY values 권장 체중68kg /체중 조절-2kg, note '결과표에 기재된 참고 수치입니다'. Collapsed row '기타 측정 정보' count '2/8' downchevron. Info '의료 진단이 아닌 운동 기록 참고용 결과입니다. 미측정 항목은 임의로 채우지 않습니다.' No edit/save/nav/share/advice.",
+      "outputs": [
+        "24b-inbody-detail-more-light-v2.png",
+        "24b-inbody-detail-more-dark-v2.png"
+      ]
+    },
+    {
+      "id": "25-inbody-manual",
+      "title": "인바디 직접 입력",
+      "darkPrompt": "Header back '인바디 등록'. Small info '의료 진단이 아닌 운동 기록입니다. 측정값을 직접 확인하세요.' Title '인바디 결과 검수'. Card source '직접 입력 기록', '측정일 2026.09.10 · 입력한 수치를 확인해 주세요.' Card '핵심 요약', three clearly editable value rows with pencil icons: 체중70.0kg helper'지난 기록 대비는 저장 후 확인', 골격근량30.0kg helper'운동 변화의 핵심 지표', 체지방률20.0% helper'입력한 수치를 확인해 주세요'. Full outlined actions 측정일 수정 / 신체 구성 상세 보기 / 상세 항목 직접 수정. Mint '검수 후 저장', outlined '목록으로'. No photo or acknowledgement checkbox for manual. No invented formfields. Existing valueseditedthroughdialogs not nextsteps. NO bottomnav.",
+      "outputs": [
+        "25-inbody-manual-light-v1.png",
+        "25-inbody-manual-dark-v1.png"
+      ]
+    },
+    {
+      "id": "25b-inbody-photo",
+      "title": "인바디 사진 확인",
+      "darkPrompt": "Header back '인바디 등록'. Smallinfo '의료 진단이 아닌 운동 기록입니다. 측정값을 직접 확인하세요.' Main photo preview: clearly synthetic plain white measurement sheet lying flat, title '측정 결과표 · 예시', large readable rows 측정일2026.09.10 / 체중70.0kg / 골격근량30.0kg / 체지방률20.0%, no names/IDs/barcodes/brands, lightgray table lines. Below '전체 결과표의 글자가 선명하게 보이는지 확인하세요.' Prominent note '판독 시작 시 결과표 사진이 서버와 외부 AI 서비스로 전송될 수 있습니다.' Outlined pair 사진 선택 / 촬영; large mint '사진 전송 및 판독 시작'; outlined '직접 입력으로 전환'; outlined '목록으로'. NO startalready/analyzedsuccess/checkbox/crop/rotate/nav. Photo is synthetic UI sample.",
+      "outputs": [
+        "25b-inbody-photo-light-v1.png",
+        "25b-inbody-photo-dark-v1.png"
+      ]
+    },
+    {
+      "id": "26-inbody-review",
+      "title": "인바디 판독 검수",
+      "darkPrompt": "Header back '인바디 등록'. smallinfo '의료 진단이 아닌 운동 기록입니다. 측정값을 직접 확인하세요.' Title '인바디 결과 검수'. Card 'AI 판독 완료'; '측정일 2026.09.10 · 사진 속 수치를 확인·수정해 주세요.' ambertext '재확인 항목: 체지방률'. Small synthetic white sheet preview title '측정 결과표 · 예시', rows 측정일2026.09.10 체중70.0kg 골격근량30.0kg 체지방률20.0%, no personaldata. Card '핵심 요약' editable rows 체중70.0kg /골격근량30.0kg /체지방률20.0% each pencilicon. Full outlined actions '측정일 수정', '신체 구성 상세 보기', '상세 항목 직접 수정'. UNCHECKED square '결과표 수치를 직접 확인했어요'. Mint button '검수 후 저장' stays ENABLED looking because current code validates on tap. Under it outlined pair '사진 선택'/'촬영', then '목록으로'. NO savedbadge or autoapproval/nav.",
+      "outputs": [
+        "26-inbody-review-light-v1.png",
+        "26-inbody-review-dark-v1.png"
+      ]
+    }
+  ]
+}

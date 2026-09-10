@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="fitmate_launch_background">#1C2025</color>
+    <bool name="fitmate_launch_light_bars">false</bool>
+    <item type="drawable" name="fitmate_launch_symbol">@drawable/fitmate_symbol</item>
+</resources>

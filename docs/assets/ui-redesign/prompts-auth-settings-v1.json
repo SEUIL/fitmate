@@ -1,0 +1,155 @@
+{
+  "version": "v1",
+  "status": "검토 중",
+  "date": "2026-09-10",
+  "tool": "built-in image_gen",
+  "styleReference": "22b-profile-edit-sports-dark-v1.png",
+  "sharedDarkStyle": "Use case: ui-mockup. Single high fidelity FitMate Android screenshot, portrait 853x1844, no phone frame or poster. Reference image STYLE ONLY. Charcoal #1C2025 background, #282E35 cards, white text, subdued gray helper, mint #16DFC1 primary controls BLACK text, outlined secondary. Crisp legible Korean, tidy spacing. 9:41 status bar, Android gesture bar. Absolutely NO bottom navigation on ANY screen in this batch. No invented login providers, reset password, biometrics, verification codes, marketing checkboxes, global agree-all or new functions. No actual credentials; only synthetic placeholders. OFF toggle gray knobleft, ON mint knobright. Where form extends use actual scroll viewport, no new steps. Preserve all specified labels.",
+  "lightThemeEdit": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+  "screens": [
+    {
+      "id": "27-login",
+      "title": "로그인",
+      "darkPrompt": "Small brand FITMATE. Large title '다시 만나서 반가워요', helper '계정으로 로그인하고 운동을 이어가세요.' Form email label '이메일' value 'mint@example.com'; label '비밀번호' EMPTY no bullets, no eye icon. Wide DISABLED gray button '로그인' because password empty. Below textbutton '회원가입'. Generous calm white-space remainder. No back button or additional links. No sociallogin, auto-login or passwordrecovery.",
+      "darkCorrection": null,
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly. Override dimensions: preserve source image 935x1683.",
+      "lightCorrection": null,
+      "outputs": [
+        "27-login-light-v1.png",
+        "27-login-dark-v1.png"
+      ]
+    },
+    {
+      "id": "28a-signup-account",
+      "title": "회원가입 1 — 계정 정보",
+      "darkPrompt": "Header backarrow FITMATE. Title '계정을 만들어요', subtitle '서비스 이용을 위한 기본 정보를 입력하세요.' Progress '1 / 4  계정 정보', foursegments firstmint. Emailrow 아이디 value'mint' / @ / 도메인 value'example.com' dropdowncaret, outlined '중복 확인' on nextline if needed. helper '로그인 아이디로 사용해요.' Password field only placeholder '비밀번호', no eyeicon. Helper '영문·숫자 포함 8~64자. 이메일 소유 인증은 아직 지원하지 않습니다.' 이름 value'민트'. 생년월일 separateboxes 2000 · 01 · 01. 성별 threechips 남성 / 여성 / 선택 안 함 SELECTED. Switch '만 18세 이상입니다.' OFF. Mintbutton 다음 atbottom (current code validates on tap). No verification-success badge. Fit full singleviewport; no fabricated extra fields.",
+      "darkCorrection": null,
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": "Edit this light FitMate signup screen only: the '만 18세 이상입니다.' switch must be OFF, with gray track and white knob on LEFT. Preserve all other text, layout, 853x1844 dimensions, gender '선택 안 함' selected, empty password and mint next button.",
+      "outputs": [
+        "28a-signup-account-light-v1.png",
+        "28a-signup-account-dark-v1.png"
+      ]
+    },
+    {
+      "id": "28b-signup-profile",
+      "title": "회원가입 2 — 프로필",
+      "darkPrompt": "Header backarrow FITMATE. Title '내 프로필을 꾸며요', helper '다른 사용자에게는 닉네임과 대략적인 지역만 보여요.' Progress '2 / 4  프로필', first2mint. Input 닉네임 '민트' with outlined '확인됨', helper '사용할 수 있는 닉네임이에요.' Selector 활동 지역 '서울 성동구 성수동1가' chevron; 운동 시설 '선택 안 함' chevron; 자기소개 (선택) multiline '무리하지 않고 꾸준히 운동해요.' Primary 다음. No profilephoto step or new privacytoggle. Whitespace.",
+      "darkCorrection": "Edit only the specified details in this FitMate mockup; preserve dimensions, theme, Korean text and layout. Remove the small 14/200 character counter beneath the introduction field. No replacement counter. Preserve everything else exactly.",
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": null,
+      "outputs": [
+        "28b-signup-profile-light-v1.png",
+        "28b-signup-profile-dark-v1.png"
+      ]
+    },
+    {
+      "id": "28c-signup-sports",
+      "title": "회원가입 3 — 운동 프로필",
+      "darkPrompt": "Header backarrow FITMATE. Title '운동 정보를 알려주세요', helper '추천 루틴과 운동 메이트를 맞추는 데 사용해요.' Progress '3 / 4  운동 프로필' first3mint. 관심 운동 · 복수 선택 chips 헬스 SELECTED /러닝 SELECTED /배드민턴 /클라이밍 /등산 /골프. Outlined '+ 직접 추가'. 운동 경험 chips 처음이에요 SELECTED /가끔 해요 /꾸준히 해요. 운동 목표 · 복수 선택 chips 체력 향상 SELECTED /근육 증가 /체중 감량 /습관 만들기 SELECTED. 선호 시간 평일 아침 /평일 저녁 SELECTED /주말. Mint 다음. No numbers, summaries, otherexperience choices.",
+      "darkCorrection": "Edit only the specified details in this FitMate mockup; preserve dimensions, theme, Korean text and layout. Change only the top progress indicator to four horizontal rounded segments: first three mint and fourth gray, matching step 3 of 4. No circles or check marks. Preserve all form content.",
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": null,
+      "outputs": [
+        "28c-signup-sports-light-v1.png",
+        "28c-signup-sports-dark-v1.png"
+      ]
+    },
+    {
+      "id": "29a-signup-consent",
+      "title": "회원가입 4 — 약관·동의",
+      "darkPrompt": "Header backarrow FITMATE. Title '약관과 정보를 확인해요', subtitle '필수 약관 동의 후 FitMate를 시작할 수 있어요.' Progress '4 / 4  가입 완료' all4mint but NO successscreen/checkmark. Summary card lines '민트 · 민트', '활동 지역 · 서울 성동구 성수동1가', '관심 운동 · 헬스, 러닝', '운동 목표 · 체력 향상, 습관 만들기'. Below three consentrows: '이용약관 동의 (필수)' ON mint switch and link '이용약관 보기 ›'; '개인정보 수집·이용 동의 (필수)' ON and link '개인정보 처리방침 보기 ›'; '건강정보 처리 동의 (선택)' OFF gray switch. Wide mint 'FitMate 시작하기'. No agreeall, marketing, fakelegaltext or requiredhealth.",
+      "darkCorrection": "Edit only the specified details in this FitMate mockup; preserve dimensions, theme, Korean text and layout. Replace top four checked circles with four horizontal mint rounded segments, no check marks. In the summary card change the label 닉네임 to 이름 · 닉네임, preserving the value 민트 · 민트. Preserve all other contents and states.",
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": null,
+      "outputs": [
+        "29a-signup-consent-light-v1.png",
+        "29a-signup-consent-dark-v1.png"
+      ]
+    },
+    {
+      "id": "29b-health-consent",
+      "title": "건강정보 동의",
+      "darkPrompt": "Header back '인바디 등록'. Large '건강정보 처리 동의가 필요해요.' Calm informational card with plain outlined shield or infoicon. Exact body text '인바디 수치와 사진은 민감한 정보입니다. 동의하면 서버로 전송해 기록하며, 사진 판독 시 외부 AI 서비스에서 처리될 수 있습니다. 동의하지 않아도 기본 운동 기록은 사용할 수 있어요.' Large mint button multiline asneeded '건강정보 처리에 동의하고 계속'. Textbutton '나중에'. Generouswhitespace. NO Samsunghealth UI, checkbox, newlegalterms, vendor logos.",
+      "darkCorrection": null,
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": null,
+      "outputs": [
+        "29b-health-consent-light-v1.png",
+        "29b-health-consent-dark-v1.png"
+      ]
+    },
+    {
+      "id": "30a-notifications",
+      "title": "알림 목록",
+      "darkPrompt": "Header back '알림'. Row '읽지 않은 알림 2' right gear icon + ellipsis menu. Three notification rows separated by subtlelines, categoryicons and eachrow own ellipsis. First unread mintdot category'DM', text'민트님에게 새 메시지가 도착했어요.' Second unread mintdot category'메이트', text'참가 신청 결과를 확인해 주세요.' Third read neutral category'커뮤니티', text'게시물에 새 댓글이 달렸어요.' No timestamps/dates/counters on individualrows. Smalltextlink '개발 및 테스트 도구' below. No filter tabs, search, dismissall buttons on mainlist. No bottomnav.",
+      "darkCorrection": null,
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly. Override dimensions: preserve source image 935x1683.",
+      "lightCorrection": null,
+      "outputs": [
+        "30a-notifications-light-v1.png",
+        "30a-notifications-dark-v1.png"
+      ]
+    },
+    {
+      "id": "30b-follow-requests",
+      "title": "팔로우 요청",
+      "darkPrompt": "Header back '팔로우 요청'. Helper '나를 팔로우하려는 사람을 승인하거나 거절할 수 있어요.' Two roomy rows with initial avatar: '러너봄' subtitle'FitMate 사용자', buttons 수락 mint / 거절 outlined; '초록' subtitle'FitMate 사용자', sameactions. Whitespacebelow. Synthetic server-pending example, no count badge or dates or mutualfollow or profiles arrows. No bottomnav or dummydata banner.",
+      "darkCorrection": "Edit only the specified details in this FitMate mockup; preserve dimensions, theme, Korean text and layout. Replace the two circular photographic avatars with flat neutral circle initial avatars: 봄 for 러너봄, 초 for 초록. No photographs. Preserve all other content and layout.",
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": null,
+      "outputs": [
+        "30b-follow-requests-light-v1.png",
+        "30b-follow-requests-dark-v1.png"
+      ]
+    },
+    {
+      "id": "31a-settings",
+      "title": "설정 — 계정·기기",
+      "darkPrompt": "Header back '설정'. Group '계정 및 프로필': five icon-chevron rows '프로필 편집' helper'이름, 활동 지역, 소개를 관리해요'; '공개 범위' helper'현재 공개 계정'; '프로필 사진' helper'프로필 편집에서 사진을 변경해요'; '계정·개인정보' helper'비밀번호, 동의와 기기 데이터를 관리해요'; '로그아웃' helper'이 기기에서 안전하게 로그아웃합니다'. Group '운동 및 기기': row '운동 프로필' helper'관심 운동, 목표, 가능 시간을 설정해요'; row 'Samsung Health' helper'연결 상태와 운동 기록 동기화를 관리해요', trailingtext '연결 관리' pluschevron. This is ONLY existing entry link, no status/connectionUI. Bottomedge nextheading 앱 환경 partiallyvisible toindicatescroll. No bottomnav, switches or save.",
+      "darkCorrection": null,
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": null,
+      "outputs": [
+        "31a-settings-light-v1.png",
+        "31a-settings-dark-v1.png"
+      ]
+    },
+    {
+      "id": "31b-settings-more",
+      "title": "설정 — 앱 환경·지원",
+      "darkPrompt": "Scrolled lower viewport of SAME settings. Header back '설정'. Group '앱 환경': row icon lightmode '화면 모드' helper'시스템 설정, 라이트, 다크' trailing'변경' chevron; row bell '알림 설정' helper'메이트, DM, 커뮤니티 알림을 관리해요' chevron. Group 지원: '팔로우 요청' helper'승인 대기 중인 요청을 확인해요' chevron; '내 신고 내역' helper'신고 처리 상태를 확인해요' chevron. Group 개발: '운영자 데모' helper'개발 환경에서만 표시됩니다' chevron. Whitespacebelow. No appversion, FAQ, contactus, new links or bottomnav.",
+      "darkCorrection": null,
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": null,
+      "outputs": [
+        "31b-settings-more-light-v1.png",
+        "31b-settings-more-dark-v1.png"
+      ]
+    },
+    {
+      "id": "31c-appearance",
+      "title": "화면 모드",
+      "darkPrompt": "Header back '화면 모드'. Subtitle '앱 전체에 적용할 테마를 선택하세요.' Three large selectable rows with radio: '시스템 설정 따르기' SELECTED mint; '라이트' unselected; '다크' unselected. System currently dark. Clean three rows in card, no samplecards or moonillustration or savebutton. Largewhitespace. No bottomnav.",
+      "darkCorrection": null,
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": null,
+      "outputs": [
+        "31c-appearance-light-v1.png",
+        "31c-appearance-dark-v1.png"
+      ]
+    },
+    {
+      "id": "31d-account",
+      "title": "계정·개인정보",
+      "darkPrompt": "Header back '계정·개인정보'. Section '계정 및 알림 설정'. Group four server notification toggles: 앱 알림 ON, DM 알림 ON, 메이트 알림 ON, 커뮤니티 알림 OFF. Separator. Required server terms rows '이용약관 · 1.0' and '개인정보 처리방침 · 1.0': both checked ON but visually muted DISABLED switches (required agreements cannot be withdrawn). Separator. '기기 내 건강정보 이용 동의' OFF and '기기 내 위치정보 이용 동의' OFF toggles. Existing entry textbutton 'Samsung Health 연결·권한 관리' ONLY link noinsideUI. Action rows '내 기기의 헬스 기록·임시 운동 삭제' coral, '비밀번호 변경', '회원 탈퇴' coral. These actions open existing sheets/confirmation not already executed. NO savebutton, autoarchive, additionalagreements or global-logout. No bottomnav. Fit readable full viewport.",
+      "darkCorrection": null,
+      "lightPrompt": "Use case: ui-mockup. Convert this DARK FitMate screenshot to matching LIGHT theme. Keep ALL text, geometry, values, selected states and functions. Background #F6F8FA, cards white, outlines #D7DEE6, text #182129, secondary #5D6874; filledmintbuttons/chips #16DFC1 BLACK text; mint labels/icons on white darkteal #007D70. ON switches knobright mint; OFF gray knobleft. Disabled login gray, disabled mandatory agreement switches muted but ON. System mode remains SELECTED (system is now light); do not select light radio. Dark systemicons/gesture. No new icons especially password eye, no bottomnavigation. Preserve 853x1844 and Koreanexactly.",
+      "lightCorrection": "Edit ONLY the two switches inside '필수 약관 동의' card (이용약관 · 1.0 and 개인정보 처리방침 · 1.0): they are REQUIRED and DISABLED but still ON. Make their tracks muted pale gray-green and knobs light gray on RIGHT, visibly less saturated than active app/DM/mate switches. Keep the top three active switches vivid mint ON, community/health/location OFF. Preserve every other label, layout and 853x1844 dimensions.",
+      "outputs": [
+        "31d-account-light-v1.png",
+        "31d-account-dark-v1.png"
+      ]
+    }
+  ]
+}

@@ -71,7 +71,7 @@ import java.nio.ByteBuffer
 }
 
 /** The picker grants access only to a user-selected image; no broad gallery permission. */
-@Composable internal fun MultiplePhotoAction(count: Int, selected: (List<String>) -> Unit) {
+@Composable internal fun MultiplePhotoAction(count: Int, redesigned: Boolean = false, selected: (List<String>) -> Unit) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris ->
@@ -84,7 +84,9 @@ import java.nio.ByteBuffer
     OutlinedButton({
         runCatching { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
             .onFailure { error = "사진 선택을 열지 못했습니다." }
-    }, enabled = count < 10) { Text("사진 추가 ($count/10)") }
+    }, modifier = if (redesigned) Modifier.fillMaxWidth().heightIn(min = 56.dp) else Modifier,
+        shape = if (redesigned) androidx.compose.foundation.shape.RoundedCornerShape(12.dp) else ButtonDefaults.outlinedShape,
+        enabled = count < 10) { Text("사진 추가 ($count/10)") }
     ErrorText(error)
 }
 
@@ -98,7 +100,7 @@ import java.nio.ByteBuffer
     if (photos.size > 1) Text("${pager.currentPage + 1} / ${photos.size}", style = MaterialTheme.typography.labelSmall)
 }
 
-@Composable internal fun PhotoActions(onSelected: (String) -> Unit, camera: Boolean = false) {
+@Composable internal fun PhotoActions(onSelected: (String) -> Unit, camera: Boolean = false, redesigned: Boolean = false) {
     val context = LocalContext.current
     var pendingCameraUri by rememberSaveable { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -117,7 +119,9 @@ import java.nio.ByteBuffer
         OutlinedButton({
             runCatching { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 .onFailure { error = "사진 선택을 열 수 없어요. 다시 시도해 주세요." }
-        }, Modifier.weight(1f)) { Text("사진 선택") }
+        }, Modifier.weight(1f).then(if (redesigned) Modifier.heightIn(min = 56.dp) else Modifier),
+            shape = if (redesigned) androidx.compose.foundation.shape.RoundedCornerShape(12.dp) else ButtonDefaults.outlinedShape,
+            colors = if (redesigned) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) else ButtonDefaults.outlinedButtonColors()) { Text("사진 선택") }
         if (camera) OutlinedButton({
             runCatching {
                 val folder = File(context.cacheDir, "captures").apply { mkdirs() }
@@ -125,7 +129,9 @@ import java.nio.ByteBuffer
                 pendingCameraUri = uri.toString()
                 capture.launch(uri)
             }.onFailure { error = "카메라를 열 수 없어요. 갤러리에서 사진을 선택해 주세요." }
-        }, Modifier.weight(1f)) { Text("촬영") }
+        }, Modifier.weight(1f).then(if (redesigned) Modifier.heightIn(min = 56.dp) else Modifier),
+            shape = if (redesigned) androidx.compose.foundation.shape.RoundedCornerShape(12.dp) else ButtonDefaults.outlinedShape,
+            colors = if (redesigned) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) else ButtonDefaults.outlinedButtonColors()) { Text("촬영") }
     }
     ErrorText(error)
 }

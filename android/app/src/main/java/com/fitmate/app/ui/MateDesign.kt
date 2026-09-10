@@ -14,7 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,7 +26,8 @@ internal data class MateFilters(
     val region: String = "", val regionLabel: String = "전체 지역", val date: String = "전체 기간",
 )
 
-@Composable internal fun mateButtonColors() = ButtonDefaults.buttonColors(containerColor = Color(0xFF527D6D), contentColor = Color.White)
+@Composable internal fun mateButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
 
 @Composable internal fun MateHeader(title: String, back: (() -> Unit)? = null, action: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -37,22 +38,57 @@ internal data class MateFilters(
 }
 
 @Composable internal fun MateChoices(options: List<String>, selected: String, change: (String) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        options.forEach { label -> FilterChip(selected == label, { change(label) }, { Text(label) }, shape = RoundedCornerShape(12.dp)) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { label -> FilterChip(selected == label, { change(label) }, { Text(label) }, modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(12.dp)) }
     }
 }
 
 @Composable internal fun MateSportTabs(selected: String, change: (String) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf("전체", "헬스", "러닝", "배드민턴", "클라이밍", "등산", "골프").forEach { label ->
-            FilterChip(selected == label, { change(label) }, { Text(label) }, shape = CircleShape)
+            FilterChip(selected == label, { change(label) }, { Text(label) }, modifier = Modifier.heightIn(min = 48.dp), shape = CircleShape)
         }
     }
 }
 
 @Composable internal fun MateTag(label: String) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = CircleShape) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant, shape = CircleShape) {
         Text(label, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable internal fun MateStatus(label: String, highlighted: Boolean = false) {
+    Surface(shape = RoundedCornerShape(10.dp),
+        color = if (highlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (highlighted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant) {
+        Text(label, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable internal fun MateSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    WorkoutCard {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        content()
+    }
+}
+
+@Composable internal fun MateOptionField(label: String, value: String, options: List<String>, change: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedCard(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(value, fontWeight = FontWeight.SemiBold)
+                }
+                Icon(Icons.Outlined.ExpandMore, null)
+            }
+        }
+        DropdownMenu(expanded, { expanded = false }) {
+            options.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { change(option); expanded = false }) }
+        }
     }
 }
 
@@ -63,12 +99,12 @@ internal data class MateFilters(
     }
 }
 
-@Composable internal fun MateHost(name: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+@Composable internal fun MateHost(name: String, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) {
             Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { Text(name.take(1).ifBlank { "M" }, fontWeight = FontWeight.SemiBold) }
         }
-        Text(name.ifBlank { "메이트" }, style = MaterialTheme.typography.labelLarge)
+        Text(name.ifBlank { "메이트" }, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -79,11 +115,11 @@ internal fun mateCost(cost: String): String = cost.toLongOrNull()?.let {
 @Composable internal fun MateListingCard(post: MatePost, status: String, open: () -> Unit) {
     OutlinedCard(open, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .35f))) {
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(post.sport.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(status, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                MateTag(post.sport.label)
+                MateStatus(status, post.serverStatus == "RECRUITING")
             }
             Text(post.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             MateInfo(Icons.Outlined.CalendarToday, "${post.dateTime} · ${post.duration}")
@@ -94,7 +130,7 @@ internal fun mateCost(cost: String): String = cost.toLongOrNull()?.let {
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                MateHost(post.authorName)
+                MateHost(post.authorName, Modifier.weight(1f))
                 Text("${post.participantCount} / ${post.capacity}명 참여", style = MaterialTheme.typography.labelLarge)
             }
         }
@@ -112,18 +148,22 @@ internal fun mateCost(cost: String): String = cost.toLongOrNull()?.let {
 }
 
 @Composable internal fun MateDetailSummary(post: MatePost, status: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { MateTag(post.sport.label); Text(status, color = MaterialTheme.colorScheme.primary) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { MateTag(post.sport.label); MateStatus(status, post.serverStatus == "RECRUITING") }
     Text(post.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
     MateHost(post.authorName)
-    OutlinedCard(shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .35f))) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+    WorkoutCard {
+        if (LocalDensity.current.fontScale > 1.3f) {
+            MateMetric("일정", post.dateTime, Icons.Outlined.CalendarToday, Modifier)
+            MateMetric("예상 시간", post.duration, Icons.Outlined.Schedule, Modifier)
+            MateMetric("참여 인원", "${post.participantCount} / ${post.capacity}명", Icons.Outlined.PeopleOutline, Modifier)
+            MateMetric("예상 비용", mateCost(post.details.cost), Icons.Outlined.Payments, Modifier)
+        } else {
             Row { MateMetric("일정", post.dateTime, Icons.Outlined.CalendarToday, Modifier.weight(1f)); MateMetric("예상 시간", post.duration, Icons.Outlined.Schedule, Modifier.weight(1f)) }
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row { MateMetric("참여 인원", "${post.participantCount} / ${post.capacity}명", Icons.Outlined.PeopleOutline, Modifier.weight(1f)); MateMetric("예상 비용", mateCost(post.details.cost), Icons.Outlined.Payments, Modifier.weight(1f)) }
         }
     }
-    Spacer(Modifier.height(4.dp))
-    Text("어디서 만나나요?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    MateSection("어디서 만나나요?") {
     MateInfo(Icons.Outlined.Place, post.details.location)
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -131,19 +171,23 @@ internal fun mateCost(cost: String): String = cost.toLongOrNull()?.let {
             Text(if (post.details.meetingPoint.isNotBlank()) "집결 위치 · ${post.details.meetingPoint}" else "정확한 집결 위치는 참가 확정 후 공개돼요.", style = MaterialTheme.typography.bodySmall)
         }
     }
-    Spacer(Modifier.height(4.dp))
-    Text("어떤 운동을 하나요?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    }
+    MateSection("어떤 운동을 하나요?") {
     Text(post.description, style = MaterialTheme.typography.bodyLarge)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         MateTag(post.difficulty)
         if (post.isBeginnerWelcome) MateTag("초보 환영")
         MateTag(post.details.visibility)
     }
+    }
+    if (post.details.sportFields.values.any { it.isNotBlank() }) MateSection("운동 상세 정보") {
     post.details.sportFields.filterValues { it.isNotBlank() }.forEach { (name, value) ->
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         }
+    }
     }
 }
 
@@ -152,18 +196,23 @@ internal fun mateCost(cost: String): String = cost.toLongOrNull()?.let {
     Column(modifier.fillMaxSize()) {
         Screen(Modifier.weight(1f), background = MaterialTheme.colorScheme.background) {
             MateHeader("필터", back) { TextButton({ draft = MateFilters(status = "전체") }) { Text("초기화") } }
-            Text("언제 운동할까요?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            MateSection("언제 운동할까요?") {
             MateChoices(listOf("전체 기간", "오늘", "내일", "7일 이내"), draft.date) { draft = draft.copy(date = it) }
-            Text("어디서 운동할까요?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            MateSection("어디서 운동할까요?") {
             KakaoRegionPicker(api, draft.regionLabel, compact = true) { id, label -> draft = draft.copy(region = id, regionLabel = label) }
             if (draft.region.isNotBlank()) TextButton({ draft = draft.copy(region = "", regionLabel = "전체 지역") }) { Text("전체 지역") }
-            Text("운동 종목", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            MateSection("운동 종목") {
             MateChoices(listOf("전체", "헬스", "러닝", "배드민턴", "클라이밍", "등산", "골프"), sportFilterLabel(draft.sport)) { draft = draft.copy(sport = sportFilterCode(it)) }
-            Text("운동 수준", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            MateSection("운동 수준") {
             MateChoices(listOf("전체", "초보", "중급", "상급"), difficultyFilterLabel(draft.difficulty)) { draft = draft.copy(difficulty = difficultyFilterCode(it)) }
-            Text("모집 상태", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            MateSection("모집 상태") {
             MateChoices(listOf("전체", "모집 중", "정원 마감", "모집 마감"), postLabel(draft.status)) {
                 draft = draft.copy(status = when(it) { "모집 중" -> "RECRUITING"; "정원 마감" -> "FULL"; "모집 마감" -> "CLOSED"; else -> "전체" })
+            }
             }
         }
         MateActionBar { Button({ apply(draft) }, Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(14.dp), colors = mateButtonColors()) { Text("선택한 조건 적용") } }
