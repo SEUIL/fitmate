@@ -112,8 +112,12 @@ internal fun ExternalWorkoutSection(
                     candidates.isEmpty() -> {
                         Text("아직 이 세션과 일치하는 운동 후보가 없습니다.")
                         OutlinedButton({ loadWorkouts(sessionStartedAt, sessionEndedAt) { deviceLoadedForSession = true } }) { Text("Samsung Health 운동 불러오기") }
-                        val unsupported = if (deviceLoadedForSession) samsungState.workouts.filter { it.sessionCount != 1 || !WorkoutMatchEngine.isSupported(sportCode, it.exerciseType) } else emptyList()
-                        if (unsupported.isNotEmpty()) Text("지원하지 않는 종류 또는 복합 운동 ${unsupported.size}건은 제외했습니다.", style = MaterialTheme.typography.bodySmall)
+                        val unsupportedTypes = if (deviceLoadedForSession) samsungState.workouts
+                            .filter { it.sessionCount == 1 && !WorkoutMatchEngine.isSupported(sportCode, it.exerciseType) }
+                            .map { it.exerciseType.ifBlank { "종류 없음" } }.distinct() else emptyList()
+                        val compoundCount = if (deviceLoadedForSession) samsungState.workouts.count { it.sessionCount != 1 } else 0
+                        if (unsupportedTypes.isNotEmpty()) Text("지원하지 않는 운동 코드: ${unsupportedTypes.joinToString()}", style = MaterialTheme.typography.bodySmall)
+                        if (compoundCount > 0) Text("복합 운동 ${compoundCount}건은 제외했습니다.", style = MaterialTheme.typography.bodySmall)
                     }
                     else -> candidates.forEach { candidate ->
                         OutlinedButton({ selected = candidate }, Modifier.fillMaxWidth()) {
