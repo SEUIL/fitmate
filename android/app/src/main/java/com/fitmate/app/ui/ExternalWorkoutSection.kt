@@ -27,6 +27,7 @@ import com.fitmate.app.data.remote.externalWorkoutContentMatches
 import com.fitmate.app.samsunghealth.SamsungHealthStatus
 import com.fitmate.app.samsunghealth.SamsungHealthUiState
 import com.fitmate.app.samsunghealth.SamsungWorkoutUiModel
+import com.fitmate.app.samsunghealth.WorkoutMatchAnalysis
 import com.fitmate.app.samsunghealth.WorkoutMatchEngine
 import com.fitmate.app.samsunghealth.toExternalWorkoutSummary
 import kotlinx.coroutines.CancellationException
@@ -42,6 +43,7 @@ internal fun ExternalWorkoutSection(
     api: FitMateApiClient,
     sessionId: String,
     sportCode: String,
+    sessionExerciseNames: List<String> = emptyList(),
     sessionStartedAt: Instant,
     sessionEndedAt: Instant,
     samsungState: SamsungHealthUiState,
@@ -71,9 +73,16 @@ internal fun ExternalWorkoutSection(
     }
     LaunchedEffect(sessionId, getAttempt) { loadStored() }
 
-    val candidates = remember(samsungState.workouts, sessionStartedAt, sessionEndedAt, sportCode, deviceLoadedForSession) {
-        if (deviceLoadedForSession) WorkoutMatchEngine.candidates(sportCode, sessionStartedAt, sessionEndedAt, samsungState.workouts) else emptyList()
+    val analysis = remember(samsungState.workouts, sessionStartedAt, sessionEndedAt, sportCode, sessionExerciseNames, deviceLoadedForSession) {
+        WorkoutMatchEngine.analyze(
+            sportCode,
+            sessionStartedAt,
+            sessionEndedAt,
+            if (deviceLoadedForSession) samsungState.workouts else emptyList(),
+            sessionExerciseNames,
+        )
     }
+    val candidates = analysis.candidates
     LaunchedEffect(candidates) {
         selected = selected?.let { current -> candidates.firstOrNull { it.uid == current.uid && it.sourceAppId == current.sourceAppId } }
     }
@@ -81,6 +90,9 @@ internal fun ExternalWorkoutSection(
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Samsung Health 운동 요약", style = MaterialTheme.typography.titleMedium)
+            if (sessionExerciseNames.isNotEmpty()) {
+                Text("현재 FitMate 운동: ${sessionExerciseNames.distinct().joinToString(" · ")}", style = MaterialTheme.typography.bodySmall)
+            }
             if (!serverLoaded) CircularProgressIndicator()
             serverError?.let {
                 Text("외부 요약 조회 실패: $it", color = MaterialTheme.colorScheme.error)
@@ -104,26 +116,38 @@ internal fun ExternalWorkoutSection(
 
             if (stored == null && serverLoaded && serverError == null) {
                 when {
+                    samsungState.status == SamsungHealthStatus.LOADING -> Text("기기 운동을 불러오는 중…")
+                    samsungState.status in setOf(
+                        SamsungHealthStatus.PLATFORM_ERROR,
+                        SamsungHealthStatus.AUTHORIZATION_ERROR,
+                        SamsungHealthStatus.UNKNOWN_ERROR,
+                    ) -> {
+                        Text(samsungState.message ?: "Samsung Health 기록을 확인하지 못했습니다.", color = MaterialTheme.colorScheme.error)
+                        Text("Samsung Health 상태와 개발 모드를 확인한 뒤 다시 시도해 주세요.", style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton({ loadWorkouts(sessionStartedAt, sessionEndedAt) { deviceLoadedForSession = true } }) { Text("다시 시도") }
+                    }
                     samsungState.permissions.none { it.label == "운동 읽기" && it.granted } -> {
-                        Text("운동 읽기 권한이 필요합니다.")
+                        Text("Samsung Health 운동 읽기 권한이 없어 기록을 확인할 수 없습니다.")
+                        Text("권한을 허용한 뒤 운동을 다시 불러와 주세요.", style = MaterialTheme.typography.bodySmall)
                         Button(requestPermission) { Text("운동 읽기 권한 허용") }
                     }
-                    samsungState.status == SamsungHealthStatus.LOADING -> Text("기기 운동을 불러오는 중…")
                     candidates.isEmpty() -> {
                         Text("아직 이 세션과 일치하는 운동 후보가 없습니다.")
-                        OutlinedButton({ loadWorkouts(sessionStartedAt, sessionEndedAt) { deviceLoadedForSession = true } }) { Text("Samsung Health 운동 불러오기") }
-                        val unsupportedTypes = if (deviceLoadedForSession) samsungState.workouts
-                            .filter { it.sessionCount == 1 && !WorkoutMatchEngine.isSupported(sportCode, it.exerciseType) }
-                            .map { it.exerciseType.ifBlank { "종류 없음" } }.distinct() else emptyList()
-                        val compoundCount = if (deviceLoadedForSession) samsungState.workouts.count { it.sessionCount != 1 } else 0
-                        if (unsupportedTypes.isNotEmpty()) Text("지원하지 않는 운동 코드: ${unsupportedTypes.joinToString()}", style = MaterialTheme.typography.bodySmall)
-                        if (compoundCount > 0) Text("복합 운동 ${compoundCount}건은 제외했습니다.", style = MaterialTheme.typography.bodySmall)
+                        if (deviceLoadedForSession && samsungState.workouts.isEmpty()) {
+                            Text("같은 시간대에 조회된 기록이 없습니다. Samsung Health에서 운동 기록을 확인한 뒤 새로고침해 주세요.", style = MaterialTheme.typography.bodySmall)
+                        }
+                        OutlinedButton({ loadWorkouts(sessionStartedAt, sessionEndedAt) { deviceLoadedForSession = true } }) {
+                            Text(if (deviceLoadedForSession) "새로고침" else "Samsung Health 운동 불러오기")
+                        }
                     }
                     else -> candidates.forEach { candidate ->
                         OutlinedButton({ selected = candidate }, Modifier.fillMaxWidth()) {
                             Text("${candidate.customTitle ?: candidate.exerciseType} · ${formatExternalTime(candidate.startTime)} · ${candidate.activeDurationSeconds / 60}분")
                         }
                     }
+                }
+                if (deviceLoadedForSession && samsungState.status in setOf(SamsungHealthStatus.READY, SamsungHealthStatus.DATA_EMPTY)) {
+                    MatchExclusionGuidance(analysis, sportCode)
                 }
             }
 
@@ -159,6 +183,41 @@ internal fun ExternalWorkoutSection(
             }
             message?.let { Text(it, color = if (stored != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
         }
+    }
+}
+
+@Composable
+private fun MatchExclusionGuidance(analysis: WorkoutMatchAnalysis, sportCode: String) {
+    analysis.unsupported.distinctBy {
+        Triple(it.workout.exerciseType, it.workout.customTitle, it.matchingSessionExerciseNames)
+    }.forEach { unsupported ->
+        val workout = unsupported.workout
+        val title = workout.customTitle?.takeIf { it.isNotBlank() }
+        Text("지원하지 않는 운동 코드: ${workout.exerciseType}${title?.let { " · $it" } ?: ""}", style = MaterialTheme.typography.bodySmall)
+        if (unsupported.matchingSessionExerciseNames.isNotEmpty()) {
+            Text("현재 세션의 ${unsupported.matchingSessionExerciseNames.joinToString(" · ")}와 이름은 같지만 저장할 수 없는 참고 기록입니다.", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    if (analysis.unsupported.isNotEmpty()) {
+        Text(
+            if (sportCode == "HEALTH") "발표에서는 지원되는 벤치프레스(BENCH_PRESS) 기록을 사용해 주세요."
+            else "현재 지원되는 단일 운동 기록을 사용해 주세요.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+    if (analysis.timeMismatchCount > 0) {
+        Text("지원되는 운동 ${analysis.timeMismatchCount}건은 시작·종료 시각이 맞지 않아 제외했습니다. FitMate 세션과 같은 시간대의 기록을 준비해 주세요.", style = MaterialTheme.typography.bodySmall)
+    }
+    if (analysis.compoundCount > 0) {
+        Text(
+            "복합 운동 ${analysis.compoundCount}건은 제외했습니다. " +
+                if (sportCode == "HEALTH") "Fit3에서 벤치프레스를 단일 운동으로 기록해 주세요."
+                else "단일 운동으로 다시 기록해 주세요.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+    if (analysis.incompleteCount > 0) {
+        Text("활동 시간이 없는 기록 ${analysis.incompleteCount}건은 제외했습니다. Samsung Health에서 기록 내용을 확인해 주세요.", style = MaterialTheme.typography.bodySmall)
     }
 }
 

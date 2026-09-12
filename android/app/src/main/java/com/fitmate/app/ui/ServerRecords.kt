@@ -154,6 +154,10 @@ import kotlinx.coroutines.withContext
         val serverSession = session
         val startedAt = serverSession?.recordTime("startedAt")?.let(java.time.Instant::ofEpochMilli)
         val endedAt = serverSession?.recordTime("endedAt")?.let(java.time.Instant::ofEpochMilli)
+        val sessionExerciseNames = if (running) emptyList() else (
+            row.rows("exercises").map { it.text("exerciseName") } +
+                serverSession?.rows("exercises").orEmpty().map { it.text("exerciseName") }
+            ).filter { it.isNotBlank() }.distinct()
         if (samsungSelected == false) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -166,6 +170,7 @@ import kotlinx.coroutines.withContext
                 api = api,
                 sessionId = id,
                 sportCode = if (running) "RUNNING" else "HEALTH",
+                sessionExerciseNames = sessionExerciseNames,
                 sessionStartedAt = startedAt,
                 sessionEndedAt = endedAt,
                 samsungState = samsungHealthState,
