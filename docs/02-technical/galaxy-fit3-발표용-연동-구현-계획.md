@@ -9,7 +9,7 @@
 - 구현 착수 기준: `10f9c11` (2026-09-10 당시 원격 기준)
 - 구현 완료 기준: `3a2df1b` (기존 `5f5e8b7`을 최신 `origin/main`에 rebase)
 - 보완 착수 기준: `fd8be7e` (기존 `159f343`을 최신 `origin/main`에 rebase)
-- 발표 보완 문서·UI 기준: `codex/galaxy-fit3-match-guidance` 작업 트리. 최종 커밋 ID는 커밋 후 확정
+- 발표 보완 구현 기준: `58fe7c0` (`codex/galaxy-fit3-match-guidance`, 2026-09-12)
 - 이번 보완 계획의 최초 판단 근거: v1.0 계획서와 [구현 검증 기록 v0.5](../03-qa/galaxy-fit3-연동-구현-검증.md). v1.1 계획 수립 때는 문서 결과만 사용했고, v1.2 구현과 v1.3 rebase 후 실행 결과는 같은 검증 문서에 별도로 기록
 - 범위 결정: [결정·회의 로그](../00-project/결정-회의-로그.md#2026-09-09-galaxy-fit3-단일-테이블-승인과-발표-후-수동-정리)
 

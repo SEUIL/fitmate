@@ -7,6 +7,7 @@
 - 최신 원격 기준: `origin/main`의 `5172f84` (2026-09-12)
 - 구현 기준 커밋: `3a2df1b` (기존 `5f5e8b7` rebase 결과)
 - 보완 기준 커밋: `fd8be7e` (기존 `159f343` rebase 결과)
+- 최종 보완 구현 커밋: `58fe7c0` (`codex/galaxy-fit3-match-guidance`)
 
 ## 구현 범위
 
