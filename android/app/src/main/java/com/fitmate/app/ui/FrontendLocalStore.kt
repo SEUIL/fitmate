@@ -48,7 +48,8 @@ internal data class RunningSnapshot(
     val interval: String, val auto: Boolean, val route: Boolean, val visibility: String,
     val samsung: Boolean, val signal: String, val demo: Boolean, val stationary: Boolean,
     val seconds: Int, val meters: Int, val target: Int, val laps: List<RunLap>,
-    val rpe: String, val condition: String, val memo: String, val history: List<RunResult>, val pendingUpload: String? = null, val completedAt: Long? = null
+    val rpe: String, val condition: String, val memo: String, val history: List<RunResult>, val pendingUpload: String? = null,
+    val completedAt: Long? = null, val startedAt: Long? = null
 ) {
     fun restore() = RunningState().also {
         it.phase = phase; it.goal = goal; it.targetDistance = distance; it.targetMinutes = minutes
@@ -59,11 +60,12 @@ internal data class RunningSnapshot(
         it.history.addAll(history); it.paused = true
         it.pendingUpload = pendingUpload
         it.completedAt = completedAt
+        it.startedAt = startedAt
     }
 }
 internal fun RunningState.snapshot() = RunningSnapshot(phase, goal, targetDistance, targetMinutes,
     targetPace, intervalMinutes, autoPause, recordRoute, visibility, samsung, signal, demo, stationary,
-    seconds, meters, target, laps, rpe, condition, memo, history.toList(), pendingUpload, completedAt)
+    seconds, meters, target, laps, rpe, condition, memo, history.toList(), pendingUpload, completedAt, startedAt)
 
 /** App-private, excluded from cloud/device backup by noBackupFilesDir. */
 internal class FrontendLocalStore(context: Context, userId: String? = null) {

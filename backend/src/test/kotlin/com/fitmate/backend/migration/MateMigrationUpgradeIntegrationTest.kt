@@ -27,11 +27,14 @@ class MateMigrationUpgradeIntegrationTest {
             val sportsBefore = count(url, user, password, "fitness_sports")
             assertTrue(sportsBefore > 0)
 
-            val latest = flyway(url, user, password)
+            val latest = flyway(url, user, password, "19")
             assertEquals(6, latest.migrate().migrationsExecuted)
             assertEquals(sportsBefore, count(url, user, password, "fitness_sports"))
             listOf("fitness_mate_posts", "fitness_mate_participations", "user_notifications", "fitness_mate_chat_rooms", "fitness_mate_chat_messages").forEach {
                 assertEquals(1, tableExists(url, user, password, it))
+            }
+            listOf("meeting_point", "visibility", "sport_fields", "beginner_welcome").forEach {
+                assertEquals(1, columnExists(url, user, password, "fitness_mate_posts", it))
             }
             assertEquals(0, latest.migrate().migrationsExecuted)
         } finally {
@@ -49,4 +52,7 @@ class MateMigrationUpgradeIntegrationTest {
 
     private fun tableExists(url: String, user: String, password: String, table: String): Int =
         DriverManager.getConnection(url, user, password).use { connection -> connection.prepareStatement("select count(*) from information_schema.tables where table_schema = database() and table_name = ?").use { statement -> statement.setString(1, table); statement.executeQuery().use { result -> result.next(); result.getInt(1) } } }
+
+    private fun columnExists(url: String, user: String, password: String, table: String, column: String): Int =
+        DriverManager.getConnection(url, user, password).use { connection -> connection.prepareStatement("select count(*) from information_schema.columns where table_schema = database() and table_name = ? and column_name = ?").use { statement -> statement.setString(1, table); statement.setString(2, column); statement.executeQuery().use { result -> result.next(); result.getInt(1) } } }
 }

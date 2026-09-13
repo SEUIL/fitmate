@@ -62,7 +62,9 @@ class MainActivity : ComponentActivity() {
                         FitMatePrototypeApp(
                             onOpenSamsungTest = { showSamsungHealthTest = true },
                             samsungHealthState = uiState,
-                            onRefreshSamsungHealth = ::loadData
+                            onRefreshSamsungHealth = ::loadData,
+                            onLoadSamsungWorkouts = ::loadWorkouts,
+                            onRequestSamsungExercisePermission = ::requestExercisePermission,
                         )
                     }
                 }
@@ -75,7 +77,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() { super.onResume(); refreshState() }
 
     private fun refreshState() = lifecycleScope.launch {
-        uiState = manager.refresh()
+        val previous = uiState
+        uiState = manager.refresh().copy(
+            workouts = previous.workouts,
+            lastLoadedAtMillis = previous.lastLoadedAtMillis,
+        )
     }
 
     private fun loadData() = lifecycleScope.launch {
@@ -86,5 +92,22 @@ class MainActivity : ComponentActivity() {
     private fun requestPermissions() = lifecycleScope.launch {
         uiState = uiState.copy(status = SamsungHealthStatus.LOADING)
         uiState = manager.requestPermissions(this@MainActivity)
+    }
+
+    private fun requestExercisePermission() = lifecycleScope.launch {
+        uiState = uiState.copy(status = SamsungHealthStatus.LOADING)
+        uiState = manager.requestExercisePermission(this@MainActivity)
+    }
+
+    private fun loadWorkouts(
+        startedAt: java.time.Instant,
+        endedAt: java.time.Instant,
+        loaded: (SamsungHealthUiState) -> Unit,
+    ) {
+        lifecycleScope.launch {
+            uiState = uiState.copy(status = SamsungHealthStatus.LOADING)
+            uiState = manager.loadWorkouts(startedAt, endedAt)
+            loaded(uiState)
+        }
     }
 }
