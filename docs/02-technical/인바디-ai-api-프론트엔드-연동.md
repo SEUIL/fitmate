@@ -1,8 +1,8 @@
 # 인바디 AI 판독 API 프론트엔드 연동 가이드
 
 - 작성일: 2026-09-08
-- 최종 수정일: 2026-09-08
-- 버전: v0.1
+- 최종 수정일: 2026-09-10
+- 버전: v0.2
 - 상태: 검토 중
 - 대상: Android Client, Kotlin Spring Boot Backend
 
@@ -12,7 +12,7 @@
 
 `INBODY 이미지 업로드 -> AI 판독 요청 -> 상태 조회 -> 항목 자동 입력 및 검토 -> 사용자 보정 -> 최종 저장`
 
-AI 공급자는 `InbodyAnalyzer` 인터페이스 뒤에 분리되어 있다. 현재 `GEMINI`와 로컬 흐름 검증용 `MOCK`를 지원하며, 이후 OpenAI 또는 Claude 구현체를 추가해도 Android API 흐름은 바뀌지 않는다.
+AI 공급자는 `InbodyAnalyzer` 인터페이스 뒤에 분리되어 있다. 현재 `OPENAI`와 로컬 흐름 검증용 `MOCK`를 지원한다. Android API 흐름은 기존과 같다.
 
 모든 API는 `Authorization: Bearer {accessToken}`이 필요하다.
 
@@ -21,11 +21,11 @@ AI 공급자는 `InbodyAnalyzer` 인터페이스 뒤에 분리되어 있다. 현
 `backend/local.properties.example`을 `backend/local.properties`로 복사하고 아래 두 값만 설정한다.
 
 ```properties
-FITMATE_INBODY_AI_PROVIDER=GEMINI
-GEMINI_API_KEY=발급받은_API_키
+FITMATE_INBODY_AI_PROVIDER=OPENAI
+OPENAI_API_KEY=발급받은_API_키
 ```
 
-`backend/local.properties`는 Git에서 제외된다. 키 문자열을 소스, 문서, Android 앱, 커밋에 넣지 않는다. 백엔드가 Gemini를 호출하므로 Android에는 키가 필요하지 않다.
+기본 모델은 `gpt-5.6-luna`이며 필요하면 `OPENAI_MODEL`로 바꿀 수 있다. `backend/local.properties`는 Git에서 제외된다. 키 문자열을 소스, 문서, Android 앱, 커밋에 넣지 않는다. 백엔드가 OpenAI를 호출하므로 Android에는 키가 필요하지 않다.
 
 키 없이 전체 API 흐름부터 확인하려면 공급자를 `MOCK`로 설정한다.
 
@@ -95,8 +95,8 @@ POST /api/v1/inbody-analyses/{analysisId}/retry
   "data": {
     "id": "01992200-0000-7000-8000-000000000002",
     "status": "REVIEW_REQUIRED",
-    "provider": "GEMINI",
-    "providerModel": "gemini-3.7-flash",
+    "provider": "OPENAI",
+    "providerModel": "gpt-5.6-luna",
     "fields": [
       {
         "code": "WEIGHT_KG",

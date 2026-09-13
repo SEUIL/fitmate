@@ -21,14 +21,14 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 /** Costs money. Run only after explicit approval, exactly once; no analysis retry. */
-class GeminiInbodyDeviceTest {
+class OpenAiInbodyDeviceTest {
     @get:Rule val compose = createComposeRule()
     @Test fun oneApprovedSyntheticReportAnalysisAndEditedSave() {
-        assumeTrue(InstrumentationRegistry.getArguments().getString("approvedGeminiOnce") == "true")
+        assumeTrue(InstrumentationRegistry.getArguments().getString("approvedOpenAiOnce") == "true")
         val api = FitMateApiClient(BuildConfig.API_BASE_URL)
         val unique = UUID.randomUUID().toString()
         api.authenticate("auth/signup", mapOf(
-            "email" to "gemini-device-$unique@example.com", "password" to UUID.randomUUID().toString(),
+            "email" to "openai-device-$unique@example.com", "password" to UUID.randomUUID().toString(),
             "nickname" to "AI검증-${unique.take(10)}",
             "sports" to listOf(mapOf("sportCode" to "HEALTH", "skillLevel" to "BEGINNER")),
             "goals" to listOf(mapOf("goalCode" to "HABIT", "primary" to true)),
@@ -47,14 +47,14 @@ class GeminiInbodyDeviceTest {
         val mediaId = api.uploadImage("INBODY", "synthetic-report.png", "image/png", bytes).text("mediaId")
         val server = ServerInbodyApi(api)
         val created = server.createAnalysis(mediaId) // Only external analysis request in this test.
-        assertEquals("GEMINI", created.text("provider"))
+        assertEquals("OPENAI", created.text("provider"))
         var result = created
         val deadline = System.currentTimeMillis() + 90_000
         while (result.text("status") !in setOf("COMPLETED", "REVIEW_REQUIRED", "FAILED") && System.currentTimeMillis() < deadline) {
             Thread.sleep(2_000)
             result = server.analysis(created.text("id"))
         }
-        assertTrue("Gemini terminal status=${result.text("status")}; code=${result.get("failure")?.takeIf { it.isJsonObject }?.asJsonObject?.text("code")}",
+        assertTrue("OpenAI terminal status=${result.text("status")}; code=${result.get("failure")?.takeIf { it.isJsonObject }?.asJsonObject?.text("code")}",
             result.text("status") in setOf("COMPLETED", "REVIEW_REQUIRED"))
         val fields = result.rows("fields").associate { it.text("code") to it.text("value") }
         assertEquals(68.2, requireNotNull(fields["WEIGHT_KG"]).toDouble(), 0.1)
@@ -83,7 +83,7 @@ class GeminiInbodyDeviceTest {
 
     private fun captureReviewScreen() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val output = File(requireNotNull(context.getExternalFilesDir(null)), "gemini-review-proof.png")
+        val output = File(requireNotNull(context.getExternalFilesDir(null)), "openai-review-proof.png")
         FileOutputStream(output).use { stream ->
             checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
                 .compress(Bitmap.CompressFormat.PNG, 100, stream)
