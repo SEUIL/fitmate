@@ -23,7 +23,7 @@ CREATE TABLE health_inbody_analyses (
         status IN ('UPLOADED', 'PROCESSING', 'COMPLETED', 'REVIEW_REQUIRED', 'FAILED')
     ),
     CONSTRAINT chk_health_inbody_analyses_provider CHECK (
-        provider IN ('GEMINI', 'OPENAI', 'CLAUDE', 'MOCK')
+        provider IN ('OPENAI', 'CLAUDE', 'MOCK')
     ),
     CONSTRAINT chk_health_inbody_analyses_attempt CHECK (attempt_count >= 0),
     CONSTRAINT chk_health_inbody_analyses_version CHECK (version >= 0)
