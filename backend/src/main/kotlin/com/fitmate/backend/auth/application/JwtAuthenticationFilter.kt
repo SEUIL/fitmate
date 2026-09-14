@@ -25,6 +25,7 @@ class JwtAuthenticationFilter(
     private val authSessionRepository: AuthSessionRepository,
     private val revokedAccessTokenRepository: RevokedAccessTokenRepository,
     private val objectMapper: ObjectMapper,
+    private val accountSuspensionService: com.fitmate.backend.admin.application.AccountSuspensionService,
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
@@ -36,7 +37,7 @@ class JwtAuthenticationFilter(
 
         try {
             val currentUser = jwtService.toAuthenticatedUser(jwtService.decode(header.removePrefix("Bearer ").trim()))
-            val user = userRepository.findById(currentUser.userId).orElseThrow { AuthenticationFailure(ApiErrorCode.INVALID_ACCESS_TOKEN) }
+            val user = accountSuspensionService.restoreIfExpired(userRepository.findById(currentUser.userId).orElseThrow { AuthenticationFailure(ApiErrorCode.INVALID_ACCESS_TOKEN) })
             when (user.accountStatus) {
                 AccountStatus.ACTIVE -> Unit
                 AccountStatus.SUSPENDED -> throw AuthenticationFailure(ApiErrorCode.ACCOUNT_SUSPENDED)

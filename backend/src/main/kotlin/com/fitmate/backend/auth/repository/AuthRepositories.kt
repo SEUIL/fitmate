@@ -15,6 +15,7 @@ import java.util.UUID
 interface UserRepository : JpaRepository<User, UUID> {
     fun findByEmailNormalizedAndAccountStatusNot(emailNormalized: String, accountStatus: AccountStatus): User?
     fun existsByEmailNormalizedAndAccountStatusNot(emailNormalized: String, accountStatus: AccountStatus): Boolean
+    fun countByCreatedAtGreaterThanEqual(createdAt: Instant): Long
 }
 
 interface AuthSessionRepository : JpaRepository<AuthSession, UUID> {
