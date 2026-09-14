@@ -331,7 +331,7 @@ fun FitMatePrototypeApp(
         PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.ACCOUNT, PrototypeRoute.NOTIFICATIONS, PrototypeRoute.FOLLOW_REQUESTS)) {
     Scaffold(
         topBar = {
-            if (route !in setOf(PrototypeRoute.HOME, PrototypeRoute.ONBOARDING, PrototypeRoute.COMMUNITY, PrototypeRoute.PROFILE, PrototypeRoute.PERSON, PrototypeRoute.MATE_LIST, PrototypeRoute.DM, PrototypeRoute.DM_DETAIL, PrototypeRoute.WORKOUT)) {
+            if (route !in setOf(PrototypeRoute.ADMIN, PrototypeRoute.HOME, PrototypeRoute.ONBOARDING, PrototypeRoute.COMMUNITY, PrototypeRoute.PROFILE, PrototypeRoute.PERSON, PrototypeRoute.MATE_LIST, PrototypeRoute.DM, PrototypeRoute.DM_DETAIL, PrototypeRoute.WORKOUT)) {
                 TopAppBar(
                     title = { Text(if (route == PrototypeRoute.INBODY && inbodyState.phase in setOf("상세", "기록 상세")) "신체 구성 상세" else if (route == PrototypeRoute.DM_DETAIL) currentChat?.name.orEmpty() else if (route == PrototypeRoute.PERSON) socialState.accounts.opened.orEmpty() else route.title) },
                     navigationIcon = {
@@ -587,7 +587,7 @@ fun FitMatePrototypeApp(
                 selfUserId = serverAccount.text("id"),
             )
             PrototypeRoute.SAFETY -> SafetyScreen(Modifier.padding(padding))
-            PrototypeRoute.ADMIN -> AdminScreen(Modifier.padding(padding)) { route = PrototypeRoute.ADS }
+            PrototypeRoute.ADMIN -> WorkoutDesignTheme { AdminCenter { route = PrototypeRoute.SETTINGS } }
             PrototypeRoute.ADS -> AdsScreen(Modifier.padding(padding))
         }
         if (storageError) AlertDialog(onDismissRequest = { storageError = false }, title = { Text("기기 저장 확인 필요") }, text = { Text("기록을 읽거나 저장하지 못했어요. 저장 공간을 확인해 주세요. 최근 변경은 재실행 후 복원되지 않을 수 있습니다.") }, confirmButton = { TextButton({ storageError = false }) { Text("확인") } })
@@ -1726,14 +1726,6 @@ private fun applyWorkoutComposition(session: WorkoutSession, response: com.googl
     SoftCard { Text("정확한 집결 위치", fontWeight = FontWeight.Bold); Text("참가 확정자에게만 공개하고 공개 목록에는 대략 지역만 표시합니다.") }
     SoftCard { Text("신고", fontWeight = FontWeight.Bold); Text("프로필 · 게시물 · 댓글 · DM · 노쇼\n접수 → 검토 중 → 처리 완료/반려") }
     SoftCard { Text("차단", fontWeight = FontWeight.Bold); Text("서로 프로필·게시물·팔로우·DM·메이트 신청이 차단됩니다.") }
-}
-
-@Composable private fun AdminScreen(modifier: Modifier, onOpenAds: () -> Unit) = Screen(modifier) {
-    SectionTitle("관리자 대시보드", "웹 운영 화면 목업 · 역할별 접근 제어")
-    SoftCard { Text("오늘 현황", fontWeight = FontWeight.Bold); Text("신규 회원 128 · 운동 완료 67 · 대기 신고 4 · OCR 실패 2") }
-    SoftCard { Text("운영 메뉴", fontWeight = FontWeight.Bold); Text("회원 · 게시물 · 댓글/DM 신고 · 카테고리 · 공지 · 광고 · 감사 로그") }
-    SoftCard { Text("권한", fontWeight = FontWeight.Bold); Text("SUPER_ADMIN · ADMIN · MODERATOR · 관리자 2단계 인증") }
-    OutlinedButton(onOpenAds, Modifier.fillMaxWidth()) { Text("제휴 광고 관리 보기") }
 }
 
 @Composable private fun AdsScreen(modifier: Modifier) = Screen(modifier) {
