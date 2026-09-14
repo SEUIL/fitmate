@@ -237,6 +237,7 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
 } }
 
 @Composable internal fun ServerSessionGate(api: FitMateApiClient, signup: @Composable (() -> Unit) -> Unit,
+    launchReady: Boolean = true,
     content: @Composable (JsonObject) -> Unit) {
     var account by remember { mutableStateOf<JsonObject?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -251,7 +252,7 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
     }
     val sessionError = error
     when {
-        loading -> LaunchScreen()
+        loading || !launchReady -> LaunchScreen()
         account != null -> content(requireNotNull(account))
         sessionError != null -> WorkoutDesignTheme { Screen(Modifier.safeDrawingPadding(), background = MaterialTheme.colorScheme.background) {
             Text("FITMATE", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)

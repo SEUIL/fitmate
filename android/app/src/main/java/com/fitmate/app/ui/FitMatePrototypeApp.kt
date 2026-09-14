@@ -159,9 +159,10 @@ fun FitMatePrototypeApp(
     onRequestSamsungExercisePermission: () -> Unit = {},
 ) {
     var generation by remember { mutableStateOf(0) }
+    val launchReady = rememberLaunchReady()
     key(generation) {
         val api = rememberFitMateApiClient()
-        ServerSessionGate(api, signup = { done -> OnboardingScreen(Modifier.safeDrawingPadding(), api, onExit = done) { done() } }) { account ->
+        ServerSessionGate(api, signup = { done -> OnboardingScreen(Modifier.safeDrawingPadding(), api, onExit = done) { done() } }, launchReady = launchReady) { account ->
             key(account.text("id")) {
                 FitMateAppContent(onOpenSamsungTest, samsungHealthState, onRefreshSamsungHealth, onLoadSamsungWorkouts, onRequestSamsungExercisePermission, api, account) { generation++ }
             }
