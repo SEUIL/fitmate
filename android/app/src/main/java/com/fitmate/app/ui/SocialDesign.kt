@@ -268,6 +268,9 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     TextButton(community, Modifier.fillMaxWidth()) { Text("커뮤니티에서 더 보기", color = FitMateColors.TextPrimary) }
 }
 
+internal fun profileDisplayCounts(serverBacked: Boolean, serverCounts: List<String>?, localCounts: List<String>): List<String> =
+    if (serverBacked) serverCounts ?: listOf("—", "—", "—") else localCounts
+
 @Composable internal fun ProfileOverview(profile: UserProfile, social: SocialState, workouts: List<WorkoutSummary>, runs: List<RunResult>, edit: () -> Unit, inbody: () -> Unit, samsung: () -> Unit, admin: () -> Unit, account: () -> Unit, history: () -> Unit, notifications: () -> Unit, reports: () -> Unit, openSettings: () -> Unit, server: ServerSocialApi? = null, recordApi: FitMateApiClient? = null, selfUserId: String = "") {
     var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("게시물") }
     var opened by remember { mutableStateOf<FeedEntry?>(null) }
@@ -278,8 +281,11 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         social.following.size.toString(),
     )
     var serverCounts by remember(server, recordApi, selfUserId) { mutableStateOf<List<String>?>(null) }
-    LaunchedEffect(server, recordApi, selfUserId) {
+    var countsFailed by remember(server, recordApi, selfUserId) { mutableStateOf(false) }
+    var countsAttempt by remember(server, recordApi, selfUserId) { mutableStateOf(0) }
+    LaunchedEffect(server, recordApi, selfUserId, countsAttempt) {
         if (server == null || recordApi == null || selfUserId.isBlank()) return@LaunchedEffect
+        countsFailed = false
         runCatching {
             withContext(Dispatchers.IO) {
                 val serverProfile = server.profile(selfUserId)
@@ -290,12 +296,17 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
                     (serverProfile.get("followingCount")?.asLong ?: 0L).toString(),
                 )
             }
-        }.onSuccess { serverCounts = it }
+        }.onSuccess { serverCounts = it }.onFailure {
+            if (it is kotlinx.coroutines.CancellationException) throw it
+            countsFailed = true
+        }
     }
     SocialScreenTitle(profile.nickname, action = { IconButton(openSettings) { Icon(Icons.Outlined.Menu, "프로필 설정") } })
-    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo, serverCounts ?: fallbackCounts, server, accent = true) {
+    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo,
+        profileDisplayCounts(server != null || recordApi != null, serverCounts, fallbackCounts), server, accent = true) {
         if (it == "운동 기록") tab = it else social.accounts.directory = it
     }
+    if (countsFailed) TextButton({ countsAttempt++ }) { Text("프로필 통계를 불러오지 못했어요 · 다시 시도") }
     Text(profile.displayName.ifBlank { profile.nickname }, fontWeight = FontWeight.SemiBold)
     if (profile.bio.isNotBlank()) Text(profile.bio, style = MaterialTheme.typography.bodyMedium)
     Text("${profile.region} · ${(profile.interests.map { it.label } + profile.customInterests).joinToString(" · ")}", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
