@@ -18,24 +18,56 @@ internal class FitMateApiClient(
     private val tokenStore: SessionTokenStore? = null
 ) {
     private var tokens: SessionTokens? = null
+    private var rememberedAccount: RememberedAccount? = null
     private var tokensLoaded = tokenStore == null
     private fun loadSession() {
         if (!tokensLoaded) {
-            tokens = try { tokenStore?.read() } catch (_: Exception) { throw ApiFailure(401, "저장된 로그인 정보를 읽지 못했습니다. 다시 로그인해 주세요.") }
+            val stored = try { tokenStore?.readState() } catch (_: Exception) { throw ApiFailure(401, "저장된 로그인 정보를 읽지 못했습니다. 다시 로그인해 주세요.") }
+            tokens = stored?.tokens
+            rememberedAccount = stored?.rememberedAccount
             tokensLoaded = true
         }
     }
     @Synchronized fun hasSession(): Boolean { loadSession(); return tokens != null }
+    @Synchronized fun rememberedEmail(): String? { loadSession(); return rememberedAccount?.email }
 
-    @Synchronized fun authenticate(path: String, body: Any) {
+    private fun saveSession(value: SessionTokens?, remembered: RememberedAccount?) {
+        tokenStore?.writeState(StoredSession(value, remembered))
+        tokens = value; rememberedAccount = remembered; tokensLoaded = true
+    }
+
+    @Synchronized fun authenticate(path: String, body: Any, rememberEmail: String? = null) {
         val result = request("POST", path, body, authenticated = false).asJsonObject
         val value = gson.fromJson(result.getAsJsonObject("tokens"), SessionTokens::class.java)
         require(!value.accessToken.isNullOrBlank() && !value.refreshToken.isNullOrBlank())
-        tokenStore?.write(value)
-        tokens = value; tokensLoaded = true
+        saveSession(value, rememberEmail?.trim()?.takeIf { it.isNotEmpty() }?.let { RememberedAccount(it, value.refreshToken) })
+    }
+
+    @Synchronized fun continueRememberedAccount() {
+        loadSession()
+        val account = rememberedAccount ?: throw ApiFailure(401, "기억한 계정이 없습니다. 다시 로그인해 주세요.")
+        val refreshed = try {
+            val response = exchange("POST", "$baseUrl/auth/refresh", mapOf("refreshToken" to account.refreshToken), null)
+            gson.fromJson(response.getAsJsonObject("data"), SessionTokens::class.java).also {
+                require(!it.accessToken.isNullOrBlank() && !it.refreshToken.isNullOrBlank())
+            }
+        } catch (failure: ApiFailure) {
+            if (failure.status in setOf(400, 401, 403)) {
+                clearSession()
+                throw ApiFailure(401, "기억한 계정의 로그인이 만료되었어요. 비밀번호로 다시 로그인해 주세요.")
+            }
+            throw failure
+        }
+        saveSession(refreshed, account.copy(refreshToken = refreshed.refreshToken))
     }
 
     @Synchronized fun logout(all: Boolean = false) {
+        loadSession()
+        if (!all && rememberedAccount != null) {
+            // Explicit opt-in: leave the account available on this device's login screen.
+            clearSession(keepRememberedAccount = true)
+            return
+        }
         // Refresh first, then send the corresponding refresh token and access token together.
         request("GET", "users/me")
         request("POST", if (all) "auth/logout-all" else "auth/logout",
@@ -43,7 +75,10 @@ internal class FitMateApiClient(
         clearSession()
     }
 
-    @Synchronized fun clearSession() { tokenStore?.write(null); tokens = null; tokensLoaded = true }
+    @Synchronized fun clearSession(keepRememberedAccount: Boolean = false) {
+        if (keepRememberedAccount) loadSession()
+        saveSession(null, if (keepRememberedAccount) rememberedAccount else null)
+    }
 
     @Synchronized fun request(method: String, path: String, body: Any? = null,
         authenticated: Boolean = true, retryAuth: Boolean = true, headers: Map<String, String> = emptyMap()): JsonElement {
@@ -64,7 +99,8 @@ internal class FitMateApiClient(
                 if (refreshError.status in setOf(400, 401, 403)) clearSession()
                 throw refreshError
             }
-            tokenStore?.write(refreshed); tokens = refreshed
+            require(!refreshed.accessToken.isNullOrBlank() && !refreshed.refreshToken.isNullOrBlank())
+            saveSession(refreshed, rememberedAccount?.copy(refreshToken = refreshed.refreshToken))
             return request(method, path, body, authenticated, retryAuth = false, headers = headers)
         }
     }

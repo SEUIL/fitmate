@@ -407,7 +407,7 @@ fun FitMatePrototypeApp(
                     integrationScope.launch {
                         withContext(Dispatchers.IO) {
                             runCatching { apiClient.logout() }
-                            apiClient.clearSession()
+                            apiClient.clearSession(keepRememberedAccount = true)
                         }
                         workoutSession?.pause()
                         RunTrackingService.stop(context)
@@ -419,6 +419,7 @@ fun FitMatePrototypeApp(
                 onFollowRequests = { route = PrototypeRoute.FOLLOW_REQUESTS },
                 onReports = { route = PrototypeRoute.REPORTS },
                 onOpenAdmin = { route = PrototypeRoute.ADMIN },
+                remembersAccount = apiClient.rememberedEmail() != null,
             )
             PrototypeRoute.APPEARANCE -> Screen(Modifier.padding(padding), background = MaterialTheme.colorScheme.background) {
                 Text("앱 전체에 적용할 테마를 선택하세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)

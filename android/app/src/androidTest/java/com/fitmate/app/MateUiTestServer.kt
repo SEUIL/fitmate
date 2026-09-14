@@ -60,7 +60,8 @@ internal class MateUiTestServer(private val automaticLogin: Boolean = true, priv
         }
     }
 
-    fun api() = FitMateApiClient("http://127.0.0.1:${socket.localPort}").also { it.authenticate("auth/login", emptyMap<String, String>()) }
+    val baseUrl: String get() = "http://127.0.0.1:${socket.localPort}"
+    fun api() = FitMateApiClient(baseUrl).also { it.authenticate("auth/login", emptyMap<String, String>()) }
 
     override fun close() {
         socket.close()
