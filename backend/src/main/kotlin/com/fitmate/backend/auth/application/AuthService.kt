@@ -87,6 +87,7 @@ class AuthService(
     private val jwtProperties: JwtProperties,
     private val clock: Clock,
     private val customSportService: CustomSportService,
+    private val accountSuspensionService: com.fitmate.backend.admin.application.AccountSuspensionService,
 ) {
     @Transactional
     fun signUp(request: SignUpRequest, userAgent: String?): SignUpResponse {
@@ -268,7 +269,7 @@ class AuthService(
         authEventRepository.save(AuthEvent(UUID.randomUUID(), userId, sessionId, type, userAgent?.take(255), now))
     }
 
-    private fun ensureActive(user: User) = when (user.accountStatus) {
+    private fun ensureActive(user: User) = when (accountSuspensionService.restoreIfExpired(user).accountStatus) {
         AccountStatus.ACTIVE -> Unit
         AccountStatus.SUSPENDED -> throw ApiException(ApiErrorCode.ACCOUNT_SUSPENDED)
         AccountStatus.BANNED -> throw ApiException(ApiErrorCode.ACCOUNT_BANNED)

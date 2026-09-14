@@ -16,6 +16,7 @@ import java.time.Instant
 import java.util.UUID
 
 interface WorkoutSessionRepository : JpaRepository<WorkoutSession, UUID> {
+    fun countByStatusAndEndedAtGreaterThanEqual(status: WorkoutSessionStatus, endedAt: Instant): Long
     @EntityGraph(attributePaths = ["routine"])
     fun findByIdAndUserId(id: UUID, userId: UUID): WorkoutSession?
 

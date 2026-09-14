@@ -1,17 +1,63 @@
-# [검토 중] 운영자 API 인계 v0.1 — 신고·제재 1차 범위
+# [검토 중] 운영자 API 프론트엔드 연동 v0.2 — 신고·제재 1차 범위
 
-- 작성일 / 최종 수정일: 2026-09-14
-- 버전: v0.1
-- 상태: 검토 중. 백엔드와 합의 전인 요청/응답 제안이며 구현 완료 명세가 아니다.
+- 작성일: 2026-09-14 / 최종 수정일: 2026-09-15
+- 버전: v0.2
+- 상태: 검토 중. 아래 1차 API는 구현됐으며, Android HTTP 연결과 운영 계정 역할 부여는 별도 작업이다.
 - 대상: Android 프론트 / Spring Boot 백엔드 담당자
 - 기준: main `83db7a9` (PR #54), 후속 브랜치 `codex/admin-integration-foundation`
 - 제품 범위: [운영자 기능 설계](../01-spec/검토중-운영자-기능-설계-v0.1.md). 광고 제외.
 
-## 1. 먼저 공유할 결론
+## 1. 프론트 담당자에게 전달할 결론
 
-백엔드 작업은 운영 권한·세션 기반 → 신고 목록/근거/검토 → 결정/제재/감사 → 사용자 처리 결과 순서로 나누어 시작할 수 있다. 아래 계약을 먼저 검토하고 모듈별로 합의한다. 모든 운영 도구 UI 완성까지 백엔드 착수를 기다릴 필요는 없다.
+Android는 현재 `FakeAdminRepository`를 유지한다. 실제 연동 시에만 이를 HTTP repository로 교체하고, 화면·Composable·가상 데이터 화면 흐름은 변경하지 않는다.
 
-**현재 앱에서 되는 것은 Fake repository 기반 데모다. 운영자 API 실연동, 실제 계정 정지, 통지, MFA가 동작한다는 뜻이 아니다.** 이번 인계는 백엔드가 검토·착수할 수 있는 초안이며 최종 검수 완료본은 아니다.
+**현재 앱에서 되는 것은 Fake repository 기반 데모다.** 아래 API는 서버에 구현됐지만 Android 앱은 아직 호출하지 않는다. 운영 계정 역할은 DB의 `ops_admin_roles`에 사전에 부여해야 하며, MFA·운영 세션 발급은 이번 1차 범위에 포함되지 않는다.
+
+### 구현된 API
+
+모든 경로는 `Authorization: Bearer <일반 로그인 access token>`이 필요하다. 서버는 토큰 사용자가 활성 운영자 역할(`MODERATOR`, `ADMIN`, `SUPER_ADMIN`)인지 다시 검사한다. 역할이 없으면 `403 FORBIDDEN_RESOURCE`다.
+
+| 메서드 / 경로 | 화면 연결 지점 | 구현 상태 |
+|---|---|---|
+| GET `/api/v1/admin/access` | 운영자 진입 전 자격 확인 | 구현 |
+| GET `/api/v1/admin/dashboard` | 현황 탭 | 구현 |
+| GET `/api/v1/admin/reports` | 신고 목록·검색·상태 필터 | 구현 |
+| GET `/api/v1/admin/reports/{reportId}` | 신고 상세·근거·처리 이력 | 구현 |
+| GET `/api/v1/admin/members?query=` | 회원 탭의 신고 연결 회원 목록 | 구현 |
+| GET `/api/v1/admin/contents` | 콘텐츠 탭의 신고된 게시물·댓글·메이트글 목록 | 구현 |
+| POST `/api/v1/admin/reports/{reportId}/claim` | 검토 시작 | 구현 |
+| POST `/api/v1/admin/reports/{reportId}/decisions` | 반려·경고·기간 정지 저장 | 구현 |
+
+`GET /reports`의 `status`, `query`, `cursor`, `size`는 선택값이며 `size`는 1~100이다. `query`는 신고 번호, 신고 사유, 신고 대상 제목, 대상 회원 닉네임을 검색한다. 응답은 `data.items`, `data.nextCursor`, `data.hasNext`다. 다음 페이지에는 응답의 `nextCursor`를 그대로 전송한다.
+
+### 화면별 호출 순서
+
+1. 관리자 화면 진입 전 `/access`를 호출한다. `eligible=false`면 운영자 화면을 열지 않는다.
+2. 현황 탭은 `/dashboard`, 신고 탭은 `/reports`를 각각 호출한다. 서로의 결과로 수치를 계산하지 않는다.
+3. 신고 행 선택 시 `/reports/{reportId}`를 다시 호출한다. 상세 응답의 `version`과 `allowedActions`를 기준으로 버튼을 활성화한다.
+4. 검토 시작과 최종 처리는 상세의 최신 `version`을 요청 본문 `expectedVersion`으로 보낸다. `409 VERSION_CONFLICT` 또는 `INVALID_STATE_TRANSITION`이면 자동 재시도하지 말고 상세를 다시 조회한다.
+5. 최종 처리 요청에는 매 클릭마다 새 UUID `Idempotency-Key` 헤더를 넣는다. 통신 결과를 못 받았다면 같은 키와 같은 본문으로 한 번만 재시도한다.
+
+### 최종 처리 요청 예시
+
+```json
+{
+  "expectedVersion": 1,
+  "resolution": "RESOLVED",
+  "action": "SUSPEND",
+  "reasonCode": "HARASSMENT",
+  "publicReason": "운영 정책 위반으로 7일간 이용이 제한됩니다.",
+  "internalNote": "신고 근거 확인 완료",
+  "durationDays": 7
+}
+```
+
+- 반려: `resolution=DISMISSED`, `action=NONE`, `reasonCode=NO_VIOLATION` 또는 `INSUFFICIENT_EVIDENCE`, `durationDays=null`
+- 경고: `resolution=RESOLVED`, `action=WARNING`, `durationDays=null`
+- 기간 정지: `resolution=RESOLVED`, `action=SUSPEND`, `durationDays`는 `1`, `3`, `7`, `30` 중 하나
+- `publicReason`은 1~500자 필수이며 `internalNote`는 500자 이하 선택값이다.
+
+기간 정지는 신고에 연결된 대상 회원이 있는 경우에만 가능하다. 현재 일반 신고 데이터에서는 회원 신고(`targetType=USER`)가 그 대상이다. 게시물·댓글·DM의 작성자 연결과 콘텐츠 숨김·복구는 이번 API 범위에 없다.
 
 | 영역 | 현재 프론트 | 백엔드 확인/할 일 |
 |---|---|---|

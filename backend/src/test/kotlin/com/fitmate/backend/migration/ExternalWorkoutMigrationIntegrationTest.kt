@@ -14,15 +14,19 @@ class ExternalWorkoutMigrationIntegrationTest {
         withDatabase { url, user, password ->
             assertEquals(19, flyway(url, user, password, "19").migrate().migrationsExecuted)
             val latest = flyway(url, user, password)
-            assertEquals(5, latest.migrate().migrationsExecuted)
+            assertEquals(7, latest.migrate().migrationsExecuted)
             assertEquals(1, objectExists(url, user, password, "TABLES", "table_name", "health_external_workout_summaries"))
             assertEquals(1, objectExists(url, user, password, "COLUMNS", "column_name", "source_app_key", "table_name", "health_external_workout_summaries"))
             assertEquals(4, objectExists(url, user, password, "STATISTICS", "index_name", "uk_health_external_source", "table_name", "health_external_workout_summaries"))
+            assertEquals(1, objectExists(url, user, password, "TABLES", "table_name", "ops_admin_roles"))
+            assertEquals(1, objectExists(url, user, password, "TABLES", "table_name", "ops_sanctions"))
+            assertEquals(1, objectExists(url, user, password, "TABLES", "table_name", "ops_audit_logs"))
+            assertEquals(1, objectExists(url, user, password, "COLUMNS", "column_name", "subject_user_id", "table_name", "user_reports"))
             assertEquals(0, latest.migrate().migrationsExecuted)
         }
         withDatabase { url, user, password ->
             val latest = flyway(url, user, password)
-            assertEquals(24, latest.migrate().migrationsExecuted)
+            assertEquals(26, latest.migrate().migrationsExecuted)
             assertEquals(0, latest.migrate().migrationsExecuted)
         }
     }
@@ -47,7 +51,7 @@ class ExternalWorkoutMigrationIntegrationTest {
                 }
             }
             val latest = flyway(url, user, password)
-            assertEquals(4, latest.migrate().migrationsExecuted)
+            assertEquals(6, latest.migrate().migrationsExecuted)
             latest.validate()
             DriverManager.getConnection(url, user, password).use { connection ->
                 connection.createStatement().use { statement ->
