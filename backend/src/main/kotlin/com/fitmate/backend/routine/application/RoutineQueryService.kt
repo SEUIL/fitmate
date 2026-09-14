@@ -42,6 +42,7 @@ class RoutineQueryService(
             ?: throw ApiException(ApiErrorCode.VALIDATION_ERROR, "선택한 운동의 숙련도를 먼저 설정해야 합니다.")
         val templates = activeTemplates(sportCode)
         val recommended = templates.firstOrNull { it.targetGoalCode == primaryGoal && it.targetLevel == skillLevel }
+            ?: templates.firstOrNull { skillLevel != SkillLevel.BEGINNER && it.targetGoalCode == GoalCode.FITNESS && it.targetLevel == skillLevel }
             ?: templates.firstOrNull { it.targetGoalCode == primaryGoal && it.targetLevel == null }
             ?: templates.firstOrNull { it.targetGoalCode == GoalCode.FITNESS && it.targetLevel == SkillLevel.BEGINNER }
             ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "추천할 수 있는 기본 루틴이 없습니다.")

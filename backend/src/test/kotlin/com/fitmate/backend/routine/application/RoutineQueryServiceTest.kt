@@ -76,6 +76,17 @@ class RoutineQueryServiceTest {
     }
 
     @Test
+    fun `trained user can use a matching fitness template before a goal-wide beginner template`() {
+        `when`(goals.findAllByIdUserId(userId)).thenReturn(listOf(UserGoal(UserGoalId(userId, GoalCode.DIET), true)))
+        `when`(userSports.findAllByIdUserId(userId)).thenReturn(listOf(UserSport(UserSportId(userId, sportId), SkillLevel.ONE_TO_THREE_YEARS)))
+        val beginnerDiet = template("다이어트 전신", GoalCode.DIET, null)
+        val experiencedFitness = template("숙련 근비대", GoalCode.FITNESS, SkillLevel.ONE_TO_THREE_YEARS)
+        `when`(routines.findAllByIsTemplateTrueAndIsActiveTrueOrderByNameAsc()).thenReturn(listOf(beginnerDiet, experiencedFitness))
+
+        assertEquals("숙련 근비대", service.getRecommended(userId, SportCode.HEALTH).name)
+    }
+
+    @Test
     fun `recommended routine falls back when profile has no matching template`() {
         `when`(goals.findAllByIdUserId(userId)).thenReturn(listOf(UserGoal(UserGoalId(userId, GoalCode.RECORD_IMPROVEMENT), true)))
         `when`(userSports.findAllByIdUserId(userId)).thenReturn(listOf(UserSport(UserSportId(userId, sportId), SkillLevel.OVER_THREE_YEARS)))
