@@ -10,11 +10,11 @@ import java.util.UUID
 @EnabledIfEnvironmentVariable(named = "FITMATE_TEST_DB_URL", matches = ".+")
 class ExternalWorkoutMigrationIntegrationTest {
     @Test
-    fun `V19 upgrades to V20 and empty database reaches V20`() {
+    fun `V19 upgrades to latest and empty database reaches latest`() {
         withDatabase { url, user, password ->
             assertEquals(19, flyway(url, user, password, "19").migrate().migrationsExecuted)
             val latest = flyway(url, user, password)
-            assertEquals(1, latest.migrate().migrationsExecuted)
+            assertEquals(2, latest.migrate().migrationsExecuted)
             assertEquals(1, objectExists(url, user, password, "TABLES", "table_name", "health_external_workout_summaries"))
             assertEquals(1, objectExists(url, user, password, "COLUMNS", "column_name", "source_app_key", "table_name", "health_external_workout_summaries"))
             assertEquals(4, objectExists(url, user, password, "STATISTICS", "index_name", "uk_health_external_source", "table_name", "health_external_workout_summaries"))
@@ -22,7 +22,52 @@ class ExternalWorkoutMigrationIntegrationTest {
         }
         withDatabase { url, user, password ->
             val latest = flyway(url, user, password)
-            assertEquals(20, latest.migrate().migrationsExecuted)
+            assertEquals(21, latest.migrate().migrationsExecuted)
+            assertEquals(0, latest.migrate().migrationsExecuted)
+        }
+    }
+
+    @Test
+    fun `V21 preserves historical Gemini results and retires pending requests`() {
+        withDatabase { url, user, password ->
+            flyway(url, user, password, "20").migrate()
+            DriverManager.getConnection(url, user, password).use { connection ->
+                connection.createStatement().use { statement ->
+                    // Fixtures live only in this disposable database.
+                    statement.execute("SET FOREIGN_KEY_CHECKS = 0")
+                    for (status in listOf("COMPLETED", "PROCESSING")) {
+                        statement.execute("""
+                            INSERT INTO health_inbody_analyses
+                            (id, user_id, media_id, status, provider, result_json, created_at, updated_at)
+                            VALUES (UUID_TO_BIN(UUID()), UUID_TO_BIN(UUID()), UUID_TO_BIN(UUID()),
+                                    '$status', 'GEMINI', '{"preserved":true}', NOW(3), NOW(3))
+                        """.trimIndent())
+                    }
+                    statement.execute("SET FOREIGN_KEY_CHECKS = 1")
+                }
+            }
+            val latest = flyway(url, user, password)
+            assertEquals(1, latest.migrate().migrationsExecuted)
+            latest.validate()
+            DriverManager.getConnection(url, user, password).use { connection ->
+                connection.createStatement().use { statement ->
+                    statement.executeQuery("SELECT status, provider, result_json, failure_code FROM health_inbody_analyses ORDER BY status").use { result ->
+                        org.junit.jupiter.api.Assertions.assertTrue(result.next())
+                        assertEquals("COMPLETED", result.getString("status"))
+                        assertEquals("GEMINI", result.getString("provider"))
+                        assertEquals("{\"preserved\":true}", result.getString("result_json"))
+                        org.junit.jupiter.api.Assertions.assertTrue(result.next())
+                        assertEquals("FAILED", result.getString("status"))
+                        assertEquals("GEMINI", result.getString("provider"))
+                        assertEquals("{\"preserved\":true}", result.getString("result_json"))
+                        assertEquals("PROVIDER_NOT_CONFIGURED", result.getString("failure_code"))
+                        org.junit.jupiter.api.Assertions.assertFalse(result.next())
+                    }
+                    org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException::class.java) {
+                        statement.executeUpdate("UPDATE health_inbody_analyses SET status = 'PROCESSING' WHERE provider = 'GEMINI'")
+                    }
+                }
+            }
             assertEquals(0, latest.migrate().migrationsExecuted)
         }
     }
