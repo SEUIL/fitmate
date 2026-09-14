@@ -178,9 +178,8 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     Text("거리·시간·랩만 기록하며 지도 경로와 GPS 좌표는 저장하지 않아요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (recordRoute) WorkoutChoices(listOf("나만 보기", "요약만 공유"), visibility, columns = 2) { visibility = it }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    ToggleLine("Samsung Health 사용", samsung) { samsung = it }
-                    Text("실제 GPS는 러닝 시작 후 위치 권한을 허용하면 사용합니다. Samsung Health 수신 값은 연결 관리에서 별도로 확인하세요.", style = MaterialTheme.typography.bodySmall)
                 }
+                SamsungPreparationOption(samsung, running = true) { samsung = it }
                 Text("시작 시 위치정보 이용 동의와 위치 권한을 확인해요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (BuildConfig.DEBUG) WorkoutCard {
                     TextButton({ debugExpanded = !debugExpanded }) { Text(if (debugExpanded) "개발 및 테스트 도구 접기" else "개발 및 테스트 도구") }

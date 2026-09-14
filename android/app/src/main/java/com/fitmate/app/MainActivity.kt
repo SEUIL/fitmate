@@ -6,7 +6,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -19,6 +24,7 @@ import com.fitmate.app.samsunghealth.SamsungHealthManager
 import com.fitmate.app.samsunghealth.SamsungHealthStatus
 import com.fitmate.app.samsunghealth.SamsungHealthUiState
 import com.fitmate.app.ui.SamsungHealthTestScreen
+import com.fitmate.app.ui.SamsungHealthConnectionScreen
 import com.fitmate.app.ui.FitMatePrototypeApp
 import com.fitmate.app.ui.theme.FitmateTheme
 import com.fitmate.app.ui.theme.AppearanceMode
@@ -33,6 +39,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var manager: SamsungHealthManager
     private var uiState by mutableStateOf(SamsungHealthUiState())
     private var showSamsungHealthTest by mutableStateOf(false)
+    private var showSamsungDiagnostics by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_Fitmate)
@@ -52,21 +59,31 @@ class MainActivity : ComponentActivity() {
                 appearance = selected
             }) {
             FitmateTheme(darkTheme = dark) {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    if (showSamsungHealthTest) {
-                        Column(Modifier.padding(innerPadding)) {
-                            Button(onClick = { showSamsungHealthTest = false }) { Text("FitMate 프로토타입으로 돌아가기") }
-                            SamsungHealthTestScreen(uiState, ::requestPermissions, ::loadData, ::loadData, ::loadData, { manager.resolve(this@MainActivity) }, Modifier)
-                        }
-                    } else {
+                SamsungHealthNavigationHost(
+                    visible = showSamsungHealthTest,
+                    onBack = {
+                        if (showSamsungDiagnostics) showSamsungDiagnostics = false
+                        else showSamsungHealthTest = false
+                    },
+                    appContent = {
                         FitMatePrototypeApp(
-                            onOpenSamsungTest = { showSamsungHealthTest = true },
+                            onOpenSamsungTest = { showSamsungDiagnostics = false; showSamsungHealthTest = true },
                             samsungHealthState = uiState,
                             onRefreshSamsungHealth = ::loadData,
                             onLoadSamsungWorkouts = ::loadWorkouts,
                             onRequestSamsungExercisePermission = ::requestExercisePermission,
                         )
-                    }
+                    },
+                ) {
+                        if (BuildConfig.DEBUG && showSamsungDiagnostics) {
+                            androidx.activity.compose.BackHandler { showSamsungDiagnostics = false }
+                            Column {
+                                Button({ showSamsungDiagnostics = false }) { Text("연결 관리로 돌아가기") }
+                                SamsungHealthTestScreen(uiState, ::requestPermissions, ::loadData, ::loadData, ::loadData, { manager.resolve(this@MainActivity) })
+                            }
+                        } else SamsungHealthConnectionScreen(uiState, { refreshState() }, { requestExercisePermission() },
+                            { manager.resolve(this@MainActivity) }, { showSamsungHealthTest = false },
+                            onDiagnostics = { showSamsungDiagnostics = true })
                 }
             }
         }
@@ -108,6 +125,31 @@ class MainActivity : ComponentActivity() {
             uiState = uiState.copy(status = SamsungHealthStatus.LOADING)
             uiState = manager.loadWorkouts(startedAt, endedAt)
             loaded(uiState)
+        }
+    }
+}
+
+/** Keep the settings route and session alive while the connection page is open. */
+@Composable
+internal fun SamsungHealthNavigationHost(
+    visible: Boolean,
+    onBack: () -> Unit,
+    appContent: @Composable () -> Unit,
+    healthContent: @Composable () -> Unit,
+) {
+    appContent()
+    if (visible) {
+        Dialog(
+            onDismissRequest = onBack,
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+                dismissOnClickOutside = false,
+            ),
+        ) {
+            Surface(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().safeDrawingPadding()) { healthContent() }
+            }
         }
     }
 }
