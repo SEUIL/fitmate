@@ -47,6 +47,8 @@ internal class MateUiTestServer(private val automaticLogin: Boolean = true, priv
                 val body = if (length == 0) JsonObject() else JsonParser.parseString(String(bytes, Charsets.UTF_8)).asJsonObject
                 val result = if (automaticLogin && request[1] == "/auth/login") 200 to mapOf("tokens" to mapOf("accessToken" to UUID.randomUUID().toString(), "refreshToken" to UUID.randomUUID().toString()))
                     else respond(request[0], request[1], body)
+                // Recovery tests can close the TCP connection after the real server accepted a write.
+                if (result.first == 0) return@use
                 val response = gson.toJson(if (result.first < 400) mapOf("data" to result.second) else mapOf("error" to mapOf("message" to result.second))).toByteArray(Charsets.UTF_8)
                 client.getOutputStream().apply {
                     write("HTTP/1.1 ${result.first} Test\r\nContent-Type: application/json\r\nContent-Length: ${response.size}\r\nConnection: close\r\n\r\n".toByteArray())

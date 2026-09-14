@@ -58,6 +58,7 @@ class WorkoutReportService(
                     bodyPart = sessionExercise.bodyPartSnapshot, completedSetCount = completed.size,
                     totalRepetitions = completed.sumOf { it.repetitions ?: 0 }, totalVolumeKg = currentVolume,
                     maxWeightKg = maxWeight(completed), previousComparison = comparison,
+                    completedSets = completed.map { com.fitmate.backend.report.api.WorkoutReportSet(it.weightKg, it.repetitions, it.restSeconds, it.rpe) },
                 )
             }
         return WorkoutReportResponse(

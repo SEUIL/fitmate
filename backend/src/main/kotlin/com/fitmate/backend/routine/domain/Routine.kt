@@ -53,4 +53,6 @@ class Routine(
     @Version
     @Column(name = "version", nullable = false)
     var version: Long = 0,
+    @Column(name = "recommendation_json", columnDefinition = "LONGTEXT")
+    var recommendationJson: String? = null,
 ) : BaseTimeEntity()

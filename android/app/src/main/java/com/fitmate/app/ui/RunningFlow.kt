@@ -147,7 +147,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
     }.toTypedArray()) }
     Column(modifier.fillMaxSize()) {
     Screen(Modifier.weight(1f)) {
-        WorkoutHeading(if (phase == "설정") "오늘의 목표" else "러닝 $phase",
+        PlanHeading(if (phase == "설정") "러닝 준비" else "러닝 $phase",
             when { phase == "리포트" -> "저장 전 · 오늘의 기록을 확인하세요."; deviceTracking -> "실제 GPS 기록 중 · 알림에서 기록 상태를 확인할 수 있어요."; demo -> "예시 GPS 데이터"; else -> "이번 러닝의 목표를 선택하세요." })
         when (phase) {
             "설정" -> {

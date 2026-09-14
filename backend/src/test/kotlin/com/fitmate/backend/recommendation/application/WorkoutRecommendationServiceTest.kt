@@ -133,14 +133,26 @@ class WorkoutRecommendationServiceTest {
                 return "현재 운동 빈도에 맞춰 천천히 시작해 보세요."
             }
         }
-        val lunaService = WorkoutRecommendationService(routines, exercises, records, userGoals, lunaNarrator)
+        val lunaService = WorkoutRecommendationService(routines, exercises, records, userGoals, lunaNarrator,
+            com.fitmate.backend.recommendation.infrastructure.WorkoutRecommendationAiProperties(planGenerationEnabled = true))
         `when`(routines.getRecommended(userId, SportCode.HEALTH)).thenReturn(baseRoutine(SkillLevel.BEGINNER, GoalCode.FITNESS, 3))
 
-        val result = lunaService.recommend(userId, CreateWorkoutRecommendationRequest(daysPerWeek = 3, sessionMinutes = 45))
+        val result = lunaService.recommend(userId, CreateWorkoutRecommendationRequest(daysPerWeek = 3, sessionMinutes = 45,
+            externalAiConsent = true, consentVersion = com.fitmate.backend.recommendation.infrastructure.OpenAiWorkoutPlanProposer.CONSENT_VERSION))
 
         assertEquals("현재 운동 빈도에 맞춰 천천히 시작해 보세요.", result.aiSummary)
         assertEquals(2, result.items.single().targetSets)
         assertEquals(6, result.items.single().targetRpe)
+    }
+
+    @Test
+    fun `legacy endpoint never sends data without explicit current consent`() {
+        `when`(routines.getRecommended(userId, SportCode.HEALTH)).thenReturn(baseRoutine(SkillLevel.BEGINNER, GoalCode.FITNESS, 3))
+        val consentService = WorkoutRecommendationService(routines, exercises, records, userGoals, narrator,
+            com.fitmate.backend.recommendation.infrastructure.WorkoutRecommendationAiProperties(planGenerationEnabled = true))
+        assertEquals(null, consentService.recommend(userId, CreateWorkoutRecommendationRequest(3, 45)).aiSummary)
+        org.mockito.Mockito.verifyNoInteractions(narrator)
+        assertThrows(ApiException::class.java) { consentService.recommend(userId, CreateWorkoutRecommendationRequest(3, 45, externalAiConsent = true, consentVersion = "old")) }
     }
 
     @Test

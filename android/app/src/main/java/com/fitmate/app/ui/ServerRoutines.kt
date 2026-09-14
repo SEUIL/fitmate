@@ -19,8 +19,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@Composable internal fun ServerRoutineLibrary(modifier: Modifier, api: FitMateApiClient, healthSelected: Boolean,
-    select: (JsonObject) -> Unit, local: () -> Unit) = Screen(modifier) {
+@Composable internal fun ServerRoutineList(modifier: Modifier, api: FitMateApiClient, healthSelected: Boolean,
+    select: (JsonObject) -> Unit, local: () -> Unit, recommend: () -> Unit) = Screen(modifier) {
     val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf("추천 루틴") }
     var rows by remember { mutableStateOf(emptyList<JsonObject>()) }
@@ -34,13 +34,7 @@ import kotlinx.coroutines.withContext
     var selected by remember { mutableStateOf(emptyList<String>()) }
     var deleting by remember { mutableStateOf<JsonObject?>(null) }
     var detail by remember { mutableStateOf<JsonObject?>(null) }
-    var personalized by remember { mutableStateOf<JsonObject?>(null) }
-    var recommendationSheet by remember { mutableStateOf(false) }
-    var daysPerWeek by remember { mutableStateOf("3") }
-    var sessionMinutes by remember { mutableStateOf("45") }
-    var selectedEquipment by remember { mutableStateOf(emptySet<String>()) }
-    var inbodyRows by remember { mutableStateOf(emptyList<JsonObject>()) }
-    var selectedInbodyId by remember { mutableStateOf<String?>(null) }
+    var recommendationDetails by remember { mutableStateOf<String?>(null) }
     fun perform(block: () -> Unit, done: () -> Unit = {}) {
         if (busy) return
         busy = true; error = null
@@ -70,6 +64,7 @@ import kotlinx.coroutines.withContext
         value.add("substitutions", com.google.gson.JsonArray().also { list -> api.items("exercises/$id/substitutions", false).forEach { list.add(it) } })
         detail = value
     })
+    PlanHeading("헬스 루틴", "지금 나에게 맞는 루틴으로 시작해요.")
     Row(Modifier.fillMaxWidth()) {
         listOf("추천 루틴", "기본 루틴", "내 루틴").forEach { label ->
             Column(Modifier.weight(1f).selectable(tab == label, enabled = !busy, role = Role.Tab, onClick = { tab = label }), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -87,30 +82,18 @@ import kotlinx.coroutines.withContext
         Text(if (tab == "추천 루틴" && !healthSelected) "프로필에서 헬스 숙련도를 설정하면 추천을 받을 수 있어요. 기본 루틴은 바로 이용할 수 있습니다." else "기본 루틴으로 시작하거나 나만의 루틴을 만들어 보세요.")
         if (tab != "기본 루틴") OutlinedButton({ tab = "기본 루틴" }, Modifier.fillMaxWidth()) { Text("기본 루틴 보기") }
     }
-    if (tab == "추천 루틴") OutlinedButton({ recommendationSheet = true }, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = !busy) {
+    if (tab == "추천 루틴") OutlinedButton(recommend, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = !busy) {
         Text("맞춤 조건으로 추천 받기")
     }
-    personalized?.let { row -> WorkoutCard {
-        Text("맞춤 추천", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        Text(row.text("name"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        row.text("aiSummary").takeIf { it.isNotBlank() }?.let { Text(it) }
-        Text("주 ${row.text("daysPerWeek")}일 · 회당 ${row.text("sessionMinutes")}분" +
-            row.text("cardioMinutes").toIntOrNull()?.takeIf { it > 0 }?.let { " · 유산소 ${it}분" }.orEmpty(),
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        row.getAsJsonArray("reasons")?.forEach { Text("• ${it.asString}", style = MaterialTheme.typography.bodySmall) }
-        RoutineExerciseList(row, "추천 운동", !busy, ::showDetail)
-        WorkoutAction("내 루틴으로 저장", enabled = !busy) {
-            val items = row.rows("items").map { item -> item.deepCopy().apply {
-                remove("id"); remove("version"); remove("exerciseName"); remove("bodyPart")
-            } }
-            perform({ api.request("POST", "routines", mapOf(
-                "name" to row.text("name"), "sourceType" to "MANUAL", "sportCode" to "HEALTH",
-                "splitCount" to (row.text("splitCount").toIntOrNull() ?: 1), "items" to items,
-            )) }, { tab = "내 루틴"; personalized = null; revision++ })
-        }
-    } }
     rows.forEach { row -> WorkoutCard {
         RoutineExerciseList(row, tab, !busy, ::showDetail)
+        row.get("recommendation")?.takeIf { it.isJsonObject }?.asJsonObject?.let { evidence ->
+            TextButton({ recommendationDetails = if (recommendationDetails == row.text("id")) null else row.text("id") }) { Text("저장 당시 추천 조건·근거") }
+            if (recommendationDetails == row.text("id")) {
+                Text("아래는 저장 당시 추천입니다. 이후 직접 수정한 운동 구성과 다를 수 있어요.")
+                WorkoutPlanResultContent(evidence)
+            }
+        }
         if (row.get("template").asBoolean) TextButton({ perform({ api.request("POST", "routines", mapOf("name" to "${row.text("name")} 복사", "sourceType" to "USER_COPY", "sourceRoutineId" to row.text("id"))) }, { tab = "내 루틴"; revision++ }) }, enabled = !busy) { Text("내 루틴으로 복사") }
         else Row {
             TextButton({ original = row; name = row.text("name"); selected = row.rows("items").map { it.text("exerciseId") }; edit = true }, enabled = !busy) { Text("수정") }
@@ -154,49 +137,6 @@ import kotlinx.coroutines.withContext
         Text("${row.text("bodyPart")} · ${row.text("equipmentType")}")
         Text("대체 운동: ${row.rows("substitutions").joinToString { it.text("name") }.ifBlank { "등록된 대체 운동 없음" }}")
     } }
-    if (recommendationSheet) SocialSheet({ if (!busy) recommendationSheet = false }) {
-        Text("맞춤 운동 추천", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("프로필의 목표와 헬스 숙련도를 바탕으로 루틴을 만들어요. 인바디는 선택 사항입니다.")
-        OutlinedTextField(daysPerWeek, { daysPerWeek = it.filter(Char::isDigit).take(1) }, Modifier.fillMaxWidth(), label = { Text("주 운동 횟수 (1~7일)") })
-        OutlinedTextField(sessionMinutes, { sessionMinutes = it.filter(Char::isDigit).take(3) }, Modifier.fillMaxWidth(), label = { Text("1회 운동 시간 (20~180분)") })
-        Text("사용 가능한 기구", style = MaterialTheme.typography.titleMedium)
-        listOf("MACHINE" to "머신", "DUMBBELL" to "덤벨", "BARBELL" to "바벨", "CABLE" to "케이블").forEach { (code, label) ->
-            Row(Modifier.fillMaxWidth().selectable(code in selectedEquipment, role = Role.Checkbox, onClick = {
-                selectedEquipment = if (code in selectedEquipment) selectedEquipment - code else selectedEquipment + code
-            }), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(code in selectedEquipment, null); Text(label)
-            }
-        }
-        Text("인바디 기록 선택", style = MaterialTheme.typography.titleMedium)
-        if (inbodyRows.isEmpty()) TextButton({
-            scope.launch {
-                try { inbodyRows = withContext(Dispatchers.IO) { api.items("inbody-records") } }
-                catch (failure: Exception) { error = failure.message }
-            }
-        }, enabled = !busy) { Text("내 인바디 기록 불러오기 (선택)") }
-        inbodyRows.forEach { record -> Row(Modifier.fillMaxWidth().selectable(selectedInbodyId == record.text("id"), role = Role.RadioButton, onClick = { selectedInbodyId = record.text("id") }), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selectedInbodyId == record.text("id"), null)
-            Text("${record.text("measuredDate")} · 체지방률 ${record.text("bodyFatPercentage")}%")
-        } }
-        if (selectedInbodyId != null) TextButton({ selectedInbodyId = null }) { Text("인바디 없이 추천") }
-        Button({
-            val days = daysPerWeek.toIntOrNull(); val minutes = sessionMinutes.toIntOrNull()
-            if (days == null || minutes == null) { error = "운동 횟수와 시간을 숫자로 입력해 주세요."; return@Button }
-            busy = true; error = null
-            scope.launch {
-                try {
-                    personalized = withContext(Dispatchers.IO) { api.request("POST", "workout-recommendations", buildMap<String, Any> {
-                        put("daysPerWeek", days); put("sessionMinutes", minutes)
-                        if (selectedEquipment.isNotEmpty()) put("equipmentTypes", selectedEquipment.toList())
-                        selectedInbodyId?.let { put("inbodyRecordId", it) }
-                    }).asJsonObject }
-                    recommendationSheet = false
-                } catch (failure: Exception) { error = failure.message }
-                finally { busy = false }
-            }
-        }, Modifier.fillMaxWidth(), enabled = !busy) { Text(if (busy) "추천 만드는 중…" else "추천 만들기") }
-        if (error != null) ErrorText(error)
-    }
 }
 
 @Composable internal fun RoutineExerciseList(row: JsonObject, label: String, enabled: Boolean, detail: (String) -> Unit) {

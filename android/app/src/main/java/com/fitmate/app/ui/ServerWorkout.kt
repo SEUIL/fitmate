@@ -7,6 +7,18 @@ import com.google.gson.JsonParser
 
 internal data class WorkoutUpload(val sets: List<WorkoutSet>, val running: Boolean)
 
+/** The server selects the current split day; the full routine is not a session. */
+internal fun serverWorkoutSession(response: JsonObject, useSamsung: Boolean): WorkoutSession {
+    val exercises = response.rows("exercises")
+    require(exercises.isNotEmpty()) { "오늘 진행할 운동이 없습니다." }
+    return WorkoutSession(exercises.first().text("exerciseName"), useSamsung).also { session ->
+        session.serverState = response.toString()
+        session.sessionExercises.clear()
+        session.sessionExercises.addAll(exercises.map { it.text("exerciseName") })
+        session.targetSetCount = exercises.sumOf { it.rows("sets").size }
+    }
+}
+
 /** Serializes each session's writes and retains server revisions for conflict detection. */
 internal class ServerWorkout(private val api: FitMateApiClient, private val session: WorkoutSession) {
     private fun state(): JsonObject = JsonParser.parseString(requireNotNull(session.serverState)).asJsonObject

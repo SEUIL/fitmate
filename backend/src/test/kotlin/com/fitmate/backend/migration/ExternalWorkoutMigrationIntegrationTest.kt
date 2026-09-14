@@ -14,7 +14,7 @@ class ExternalWorkoutMigrationIntegrationTest {
         withDatabase { url, user, password ->
             assertEquals(19, flyway(url, user, password, "19").migrate().migrationsExecuted)
             val latest = flyway(url, user, password)
-            assertEquals(2, latest.migrate().migrationsExecuted)
+            assertEquals(5, latest.migrate().migrationsExecuted)
             assertEquals(1, objectExists(url, user, password, "TABLES", "table_name", "health_external_workout_summaries"))
             assertEquals(1, objectExists(url, user, password, "COLUMNS", "column_name", "source_app_key", "table_name", "health_external_workout_summaries"))
             assertEquals(4, objectExists(url, user, password, "STATISTICS", "index_name", "uk_health_external_source", "table_name", "health_external_workout_summaries"))
@@ -22,7 +22,7 @@ class ExternalWorkoutMigrationIntegrationTest {
         }
         withDatabase { url, user, password ->
             val latest = flyway(url, user, password)
-            assertEquals(21, latest.migrate().migrationsExecuted)
+            assertEquals(24, latest.migrate().migrationsExecuted)
             assertEquals(0, latest.migrate().migrationsExecuted)
         }
     }
@@ -47,7 +47,7 @@ class ExternalWorkoutMigrationIntegrationTest {
                 }
             }
             val latest = flyway(url, user, password)
-            assertEquals(1, latest.migrate().migrationsExecuted)
+            assertEquals(4, latest.migrate().migrationsExecuted)
             latest.validate()
             DriverManager.getConnection(url, user, password).use { connection ->
                 connection.createStatement().use { statement ->

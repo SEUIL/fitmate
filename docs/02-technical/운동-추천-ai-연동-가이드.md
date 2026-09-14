@@ -2,11 +2,15 @@
 
 - 작성일: 2026-09-14
 - 최종 수정일: 2026-09-14
-- 버전: v0.5
-- 상태: 구현 완료
+- 버전: v0.6
+- 상태: 검토 중
 - 대상: Kotlin Spring Boot Backend, Android Client
 
 ## 1. 목적과 현재 상태
+
+이 문서는 PR #56의 기존 설명 전용 API를 다룬다. 새 Android 맞춤 추천은 [운동 추천 확장 API](./운동-추천-확장-api-계약.md)의 초안 생성·교체·저장 흐름을 사용한다. 아래 기존 구성·응답 설명을 새 확장 기능의 완료 범위와 혼동하지 않는다.
+
+기존 API도 `externalAiConsent: true`, `consentVersion: "workout-plan-demo-v1"` 및 서버 `plan-generation-enabled` 활성화가 있어야 설명용 외부 AI를 호출한다. 기본값은 비활성화이며, 동의 없이 호출하면 기본 추천과 `aiSummary: null`을 제공한다. 공개 서비스 정책은 미확정이다.
 
 맞춤 운동 추천은 사용자의 목표, 헬스 숙련도, 주 운동 횟수, 1회 운동 시간, 사용 가능한 기구와 선택한 인바디 기록을 바탕으로 생성한다.
 
@@ -41,7 +45,7 @@ Content-Type: application/json
 
 인바디를 보내지 않아도 추천이 생성된다. 서버는 최신 인바디를 임의로 선택하지 않는다.
 
-응답의 `items`는 `POST /api/v1/routines`의 `items`와 같은 운동 ID·세트·반복·RPE·휴식 구조를 사용한다. 사용자가 `내 루틴으로 저장`을 선택하면 Android는 이를 `MANUAL` 루틴으로 저장한다.
+기존 응답의 `items`는 `POST /api/v1/routines`의 `items`와 같은 운동 ID·세트·반복·RPE·휴식 구조를 사용한다. 새 Android 맞춤 추천의 저장은 근거·조건 보존과 중복 방지를 위해 초안의 `/save`를 사용한다.
 
 ### 숙련도별 기본 템플릿
 
