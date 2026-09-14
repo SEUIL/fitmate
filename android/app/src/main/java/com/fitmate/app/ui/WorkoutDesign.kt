@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.automirrored.outlined.DirectionsRun
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -18,6 +19,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fitmate.app.ui.theme.AppearanceMode
 import com.fitmate.app.ui.theme.LocalAppearancePreference
+
+/** One quiet navigation row; the screen owns its main title in the content below. */
+@Composable internal fun WorkoutFlowBackBar(context: String, back: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
+        Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "이전") }
+            Spacer(Modifier.weight(1f))
+            if (context.isNotBlank()) Text(context, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
 
 // Applied only to the reviewed routes. The shared theme and Samsung Health retain their styles.
 @Composable internal fun WorkoutDesignTheme(enabled: Boolean = true, content: @Composable () -> Unit) {

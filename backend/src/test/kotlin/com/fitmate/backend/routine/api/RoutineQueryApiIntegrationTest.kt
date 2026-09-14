@@ -53,7 +53,7 @@ class RoutineQueryApiIntegrationTest {
         assertEquals(listOf(1, 2, 3, 4), recommended["items"].map { it["sequenceNo"].asInt() })
 
         val templates = get("/api/v1/routines/templates", account.token)["items"]
-        assertEquals(5, templates.size())
+        assertEquals(8, templates.size())
         assertTrue(templates.all { it["template"].asBoolean() })
         assertEquals(0, get("/api/v1/routines", account.token)["items"].size())
 
@@ -62,12 +62,15 @@ class RoutineQueryApiIntegrationTest {
     }
 
     @Test
-    fun `recommendation uses goal-wide match then beginner fallback`() {
+    fun `recommendation prefers experience then goal-wide match and beginner fallback`() {
         val habit = signup(GoalCode.HABIT, SkillLevel.OVER_THREE_YEARS)
-        assertEquals("40000000-0000-0000-0000-000000000005",
+        assertEquals("40000000-0000-0000-0000-000000000008",
             get("/api/v1/routines/recommended?sportCode=HEALTH", habit.token)["id"].asText())
+        val earlyHabit = signup(GoalCode.HABIT, SkillLevel.BEGINNER)
+        assertEquals("40000000-0000-0000-0000-000000000005",
+            get("/api/v1/routines/recommended?sportCode=HEALTH", earlyHabit.token)["id"].asText())
 
-        val noMatch = signup(GoalCode.RECORD_IMPROVEMENT, SkillLevel.OVER_THREE_YEARS)
+        val noMatch = signup(GoalCode.RECORD_IMPROVEMENT, SkillLevel.BEGINNER)
         assertEquals("40000000-0000-0000-0000-000000000001",
             get("/api/v1/routines/recommended?sportCode=HEALTH", noMatch.token)["id"].asText())
     }

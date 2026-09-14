@@ -37,6 +37,7 @@ internal fun runningPayload(state: RunningState, completedAt: Long): Map<String,
             "인터벌" -> "INTERVAL"; else -> "FREE"
         },
         "activeDurationSeconds" to seconds, "distanceMeters" to meters,
+        "startedAt" to Instant.ofEpochMilli(requireNotNull(startedAt) { "러닝 시작 시각이 없습니다. 새 기록을 시작해 주세요." }).toString(),
         "completedAt" to Instant.ofEpochMilli(completedAt).toString(),
         "routeVisibility" to "PRIVATE", "autoPauseEnabled" to autoPause,
         "rpe" to rpe.toInt(), "conditionScore" to condition.toInt(), "memo" to memo,

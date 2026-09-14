@@ -73,6 +73,7 @@ signing.properties
 # Backend local files
 # -----------------------------------------------------------------------------
 /backend/.gradle/
+/backend/.kotlin/
 /backend/.gradle-user-home/
 /backend/build/
 /backend/out/

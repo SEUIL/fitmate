@@ -6,11 +6,17 @@ import com.google.gson.Gson
 
 class ServerRecordContractTest {
     @Test fun `all five run goals send required targets and private route`() {
-        val state = RunningState().apply { seconds = 600; meters = 1000; target = 5000 }
+        val state = RunningState().apply {
+            seconds = 600
+            meters = 1000
+            target = 5000
+            startedAt = 400_000L
+        }
         listOf("자유", "거리", "시간", "페이스", "인터벌").forEach { goal ->
             state.goal = goal
             val body = runningPayload(state, 1_000_000L)
             assertEquals("PRIVATE", body["routeVisibility"])
+            assertEquals("1970-01-01T00:06:40Z", body["startedAt"])
             assertEquals(goal in listOf("거리", "페이스"), body.containsKey("targetDistanceMeters"))
             assertEquals(goal in listOf("시간", "인터벌"), body.containsKey("targetDurationSeconds"))
             assertEquals(goal == "페이스", body.containsKey("targetPaceSecondsPerKm"))
@@ -20,9 +26,14 @@ class ServerRecordContractTest {
     }
 
     @Test fun `zero distance is valid but zero duration cannot be saved`() {
-        val state = RunningState().apply { goal = "자유"; seconds = 1 }
+        val state = RunningState().apply { goal = "자유"; seconds = 1; startedAt = 400_000L }
         assertEquals(0, runningPayload(state, 1_000_000L)["distanceMeters"])
         state.seconds = 0
+        assertThrows(IllegalArgumentException::class.java) { runningPayload(state, 1_000_000L) }
+    }
+
+    @Test fun `missing actual start time cannot be saved`() {
+        val state = RunningState().apply { goal = "자유"; seconds = 1 }
         assertThrows(IllegalArgumentException::class.java) { runningPayload(state, 1_000_000L) }
     }
 

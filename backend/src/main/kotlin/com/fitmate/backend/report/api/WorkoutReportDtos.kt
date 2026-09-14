@@ -27,7 +27,10 @@ data class WorkoutExerciseReportResponse(
     val totalVolumeKg: BigDecimal,
     val maxWeightKg: BigDecimal?,
     val previousComparison: PreviousWorkoutComparisonResponse?,
+    val completedSets: List<WorkoutReportSet> = emptyList(),
 )
+
+data class WorkoutReportSet(val weightKg: BigDecimal?, val repetitions: Int?, val restSeconds: Int?, val rpe: Int?)
 
 data class PreviousWorkoutComparisonResponse(
     val previousWorkoutSessionId: UUID,
