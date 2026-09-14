@@ -38,13 +38,17 @@ fitmate:
       base-url: https://api.openai.com
       timeout-seconds: 30
       direct-connection: ${OPENAI_DIRECT_CONNECTION:false}
+  workout-report-ai:
+    enabled: ${FITMATE_WORKOUT_REPORT_AI_ENABLED:false}
+    timeout-seconds: ${FITMATE_WORKOUT_REPORT_AI_TIMEOUT_SECONDS:30}
   workout-recommendation-ai:
     enabled: ${FITMATE_WORKOUT_RECOMMENDATION_AI_ENABLED:true}
-    api-key: ${OPENAI_API_KEY:}
-    model: ${OPENAI_MODEL:gpt-5.6-luna}
-    base-url: https://api.openai.com
+    plan-generation-enabled: ${FITMATE_WORKOUT_PLAN_AI_ENABLED:false}
+    api-key: ${fitmate.inbody-ai.openai.api-key:}
+    model: ${fitmate.inbody-ai.openai.model:gpt-5.6-luna}
+    base-url: ${fitmate.inbody-ai.openai.base-url:https://api.openai.com}
     timeout-seconds: 15
-    direct-connection: ${OPENAI_DIRECT_CONNECTION:false}
+    direct-connection: ${fitmate.inbody-ai.openai.direct-connection:false}
   media:
     storage-dir: ${FITMATE_MEDIA_STORAGE_DIR:./data/media}
     max-image-bytes: 10485760

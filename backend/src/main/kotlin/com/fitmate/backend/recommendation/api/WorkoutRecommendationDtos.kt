@@ -12,6 +12,8 @@ data class CreateWorkoutRecommendationRequest(
     @field:Min(20) @field:Max(180) val sessionMinutes: Int,
     val equipmentTypes: Set<EquipmentType> = emptySet(),
     val inbodyRecordId: UUID? = null,
+    val externalAiConsent: Boolean = false,
+    val consentVersion: String? = null,
 )
 
 data class WorkoutRecommendationResponse(

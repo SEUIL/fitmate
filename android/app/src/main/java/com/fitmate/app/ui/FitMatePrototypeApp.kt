@@ -1,5 +1,7 @@
 package com.fitmate.app.ui
 
+import androidx.compose.foundation.layout.statusBarsPadding
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.activity.compose.BackHandler
@@ -331,7 +333,20 @@ fun FitMatePrototypeApp(
         PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.ACCOUNT, PrototypeRoute.NOTIFICATIONS, PrototypeRoute.FOLLOW_REQUESTS)) {
     Scaffold(
         topBar = {
-            if (route !in setOf(PrototypeRoute.ADMIN, PrototypeRoute.HOME, PrototypeRoute.ONBOARDING, PrototypeRoute.COMMUNITY, PrototypeRoute.PROFILE, PrototypeRoute.PERSON, PrototypeRoute.MATE_LIST, PrototypeRoute.DM, PrototypeRoute.DM_DETAIL, PrototypeRoute.WORKOUT)) {
+            if (route == PrototypeRoute.SOLO || route == PrototypeRoute.RUNNING ||
+                (route == PrototypeRoute.HEALTH_ROUTINE && localRoutineMode) ||
+                (route == PrototypeRoute.WORKOUT_PREP && selectedServerRoutine == null)) {
+                WorkoutFlowBackBar(if (route == PrototypeRoute.SOLO) "" else if (route == PrototypeRoute.RUNNING) "운동 · 러닝" else "운동 · 헬스",
+                    modifier = Modifier.statusBarsPadding(), back = {
+                        if (route == PrototypeRoute.RUNNING && runningState.phase != "설정") runningState.exitDialog = true
+                        else route = when (route) {
+                            PrototypeRoute.SOLO -> PrototypeRoute.HOME
+                            PrototypeRoute.WORKOUT_PREP -> PrototypeRoute.HEALTH_ROUTINE
+                            else -> PrototypeRoute.SOLO
+                        }
+                    })
+            } else if (route !in setOf(PrototypeRoute.SOLO, PrototypeRoute.HEALTH_ROUTINE, PrototypeRoute.WORKOUT_PREP, PrototypeRoute.RUNNING,
+                    PrototypeRoute.ADMIN, PrototypeRoute.HOME, PrototypeRoute.ONBOARDING, PrototypeRoute.COMMUNITY, PrototypeRoute.PROFILE, PrototypeRoute.PERSON, PrototypeRoute.MATE_LIST, PrototypeRoute.DM, PrototypeRoute.DM_DETAIL, PrototypeRoute.WORKOUT)) {
                 TopAppBar(
                     title = { Text(if (route == PrototypeRoute.INBODY && inbodyState.phase in setOf("상세", "기록 상세")) "신체 구성 상세" else if (route == PrototypeRoute.DM_DETAIL) currentChat?.name.orEmpty() else if (route == PrototypeRoute.PERSON) socialState.accounts.opened.orEmpty() else route.title) },
                     navigationIcon = {
@@ -471,7 +486,7 @@ fun FitMatePrototypeApp(
                     val names = routine.rows("items").map { it.text("exerciseName") }
                     selectedWorkoutRoutine = WorkoutRoutine(routine.text("name"), names.joinToString(" → "), names.firstOrNull().orEmpty(), names)
                     route = PrototypeRoute.WORKOUT_PREP
-                }, local = { localRoutineMode = true }) else RoutineLibrary(
+                }, local = { localRoutineMode = true }, back = { route = PrototypeRoute.SOLO }) else RoutineLibrary(
                 modifier = Modifier.padding(padding),
                 saved = savedRoutines,
                 update = { savedRoutines = it },
@@ -482,25 +497,29 @@ fun FitMatePrototypeApp(
                 selectedWorkoutRoutine = WorkoutRoutine(routine.name, routine.exercises.joinToString(" → "), routine.exercises.firstOrNull().orEmpty(), routine.exercises)
                 route = PrototypeRoute.WORKOUT_PREP
             }
-            PrototypeRoute.WORKOUT_PREP -> WorkoutPrepScreen(Modifier.padding(padding), selectedWorkoutRoutine) { useSamsungHealth ->
+            PrototypeRoute.WORKOUT_PREP -> {
+                val start: (Boolean) -> Unit = { useSamsungHealth ->
                 if (!startingWorkout) {
                     startingWorkout = true; startError = null
                     integrationScope.launch {
                         try {
                             val routine = selectedServerRoutine
-                            val current = WorkoutSession(selectedWorkoutRoutine.firstExerciseName, useSamsungHealth).also {
-                                it.sessionExercises.clear(); it.sessionExercises.addAll(selectedWorkoutRoutine.exercises)
-                            }
-                            if (routine != null) {
+                            val current = if (routine != null) {
                                 val response = withContext(Dispatchers.IO) { apiClient.request("POST", "workout-sessions", mapOf("routineId" to routine.text("id"))).asJsonObject }
-                                current.serverState = response.toString()
-                                current.targetSetCount = response.rows("exercises").sumOf { it.rows("sets").size }
+                                serverWorkoutSession(response, useSamsungHealth)
+                            } else WorkoutSession(selectedWorkoutRoutine.firstExerciseName, useSamsungHealth).also {
+                                it.sessionExercises.clear(); it.sessionExercises.addAll(selectedWorkoutRoutine.exercises)
                             }
                             workoutSession = current; route = PrototypeRoute.WORKOUT
                         } catch (failure: Exception) { startError = failure.message }
                         finally { startingWorkout = false }
                     }
                 }
+                }
+                val serverRoutine = selectedServerRoutine
+                if (serverRoutine != null) ServerWorkoutPreparation(Modifier.padding(padding), apiClient, serverRoutine.text("id"),
+                    back = { route = PrototypeRoute.HEALTH_ROUTINE }, start = start)
+                else WorkoutPrepScreen(Modifier.padding(padding), selectedWorkoutRoutine, startWorkout = start)
             }
             PrototypeRoute.RUNNING -> RunningFlow(Modifier.padding(padding), runningState, locationConsent, { locationConsent = it }, apiClient) { saved ->
                 if (saved) mateState.completeWorkout() else mateState.activeWorkoutId = null
@@ -1135,7 +1154,7 @@ private fun FitMatePrototypePreview() {
 @Composable private fun Shortcut(label: String, action: () -> Unit) = OutlinedButton(action) { Text(label) }
 
 @Composable private fun SoloScreen(modifier: Modifier, start: () -> Unit, running: () -> Unit) = Screen(modifier) {
-    WorkoutHeading("오늘은 어떤 운동을 할까요?", "운동에 맞춰 기록을 시작해 보세요.")
+    PlanHeading("오늘의 운동", "오늘은 어떤 운동을 해볼까요?")
     WorkoutCard {
         WorkoutSportLabel(false, "헬스", "세트별 중량과 반복 횟수를 기록해요.")
         Text("루틴 선택 → 운동 준비", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1175,11 +1194,13 @@ private fun FitMatePrototypePreview() {
 @Composable private fun WorkoutPrepScreen(
     modifier: Modifier,
     routine: WorkoutRoutine,
+    serverSplitCount: Int = 1,
     startWorkout: (Boolean) -> Unit
 ) = Screen(modifier) {
     var useSamsungHealth by remember { mutableStateOf(false) }
     Text("선택한 루틴", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    WorkoutHeading(routine.name, "운동 ${routine.exercises.size}개")
+    WorkoutHeading(routine.name, if (serverSplitCount > 1) "${serverSplitCount}일 분할 · 전체 운동 ${routine.exercises.size}개" else "운동 ${routine.exercises.size}개")
+    if (serverSplitCount > 1) Text("시작하면 완료한 기록에 따라 오늘 일차의 운동만 진행합니다. 운동을 완료하면 다음 일차로 넘어갑니다.", color = MaterialTheme.colorScheme.primary)
     if (routine.description.isNotBlank()) Text(routine.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (routine.exercises.isNotEmpty()) WorkoutCard {
         routine.exercises.forEachIndexed { index, name ->

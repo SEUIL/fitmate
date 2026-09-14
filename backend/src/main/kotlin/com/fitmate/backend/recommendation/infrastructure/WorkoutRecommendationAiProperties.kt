@@ -10,4 +10,5 @@ data class WorkoutRecommendationAiProperties(
     var baseUrl: String = "https://api.openai.com",
     var timeoutSeconds: Long = 15,
     var directConnection: Boolean = false,
+    var planGenerationEnabled: Boolean = false,
 )

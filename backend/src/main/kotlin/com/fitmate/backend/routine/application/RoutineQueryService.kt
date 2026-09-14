@@ -26,6 +26,7 @@ class RoutineQueryService(
     private val userGoalRepository: UserGoalRepository,
     private val userSportRepository: UserSportRepository,
     private val sportRepository: SportRepository,
+    private val workoutSessions: com.fitmate.backend.workout.repository.WorkoutSessionRepository,
 ) {
     @Transactional(readOnly = true)
     fun getRecommended(userId: UUID, sportCode: SportCode): RoutineDetail {
@@ -46,7 +47,7 @@ class RoutineQueryService(
             ?: templates.firstOrNull { it.targetGoalCode == primaryGoal && it.targetLevel == null }
             ?: templates.firstOrNull { it.targetGoalCode == GoalCode.FITNESS && it.targetLevel == SkillLevel.BEGINNER }
             ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "추천할 수 있는 기본 루틴이 없습니다.")
-        return toDetail(recommended)
+        return toUserDetail(recommended, userId)
     }
 
     @Transactional(readOnly = true)
@@ -66,7 +67,14 @@ class RoutineQueryService(
         if (!routine.isTemplate && routine.ownerUserId != userId) {
             throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "루틴을 찾을 수 없습니다.")
         }
-        return toDetail(routine)
+        return toUserDetail(routine, userId)
+    }
+
+    private fun toUserDetail(routine: Routine, userId: UUID): RoutineDetail {
+        val completed = workoutSessions.countByUserIdAndRoutineIdAndStatus(
+            userId, requireNotNull(routine.id), com.fitmate.backend.workout.domain.WorkoutSessionStatus.COMPLETED,
+        )
+        return toDetail(routine).copy(nextSplitDayNo = (completed % routine.splitCount).toInt() + 1)
     }
 
     private fun activeTemplates(sportCode: SportCode): List<Routine> = routineRepository
@@ -120,6 +128,7 @@ class RoutineQueryService(
             template = summary.template,
             version = summary.version,
             items = items,
+            recommendation = routine.recommendationJson?.let { com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(it) },
         )
     }
 

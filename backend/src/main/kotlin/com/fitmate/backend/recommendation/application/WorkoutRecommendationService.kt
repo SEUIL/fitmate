@@ -16,7 +16,6 @@ import com.fitmate.backend.recommendation.infrastructure.WorkoutRecommendationNa
 import com.fitmate.backend.routine.application.RoutineQueryService
 import com.fitmate.backend.routine.application.dto.RoutineItemResponse
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.util.UUID
 
@@ -27,9 +26,11 @@ class WorkoutRecommendationService(
     private val records: InbodyRecordRepository,
     private val userGoals: UserGoalRepository,
     private val narrator: WorkoutRecommendationNarrator,
+    private val aiProperties: com.fitmate.backend.recommendation.infrastructure.WorkoutRecommendationAiProperties = com.fitmate.backend.recommendation.infrastructure.WorkoutRecommendationAiProperties(),
 ) {
-    @Transactional(readOnly = true)
     fun recommend(userId: UUID, request: CreateWorkoutRecommendationRequest): WorkoutRecommendationResponse {
+        if (request.externalAiConsent && request.consentVersion != com.fitmate.backend.recommendation.infrastructure.OpenAiWorkoutPlanProposer.CONSENT_VERSION)
+            throw ApiException(ApiErrorCode.VALIDATION_ERROR, "현재 AI 전송 안내를 확인하고 다시 동의해 주세요.")
         val base = routines.getRecommended(userId, com.fitmate.backend.fitness.domain.SportCode.HEALTH)
         val goal = userGoals.findAllByIdUserId(userId).singleOrNull { it.isPrimary }?.id?.goalCode ?: base.targetGoalCode
         val inbody = request.inbodyRecordId?.let { recordId ->
@@ -49,12 +50,12 @@ class WorkoutRecommendationService(
         ) }
         val cardioMinutes = cardioMinutes(goal, inbody, request.sessionMinutes)
         val reasons = reasons(goal, base.targetLevel, request, inbody, reducedVolume, cardioMinutes, base.splitCount, splitCount)
-        val summary = narrator.narrate(
+        val summary = if (request.externalAiConsent && aiProperties.planGenerationEnabled) narrator.narrate(
             name = base.name,
             reasons = reasons,
             cardioMinutes = cardioMinutes,
             inbody = inbody,
-        )
+        ) else null
         return WorkoutRecommendationResponse(
             name = if (reducedVolume) "${base.name} · 적응형" else base.name,
             daysPerWeek = request.daysPerWeek,

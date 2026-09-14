@@ -126,6 +126,7 @@ import kotlinx.coroutines.withContext
             row.rows("laps").forEach { Text("${it.recordInt("lapNo")}랩 · ${it.recordInt("distanceMeters")}m · ${it.recordInt("durationSeconds")}초") }
             }
         } else {
+            WorkoutInsightEntry(api, id)
             WorkoutHeading("오늘의 운동 기록", "FitMate에 기록한 운동 정보입니다.")
             WorkoutCard {
                 WorkoutMetrics("운동 시간" to "${row.recordInt("durationSeconds")}초",
