@@ -16,8 +16,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 enum class InbodyAnalysisStatus { UPLOADED, PROCESSING, COMPLETED, REVIEW_REQUIRED, FAILED }
-// GEMINI is retained only to deserialize historical records; no analyzer is registered.
-enum class InbodyAiProvider { OPENAI, CLAUDE, MOCK, GEMINI }
+enum class InbodyAiProvider { OPENAI, CLAUDE, MOCK, LEGACY }
 enum class InbodyRecordSource { MANUAL, AI_OCR }
 
 enum class InbodyFieldCode {

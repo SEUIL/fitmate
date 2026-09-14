@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.client.TestRestTemplate
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.core.io.ByteArrayResource
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
@@ -26,7 +27,9 @@ import java.util.UUID
     "spring.datasource.password=\${FITMATE_TEST_DB_PASSWORD:}",
     "fitmate.inbody-ai.provider=MOCK",
 ])
-class InbodyApiIntegrationTest(private val http: TestRestTemplate) {
+class InbodyApiIntegrationTest {
+    @Autowired private lateinit var http: TestRestTemplate
+
     companion object {
         private val mediaDir = Files.createTempDirectory("fitmate-inbody-api-test-")
 
@@ -98,7 +101,7 @@ class InbodyApiIntegrationTest(private val http: TestRestTemplate) {
             JsonNode::class.java,
         )
         assertEquals(HttpStatus.OK, response.statusCode, response.body.toString())
-        return response.body!!["data"]["id"].asText()
+        return response.body!!["data"]["mediaId"].asText()
     }
 
     private fun awaitFinishedAnalysis(token: String, analysisId: String): JsonNode {
