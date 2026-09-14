@@ -1191,21 +1191,12 @@ private fun FitMatePrototypePreview() {
             }
         }
     }
-    WorkoutCard {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Column(Modifier.weight(1f)) {
-                Text("Samsung Health Data", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("이번 운동에서만 선택적으로 사용합니다.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-            }
-            Switch(useSamsungHealth, { useSamsungHealth = it })
-        }
-        Text(if (useSamsungHealth) "연결·권한·동기화 가능 상태는 운동 시작 전에 확인합니다." else "FitMate 직접 기록만으로 기본 리포트를 만들 수 있어요.", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
-    }
+    SamsungPreparationOption(useSamsungHealth) { useSamsungHealth = it }
     WorkoutCard {
         Text("시작 전 안내", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text("가벼운 워밍업과 스트레칭 후 시작하세요. 통증이 느껴지면 운동을 중단하고 휴식하세요.", style = MaterialTheme.typography.bodyMedium, color = FitMateColors.TextSecondary)
     }
-    WorkoutAction("운동 시작") { startWorkout(useSamsungHealth) }
+    WorkoutAction(if (useSamsungHealth) "FitMate 운동 시작" else "운동 시작") { startWorkout(useSamsungHealth) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

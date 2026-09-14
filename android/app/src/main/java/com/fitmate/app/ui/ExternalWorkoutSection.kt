@@ -5,6 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +64,9 @@ internal fun ExternalWorkoutSection(
     var deviceLoadedForSession by remember(sessionId) { mutableStateOf(false) }
     var message by remember(sessionId) { mutableStateOf<String?>(null) }
     var getAttempt by remember(sessionId) { mutableStateOf(0) }
+    var pickerOpen by remember(sessionId) { mutableStateOf(false) }
+    var deferred by remember(sessionId) { mutableStateOf(false) }
+    var showExcluded by remember(sessionId) { mutableStateOf(false) }
 
     fun loadStored() {
         scope.launch {
@@ -87,8 +94,7 @@ internal fun ExternalWorkoutSection(
         selected = selected?.let { current -> candidates.firstOrNull { it.uid == current.uid && it.sourceAppId == current.sourceAppId } }
     }
 
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Samsung Health 운동 요약", style = MaterialTheme.typography.titleMedium)
             if (sessionExerciseNames.isNotEmpty()) {
                 Text("현재 FitMate 운동: ${sessionExerciseNames.distinct().joinToString(" · ")}", style = MaterialTheme.typography.bodySmall)
@@ -100,9 +106,9 @@ internal fun ExternalWorkoutSection(
                 OutlinedButton({ serverLoaded = false; getAttempt++ }) { Text("저장 여부 다시 확인") }
             }
             stored?.let { linked ->
-                SummaryText(linked.summary.exerciseType, linked.summary.activeDurationSeconds, linked.summary.caloriesKcal?.toPlainString(), linked.summary.meanHeartRate?.toPlainString())
-                Text("저장된 요약 · 버전 ${linked.version}", color = MaterialTheme.colorScheme.primary)
+                SamsungSummaryCard(linked.summary, linked = true)
                 OutlinedButton({
+                    pickerOpen = true
                     message = "기기 원본을 다시 읽는 중이에요."
                     loadWorkouts(sessionStartedAt, sessionEndedAt) { refreshed ->
                         deviceLoadedForSession = true
@@ -111,9 +117,25 @@ internal fun ExternalWorkoutSection(
                         if (same == null) message = "같은 원본을 찾지 못했습니다. 기존 저장 요약을 유지합니다."
                         else selected = same
                     }
-                }) { Text("원본 다시 확인") }
+                }, enabled = !saving && samsungState.status != SamsungHealthStatus.LOADING) { Text("원본 다시 확인") }
             }
 
+            if (stored == null && serverLoaded && serverError == null && !pickerOpen) {
+                if (deferred) SamsungSurface {
+                    Text("기본 리포트를 먼저 확인하세요", fontWeight = FontWeight.SemiBold)
+                    Text("기기 기록은 동기화가 끝난 뒤 연결할 수 있어요.")
+                    OutlinedButton({ deferred = false; pickerOpen = true }) { Text("Samsung Health 기록 연결") }
+                } else SamsungEndGuidance(onLoad = {
+                    pickerOpen = true
+                    if (samsungState.permissions.any { it.label == "운동 읽기" && it.granted }) {
+                        loadWorkouts(sessionStartedAt, sessionEndedAt) { deviceLoadedForSession = true }
+                    }
+                }, onSkip = { deferred = true }, enabled = !saving && samsungState.status != SamsungHealthStatus.LOADING)
+            }
+            if (!pickerOpen) message?.let { Text(it) }
+            if (pickerOpen) SamsungPickerPage(saving, { pickerOpen = false; selected = null }) {
+            Text("FitMate · ${samsungTime(sessionStartedAt)} – ${samsungTime(sessionEndedAt)}", style = MaterialTheme.typography.bodySmall)
+            Text("운동 종류와 시간을 확인해 주세요. 선택한 기록만 리포트에 연결돼요.")
             if (stored == null && serverLoaded && serverError == null) {
                 when {
                     samsungState.status == SamsungHealthStatus.LOADING -> Text("기기 운동을 불러오는 중…")
@@ -140,21 +162,35 @@ internal fun ExternalWorkoutSection(
                             Text(if (deviceLoadedForSession) "새로고침" else "Samsung Health 운동 불러오기")
                         }
                     }
-                    else -> candidates.forEach { candidate ->
-                        OutlinedButton({ selected = candidate }, Modifier.fillMaxWidth()) {
-                            Text("${candidate.customTitle ?: candidate.exerciseType} · ${formatExternalTime(candidate.startTime)} · ${candidate.activeDurationSeconds / 60}분")
+                    else -> {
+                        Text("같은 시간대의 운동 ${candidates.size}건을 찾았어요.")
+                        candidates.forEach { candidate ->
+                        OutlinedButton({ selected = candidate }, Modifier.fillMaxWidth(), enabled = !saving) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected?.uid == candidate.uid && selected?.sourceAppId == candidate.sourceAppId, onClick = null)
+                                Column(Modifier.weight(1f)) {
+                                    Text(candidate.customTitle ?: samsungExerciseName(candidate.exerciseType), fontWeight = FontWeight.SemiBold)
+                                    Text("${samsungTime(candidate.startTime)} – ${samsungTime(candidate.endTime)}", style = MaterialTheme.typography.bodySmall)
+                                    Text("활동 ${samsungDuration(candidate.activeDurationSeconds)}", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
                         }
+                    }
+                        TextButton({ loadWorkouts(sessionStartedAt, sessionEndedAt) { deviceLoadedForSession = true } }, enabled = !saving) { Text("다시 불러오기") }
                     }
                 }
                 if (deviceLoadedForSession && samsungState.status in setOf(SamsungHealthStatus.READY, SamsungHealthStatus.DATA_EMPTY)) {
-                    MatchExclusionGuidance(analysis, sportCode)
+                    val excluded = analysis.unsupported.size + analysis.timeMismatchCount + analysis.compoundCount + analysis.incompleteCount
+                    if (excluded > 0) {
+                        TextButton({ showExcluded = !showExcluded }) { Text(if (showExcluded) "제외된 기록 안내 접기" else "연결할 수 없는 기록 안내 ($excluded)") }
+                        if (showExcluded) MatchExclusionGuidance(analysis, sportCode)
+                    }
                 }
             }
 
             selected?.let { candidate ->
-                Text("선택한 후보")
-                SummaryText(candidate.exerciseType, candidate.activeDurationSeconds, candidate.calories?.toString(), candidate.meanHeartRate?.toString())
-                Text("선택한 운동의 최소 요약을 발표용 리포트에 저장합니다. 발표용 테스트 데이터는 발표 후 개발 DB에서 수동으로 정리합니다.", style = MaterialTheme.typography.bodySmall)
+                SamsungSummaryCard(candidate.toExternalWorkoutSummary(), linked = false)
+                Text("확인한 운동 요약만 저장해요. FitMate의 직접 기록은 변경하지 않아요.", style = MaterialTheme.typography.bodySmall)
                 Button({
                     saving = true; message = null
                     loadWorkouts(sessionStartedAt, sessionEndedAt) { refreshed ->
@@ -168,20 +204,26 @@ internal fun ExternalWorkoutSection(
                             scope.launch {
                                 try {
                                     stored = withContext(Dispatchers.IO) { server.put(sessionId, request, stored?.version) }
-                                    selected = null; message = "Samsung Health 요약을 저장했습니다."
+                                    selected = null; pickerOpen = false; message = "Samsung Health 요약을 저장했습니다."
                                 } catch (failure: Exception) {
                                     if (failure is CancellationException) throw failure
-                                    val recovered = runCatching { withContext(Dispatchers.IO) { server.get(sessionId) } }.getOrNull()
+                                    val recovered = try { withContext(Dispatchers.IO) { server.get(sessionId) } }
+                                    catch (cancelled: CancellationException) { throw cancelled }
+                                    catch (_: Exception) { null }
                                     if (recovered != null && recovered.sessionId == sessionId && externalWorkoutContentMatches(request, recovered)) {
-                                        stored = recovered; selected = null; message = "저장 여부를 확인해 완료 상태를 복원했습니다."
+                                        stored = recovered; selected = null; pickerOpen = false; message = "저장 여부를 확인해 완료 상태를 복원했습니다."
                                     } else message = failure.message ?: "외부 요약 저장에 실패했습니다. 기본 리포트는 유지됩니다."
                                 } finally { saving = false }
                             }
                         }
                     }
-                }, enabled = !saving) { Text(if (saving) "원본 확인 및 저장 중…" else if (stored == null) "확인하고 연결" else "변경 내용 확인 후 저장") }
+                }, modifier = Modifier.fillMaxWidth(), enabled = !saving && samsungState.status != SamsungHealthStatus.LOADING) { Text(if (saving) "원본 확인 및 저장 중…" else if (stored == null) "확인하고 리포트에 연결" else "변경 내용 확인 후 저장") }
             }
-            message?.let { Text(it, color = if (stored != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+            if (stored != null && selected == null) {
+                if (samsungState.status == SamsungHealthStatus.LOADING) CircularProgressIndicator()
+                else TextButton({ pickerOpen = false }) { Text("리포트로 돌아가기") }
+            }
+            message?.let { Text(it) }
         }
     }
 }
@@ -200,7 +242,7 @@ private fun MatchExclusionGuidance(analysis: WorkoutMatchAnalysis, sportCode: St
     }
     if (analysis.unsupported.isNotEmpty()) {
         Text(
-            if (sportCode == "HEALTH") "발표에서는 지원되는 벤치프레스(BENCH_PRESS) 기록을 사용해 주세요."
+            if (sportCode == "HEALTH") "현재는 단일 벤치프레스 기록만 연결할 수 있어요."
             else "현재 지원되는 단일 운동 기록을 사용해 주세요.",
             style = MaterialTheme.typography.bodySmall,
         )
