@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
+import org.springframework.dao.DataIntegrityViolationException
 import java.time.Instant
 import java.util.Optional
 import java.util.UUID
@@ -58,6 +59,27 @@ class SportRecordServiceTest {
     @Test fun `rejects inconsistent winner count`() {
         val winners = assertThrows(ApiException::class.java) { service.create(userId, request().copy(winCount = 4)) }
         assertEquals("INCONSISTENT_VALUE", winners.fields.single().reason)
+    }
+
+    @Test fun `concurrent conflict hides another users record`() {
+        val storedId = UuidBinaryConverter.toMysqlOrderedUuid(recordId)
+        `when`(sessions.findById(storedId)).thenReturn(Optional.empty(), Optional.of(WorkoutSession(id = storedId, userId = UUID.randomUUID())))
+        `when`(persistence.save(anyValue(), anyValue())).thenThrow(DataIntegrityViolationException("duplicate"))
+
+        val error = assertThrows(ApiException::class.java) { service.create(userId, request()) }
+
+        assertEquals(ApiErrorCode.RESOURCE_NOT_FOUND, error.errorCode)
+    }
+
+    @Test fun `concurrent conflict with owners other record is classified as conflict`() {
+        val storedId = UuidBinaryConverter.toMysqlOrderedUuid(recordId)
+        `when`(sessions.findById(storedId)).thenReturn(Optional.empty(), Optional.of(WorkoutSession(id = storedId, userId = userId)))
+        `when`(persistence.save(anyValue(), anyValue())).thenThrow(DataIntegrityViolationException("duplicate"))
+        `when`(records.findById(storedId)).thenReturn(Optional.empty())
+
+        val error = assertThrows(ApiException::class.java) { service.create(userId, request()) }
+
+        assertEquals(ApiErrorCode.SPORT_RECORD_CONFLICT, error.errorCode)
     }
 
     private fun request(placeName: String? = "체육관") = CreateSportRecordRequest(
