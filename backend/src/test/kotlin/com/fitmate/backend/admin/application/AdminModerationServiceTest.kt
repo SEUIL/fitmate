@@ -92,6 +92,7 @@ class AdminModerationServiceTest {
     @Test
     fun `expired suspension becomes active for next login`() {
         val suspended = User(id = adminId, accountStatus = AccountStatus.SUSPENDED)
+        `when`(users.findForOperatorUpdate(adminId)).thenReturn(suspended)
         `when`(sanctions.findAllByUserIdAndAction(adminId, ModerationAction.SUSPEND))
             .thenReturn(listOf(AdminSanction(userId = adminId, action = ModerationAction.SUSPEND, endsAt = now.minusSeconds(1))))
         `when`(users.save(suspended)).thenReturn(suspended)
@@ -106,6 +107,7 @@ class AdminModerationServiceTest {
     @Test
     fun `short suspension expiry does not cancel older active suspension`() {
         val user = User(id = adminId, accountStatus = AccountStatus.SUSPENDED)
+        `when`(users.findForOperatorUpdate(adminId)).thenReturn(user)
         `when`(sanctions.findAllByUserIdAndAction(adminId, ModerationAction.SUSPEND)).thenReturn(listOf(
             AdminSanction(endsAt = now.plusSeconds(86400 * 20)), AdminSanction(endsAt = now.minusSeconds(1))))
         val result = AccountSuspensionService(sanctions, users, Clock.fixed(now, ZoneOffset.UTC)).restoreIfExpired(user)
@@ -116,11 +118,68 @@ class AdminModerationServiceTest {
     @Test
     fun `missing suspension record never reactivates an account`() {
         val user = User(id = adminId, accountStatus = AccountStatus.SUSPENDED)
+        `when`(users.findForOperatorUpdate(adminId)).thenReturn(user)
         assertEquals(AccountStatus.SUSPENDED,
             AccountSuspensionService(sanctions, users, Clock.fixed(now, ZoneOffset.UTC)).restoreIfExpired(user).accountStatus)
     }
 
-    private fun authorize() {
-        `when`(roles.findByUserIdAndRevokedAtIsNull(adminId)).thenReturn(AdminRoleAssignment(adminId, AdminRole.ADMIN, now))
+    @Test
+    fun `moderator cannot suspend even with a direct decision request`() {
+        authorize(AdminRole.MODERATOR)
+        val request = DecideReportRequest(1, ReportStatus.RESOLVED, ModerationAction.SUSPEND,
+            ModerationReason.SPAM, "이용 제한 안내", durationDays = 7)
+
+        val error = assertThrows(ApiException::class.java) {
+            service.decide(auth, UUID.randomUUID(), UUID.randomUUID().toString(), request)
+        }
+
+        assertEquals(ApiErrorCode.FORBIDDEN_RESOURCE, error.errorCode)
+        verifyNoInteractions(reports, sanctions, users, keys, audits)
+    }
+
+    @Test
+    fun `detail actions follow role and protect other operators`() {
+        val reportId = UUID.randomUUID()
+        val subjectId = UUID.randomUUID()
+        val report = UserReport(id = reportId, targetId = subjectId, subjectUserId = subjectId,
+            status = ReportStatus.REVIEWING, version = 1)
+        `when`(reports.findById(reportId)).thenReturn(Optional.of(report))
+        `when`(users.existsById(subjectId)).thenReturn(true)
+        authorize(AdminRole.MODERATOR)
+        assertEquals(listOf(ModerationAction.NONE, ModerationAction.WARNING), service.detail(auth, reportId).allowedActions)
+        authorize(AdminRole.ADMIN)
+        assertEquals(ModerationAction.entries, service.detail(auth, reportId).allowedActions)
+
+        `when`(roles.findByUserIdAndRevokedAtIsNull(subjectId))
+            .thenReturn(AdminRoleAssignment(subjectId, AdminRole.MODERATOR, now))
+        assertEquals(listOf(ModerationAction.NONE), service.detail(auth, reportId).allowedActions)
+        authorize(AdminRole.SUPER_ADMIN)
+        assertEquals(ModerationAction.entries, service.detail(auth, reportId).allowedActions)
+    }
+
+    @Test
+    fun `admin cannot sanction another operator and rejection leaves report unchanged`() {
+        authorize()
+        val reportId = UUID.randomUUID()
+        val subjectId = UUID.randomUUID()
+        val report = UserReport(id = reportId, targetId = subjectId, subjectUserId = subjectId,
+            status = ReportStatus.REVIEWING, version = 1)
+        `when`(reports.findForUpdate(reportId)).thenReturn(report)
+        `when`(roles.findByUserIdAndRevokedAtIsNull(subjectId))
+            .thenReturn(AdminRoleAssignment(subjectId, AdminRole.MODERATOR, now))
+        val request = DecideReportRequest(1, ReportStatus.RESOLVED, ModerationAction.WARNING, ModerationReason.SPAM, "경고 안내")
+
+        val error = assertThrows(ApiException::class.java) {
+            service.decide(auth, reportId, UUID.randomUUID().toString(), request)
+        }
+
+        assertEquals(ApiErrorCode.FORBIDDEN_RESOURCE, error.errorCode)
+        assertEquals(ReportStatus.REVIEWING, report.status)
+        verifyNoInteractions(sanctions, users, audits)
+        verify(reports, never()).saveAndFlush(any(UserReport::class.java))
+    }
+
+    private fun authorize(role: AdminRole = AdminRole.ADMIN) {
+        `when`(roles.findByUserIdAndRevokedAtIsNull(adminId)).thenReturn(AdminRoleAssignment(adminId, role, now))
     }
 }

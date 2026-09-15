@@ -17,6 +17,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 class SecurityConfig(
     private val jwtAuthenticationFilter: com.fitmate.backend.auth.application.JwtAuthenticationFilter,
     private val objectMapper: ObjectMapper,
+    private val appealAccessFilter: com.fitmate.backend.admin.application.AppealAccessFilter,
 ) {
 
     @Bean
@@ -31,6 +32,7 @@ class SecurityConfig(
                 it.accessDeniedHandler { _, response, _ -> writeError(response, ApiErrorCode.FORBIDDEN_RESOURCE) }
             }
             .authorizeHttpRequests {
+                it.requestMatchers("/api/v1/appeal-access/**").hasAuthority("ROLE_APPEAL")
                 it.requestMatchers("/api/v1/exercises/*/previous-record").authenticated()
                 it.requestMatchers(
                     "/api/v1/health",
@@ -38,6 +40,7 @@ class SecurityConfig(
                     "/api/v1/auth/nickname-availability",
                     "/api/v1/auth/signup",
                     "/api/v1/auth/login",
+                    "/api/v1/auth/appeal-sessions",
                     "/api/v1/auth/refresh",
                     "/api/v1/terms",
                     "/api/v1/regions",
@@ -48,6 +51,7 @@ class SecurityConfig(
                 it.anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterBefore(appealAccessFilter, com.fitmate.backend.auth.application.JwtAuthenticationFilter::class.java)
 
         return http.build()
     }

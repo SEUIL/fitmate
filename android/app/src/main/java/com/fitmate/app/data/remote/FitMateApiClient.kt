@@ -82,7 +82,7 @@ internal class FitMateApiClient(
 
     @Synchronized fun request(method: String, path: String, body: Any? = null,
         authenticated: Boolean = true, retryAuth: Boolean = true, headers: Map<String, String> = emptyMap()): JsonElement {
-        require(headers.keys.all { it == "Idempotency-Key" }) { "지원하지 않는 추가 헤더입니다." }
+        require(headers.keys.all { it in setOf("Idempotency-Key", "X-Admin-Reauth") }) { "지원하지 않는 추가 헤더입니다." }
         require(baseUrl.isNotBlank()) { "연결할 서버 주소가 설정되지 않았습니다." }
         if (authenticated) loadSession()
         if (authenticated && tokens == null) throw ApiFailure(401, "로그인이 필요합니다.")
@@ -103,6 +103,14 @@ internal class FitMateApiClient(
             saveSession(refreshed, rememberedAccount?.copy(refreshToken = refreshed.refreshToken))
             return request(method, path, body, authenticated, retryAuth = false, headers = headers)
         }
+    }
+
+    /** Limited credentials are never saved in or refreshed through the normal login session. */
+    @Synchronized fun appealRequest(method: String, resource: String, token: String, body: Any? = null, key: String? = null): JsonElement {
+        require(resource.substringBefore('?') in setOf("sanctions", "appeals"))
+        require(token.isNotBlank() && baseUrl.isNotBlank())
+        return exchange(method, "$baseUrl/appeal-access/$resource", body, token,
+            key?.let { mapOf("Idempotency-Key" to it) } ?: emptyMap(), "Appeal").get("data") ?: JsonNull.INSTANCE
     }
 
     fun items(path: String, authenticated: Boolean = true): List<JsonObject> =
@@ -157,14 +165,14 @@ internal class FitMateApiClient(
 
     private fun get(url: String): JsonObject = exchange("GET", url, null, null)
 
-    private fun exchange(method: String, url: String, payload: Any?, token: String?, headers: Map<String, String> = emptyMap()): JsonObject {
+    private fun exchange(method: String, url: String, payload: Any?, token: String?, headers: Map<String, String> = emptyMap(), scheme: String = "Bearer"): JsonObject {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = REQUEST_TIMEOUT_MS
             readTimeout = REQUEST_TIMEOUT_MS
             setRequestProperty("Accept", "application/json")
             instanceFollowRedirects = false
-            token?.let { setRequestProperty("Authorization", "Bearer $it") }
+            token?.let { setRequestProperty("Authorization", "$scheme $it") }
             headers.forEach { (name, value) -> setRequestProperty(name, value) }
         }
         return try {

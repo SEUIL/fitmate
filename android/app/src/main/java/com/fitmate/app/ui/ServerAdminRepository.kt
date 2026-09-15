@@ -16,7 +16,8 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
 
     override suspend fun search(query: String, status: AdminReportStatus?, cursor: String?): AdminSnapshot = io {
         currentQuery = query; currentStatus = status
-        if (!get("admin/access")["eligible"].asBoolean) throw AdminFailure(AdminError.FORBIDDEN)
+        val access = get("admin/access")
+        if (!access["eligible"].asBoolean) throw AdminFailure(AdminError.FORBIDDEN)
         val dashboard = get("admin/dashboard")
         val params = mutableListOf("size=20", "query=${encode(query)}")
         status?.let { params += "status=${it.name}" }
@@ -25,6 +26,9 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
         AdminSnapshot(
             reports = page.getAsJsonArray("items").map { summary(it.asJsonObject) },
             history = dashboard.getAsJsonArray("recentHistory").map { it.asJsonObject.text("summary").orEmpty() },
+            recentActivity = dashboard.getAsJsonArray("recentHistory").map { item -> item.asJsonObject.let {
+                AdminActivity(it.text("action").orEmpty(), it.text("summary").orEmpty(), it.text("occurredAt").orEmpty())
+            } },
             metrics = listOf("pendingReports", "newUsers", "completedWorkouts", "failedAnalyses").map { dashboard.getAsJsonObject(it)["value"].asLong },
             nextCursor = page.text("nextCursor"),
             members = get("admin/members").getAsJsonArray("items").map { it.asJsonObject.text("nickname") ?: "탈퇴 또는 프로필 없음" },
@@ -33,10 +37,64 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
                 AdminReport(value["reportId"].asString, type(value["targetType"].asString), value["title"].asString,
                     "", "", time(value["createdAt"].asString), AdminReportStatus.valueOf(value["status"].asString), remote = true)
             },
-            recentReports = dashboard.getAsJsonArray("recentReports").map { summary(it.asJsonObject) }, remote = true)
+            recentReports = dashboard.getAsJsonArray("recentReports").map { summary(it.asJsonObject) }, remote = true, role = access.text("role"))
     }
 
     override suspend fun detail(id: String): AdminReport = io { parseDetail(get("admin/reports/$id")) }
+    suspend fun operators(cursor: String? = null): OperatorPageData = io {
+        val data = get("admin/operators" + (cursor?.let { "?cursor=${encode(it)}" } ?: ""))
+        OperatorPageData(data["version"].asLong, data.getAsJsonArray("items").map { operator(it.asJsonObject) },
+            data.text("nextCursor"), data["actorId"].asString)
+    }
+    suspend fun operatorCandidate(id: String): OperatorData = io { operator(get("admin/operators/candidates/$id"), candidate = true) }
+    suspend fun authenticateOperator(code: String): String = io {
+        api.request("POST", "admin/operators/reauth", mapOf("code" to code)).asJsonObject["token"].asString
+    }
+    suspend fun changeOperator(id: String, role: String, enabled: Boolean, reason: String, version: Long, key: String, token: String): OperatorData = io {
+        operator(api.request("PUT", "admin/operators/$id", mapOf("expectedVersion" to version, "role" to role, "enabled" to enabled, "reason" to reason),
+            headers = mapOf("Idempotency-Key" to key, "X-Admin-Reauth" to token)).asJsonObject.getAsJsonObject("operator"))
+    }
+    private fun operator(value: JsonObject, candidate: Boolean = false) = OperatorData(value["userId"].asString,
+        value.text("nickname") ?: "프로필 없음", value.text(if (candidate) "currentRole" else "role"), value["enabled"].asBoolean, value["accountStatus"].asString)
+    suspend fun notices(managing: Boolean, cursor: String? = null): NoticePageData = io {
+        val path = if (managing) "admin/notices" else "notices"
+        val value = get(path + "?size=20" + (cursor?.let { "&cursor=${encode(it)}" } ?: ""))
+        NoticePageData(value.getAsJsonArray("items").map { notice(it.asJsonObject) }, value.text("nextCursor"))
+    }
+    suspend fun noticeDetail(managing: Boolean, id: String): NoticeData = io {
+        notice(get((if (managing) "admin/notices/" else "notices/") + id))
+    }
+    suspend fun saveNotice(id: String?, title: String, body: String, version: Long, key: String): NoticeData = io {
+        notice(api.request(if (id == null) "POST" else "PUT", "admin/notices" + (id?.let { "/$it" } ?: ""),
+            mapOf("title" to title, "body" to body, "expectedVersion" to version), headers = mapOf("Idempotency-Key" to key)).asJsonObject)
+    }
+    suspend fun transitionNotice(id: String, action: String, version: Long, key: String): NoticeData = io {
+        require(action in listOf("publish", "end"))
+        notice(api.request("POST", "admin/notices/$id/$action", mapOf("expectedVersion" to version), headers = mapOf("Idempotency-Key" to key)).asJsonObject)
+    }
+    suspend fun categories(): CategoryCatalogData = io { catalog(get("admin/categories")) }
+    suspend fun reorderCategories(ids: List<String>, version: Long, key: String): CategoryCatalogData = io {
+        catalog(api.request("PUT", "admin/categories/order", mapOf("ids" to ids, "expectedVersion" to version), headers = mapOf("Idempotency-Key" to key)).asJsonObject)
+    }
+    private fun notice(value: JsonObject) = NoticeData(value["id"].asString, value["title"].asString, value.text("body").orEmpty(),
+        value["status"].asString, value["version"].asLong, value.text("publishedAt")?.let(::time))
+    private fun catalog(value: JsonObject) = CategoryCatalogData(value["version"].asLong,
+        value.getAsJsonArray("items").map { row -> row.asJsonObject.let { CategoryData(it["id"].asString, it["code"].asString, it["name"].asString, it["active"].asBoolean) } },
+        value.getAsJsonArray("otherSports").map { row -> row.asJsonObject.let { it["name"].asString to it["memberCount"].asLong } })
+    suspend fun systemSummary(days: Int): AdminSystemData = io {
+        require(days in listOf(1, 7, 30))
+        // Let the server choose the end timestamp; the device clock cannot produce a future 'to'.
+        val baseline = get("admin/system/summary")
+        val value = if (days == 1) baseline else {
+            val end = java.time.Instant.parse(baseline["to"].asString)
+            get("admin/system/summary?from=${encode(end.minusSeconds(days * 86400L).toString())}&to=${encode(end.toString())}")
+        }
+        fun counts(key: String) = value.getAsJsonArray(key).map { row ->
+            row.asJsonObject.let { it["code"].asString to it["count"].asLong }
+        }
+        AdminSystemData(time(value["from"].asString), time(value["to"].asString), time(value["asOf"].asString),
+            counts("statuses"), counts("failures"), value.get("failureRate")?.takeUnless { it.isJsonNull }?.asDouble)
+    }
     override suspend fun claim(id: String, version: Long): AdminSnapshot {
         io { api.request("POST", "admin/reports/$id/claim", mapOf("expectedVersion" to version)) }
         return fetch()
@@ -67,7 +125,9 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
             decision = decision?.let { d -> listOfNotNull(d.text("action")?.let { AdminAction.valueOf(it).label },
                 d.text("reasonCode")?.let { AdminDecisionReason.valueOf(it).label }, d.text("publicReason"),
                 d.text("decidedAt")?.let { "처리 시각: ${time(it)}" },
-                d.text("sanctionEndsAt")?.let { "정지 종료: ${time(it)}" }, d.text("internalNote")?.let { "내부 메모: $it" }).joinToString("\n") })
+                d.text("sanctionEndsAt")?.let { "정지 종료: ${time(it)}" },
+                d.text("sanctionRevokedAt")?.let { "제재 해제: ${time(it)}" }, d.text("revocationReason")?.let { "해제 사유: $it" },
+                d.text("internalNote")?.let { "내부 메모: $it" }).joinToString("\n") })
     }
     private fun time(value: String): String = java.time.Instant.parse(value).atZone(java.time.ZoneId.systemDefault())
         .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
@@ -81,6 +141,9 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) {
         try { block() } catch (error: ApiFailure) {
             throw AdminFailure(when (error.code) {
+                "OPERATOR_REAUTH_REQUIRED" -> AdminError.REAUTH_REQUIRED
+                "OPERATOR_CODE_INVALID" -> AdminError.CODE_INVALID
+                "OPERATOR_AUTH_LOCKED" -> AdminError.AUTH_LOCKED
                 "VERSION_CONFLICT" -> AdminError.VERSION_CONFLICT
                 "IDEMPOTENCY_KEY_CONFLICT" -> AdminError.IDEMPOTENCY_CONFLICT
                 "INVALID_STATE_TRANSITION" -> AdminError.ALREADY_PROCESSED

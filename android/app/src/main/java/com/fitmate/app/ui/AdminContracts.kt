@@ -25,10 +25,13 @@ internal data class AdminDecisionCommand(
         else reasonCode in listOf(AdminDecisionReason.POLICY_VIOLATION, AdminDecisionReason.SPAM, AdminDecisionReason.HARASSMENT))
 }
 
+internal data class AdminActivity(val action: String, val summary: String, val occurredAt: String)
+
 internal data class AdminSnapshot(val reports: List<AdminReport>, val history: List<String>,
     val metrics: List<Long>? = null, val nextCursor: String? = null,
     val members: List<String> = emptyList(), val contents: List<AdminReport> = emptyList(),
-    val recentReports: List<AdminReport> = reports.take(3), val remote: Boolean = false) {
+    val recentReports: List<AdminReport> = reports.take(3), val remote: Boolean = false,
+    val role: String? = null, val recentActivity: List<AdminActivity>? = null) {
     val pendingCount get() = metrics?.firstOrNull()?.toInt() ?: reports.count { it.status == AdminReportStatus.RECEIVED || it.status == AdminReportStatus.REVIEWING }
     fun search(query: String, status: AdminReportStatus?) = reports.filter { report ->
         (status == null || report.status == status) && listOf(report.id, report.title, report.member, report.type).any { it.contains(query.trim(), true) }
@@ -44,6 +47,9 @@ internal enum class AdminError(val message: String) {
     NOT_FOUND("대상을 찾을 수 없습니다. 목록을 다시 조회해 주세요."),
     SESSION_EXPIRED("로그인이 만료되었습니다. 센터를 종료한 뒤 다시 로그인해 주세요."),
     FORBIDDEN("이 작업에 필요한 운영자 권한이 없습니다."),
+    REAUTH_REQUIRED("테스트 인증이 만료되었습니다. 다시 인증해 주세요."),
+    CODE_INVALID("인증 코드가 올바르지 않습니다."),
+    AUTH_LOCKED("인증 시도가 많습니다. 5분 후 다시 시도해 주세요."),
     UNKNOWN("처리 결과를 확인하지 못했습니다. 다시 조회해 주세요.")
 }
 internal class AdminFailure(val code: AdminError) : Exception(code.name)

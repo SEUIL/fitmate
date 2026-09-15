@@ -354,6 +354,8 @@ internal fun profileDisplayCounts(serverBacked: Boolean, serverCounts: List<Stri
     onFollowRequests: () -> Unit,
     onReports: () -> Unit,
     onOpenAdmin: () -> Unit,
+    onNotices: () -> Unit = {},
+    onAppeals: () -> Unit = {},
     remembersAccount: Boolean = false,
 ) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     var confirmLogout by remember { mutableStateOf(false) }
@@ -373,8 +375,10 @@ internal fun profileDisplayCounts(serverBacked: Boolean, serverCounts: List<Stri
         SettingsRow(Icons.Outlined.NotificationsNone, "알림 설정", "메이트, DM, 커뮤니티 알림을 관리해요", onNotifications)
     }
     SettingsGroup("지원") {
+        SettingsRow(Icons.Outlined.Campaign, "공지사항", "FitMate의 서비스 소식을 확인해요", onNotices)
         SettingsRow(Icons.Outlined.GroupAdd, "팔로우 요청", "승인 대기 중인 요청을 확인해요", onFollowRequests)
         SettingsRow(Icons.Outlined.GppMaybe, "내 신고 내역", "신고 처리 상태를 확인해요", onReports)
+        SettingsRow(Icons.Outlined.Forum, "제재 안내 · 이의신청", "제재 내역을 확인하고 재검토를 요청해요", onAppeals)
     }
     DebugOnly { SettingsGroup("개발") { SettingsRow(Icons.Outlined.AdminPanelSettings, "운영자 센터", "운영자 권한이 있는 계정만 이용할 수 있습니다", onOpenAdmin) } }
     if (confirmLogout) StateConfirm(

@@ -95,16 +95,21 @@ class AdminModerationService(
 
     @Transactional
     fun decide(user: AuthenticatedUser, reportId: UUID, key: String, request: DecideReportRequest): AdminReportDetail {
-        authorize(user)
+        val operator = authorize(user)
+        if (request.action == ModerationAction.SUSPEND && operator.role == AdminRole.MODERATOR) {
+            throw ApiException(ApiErrorCode.FORBIDDEN_RESOURCE, "기간 정지는 ADMIN 이상만 처리할 수 있습니다.")
+        }
         val idempotencyKey = runCatching { UUID.fromString(key) }.getOrElse { throw ApiException(ApiErrorCode.VALIDATION_ERROR, "Idempotency-Key는 UUID여야 합니다.") }
         val hash = hash("$reportId|$request"); val existing = idempotency.findByUserIdAndIdempotencyKey(user.userId, idempotencyKey)
         if (existing != null) { if (existing.requestHash != hash) throw ApiException(ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT); return detailOf(find(reportId), user.userId) }
         val report = findLocked(reportId); checkVersion(report, request.expectedVersion)
         if (report.status != ReportStatus.REVIEWING) throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION)
         validateDecision(request)
+        if (request.action !in allowedActions(report, user.userId, operator.role)) {
+            throw ApiException(ApiErrorCode.FORBIDDEN_RESOURCE, "이 대상에게 해당 조치를 실행할 권한이 없습니다.")
+        }
         report.status = request.resolution; report.decisionAction = request.action.name; report.decisionReasonCode = request.reasonCode.name
         report.publicReason = request.publicReason.trim(); report.internalNote = request.internalNote?.trim()?.takeIf(String::isNotEmpty); report.resolvedAt = clock.instant()
-        if (request.action != ModerationAction.NONE && subjectIdOf(report) == user.userId) throw ApiException(ApiErrorCode.FORBIDDEN_RESOURCE, "본인 계정에는 제재할 수 없습니다.")
         if (request.action == ModerationAction.SUSPEND) suspendSubject(user.userId, report, request)
         if (request.action == ModerationAction.WARNING) createSanction(user.userId, report, request, null)
         audit(user.userId, report, "REPORT_DECIDED", "${request.action.name} 조치를 완료했습니다.")
@@ -115,7 +120,7 @@ class AdminModerationService(
 
     private fun suspendSubject(actor: UUID, report: UserReport, request: DecideReportRequest) {
         val subjectId = report.subjectUserId ?: subjectIdOf(report)?.also { report.subjectUserId = it } ?: throw ApiException(ApiErrorCode.VALIDATION_ERROR, "제재 대상 회원이 없습니다.")
-        val subject = users.findById(subjectId).orElseThrow { ApiException(ApiErrorCode.RESOURCE_NOT_FOUND) }
+        val subject = users.findForOperatorUpdate(subjectId) ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND)
         subject.accountStatus = AccountStatus.SUSPENDED; subject.authVersion += 1
         createSanction(actor, report, request, clock.instant().plus(request.durationDays!!.toLong(), ChronoUnit.DAYS))
     }
@@ -134,22 +139,33 @@ class AdminModerationService(
         if (r.action != ModerationAction.NONE && r.reasonCode in setOf(ModerationReason.NO_VIOLATION, ModerationReason.INSUFFICIENT_EVIDENCE)) throw ApiException(ApiErrorCode.VALIDATION_ERROR)
     }
     private fun detailOf(r: UserReport, actorId: UUID): AdminReportDetail {
-        val subjectId = subjectIdOf(r)
-        val allowed = if (r.status != ReportStatus.REVIEWING) emptyList() else
-            if (subjectId == null || subjectId == actorId) listOf(ModerationAction.NONE) else ModerationAction.entries
+        val role = roles.findByUserIdAndRevokedAtIsNull(actorId)?.role
+            ?: throw ApiException(ApiErrorCode.FORBIDDEN_RESOURCE)
+        val allowed = allowedActions(r, actorId, role)
         val text = when (r.targetType) {
             ReportTargetType.POST -> r.targetId?.let { posts.findByIdAndDeletedAtIsNull(it)?.content }
             ReportTargetType.COMMENT -> r.targetId?.let { comments.findByIdAndDeletedAtIsNull(it)?.content }
             // Private message evidence needs a separately audited access contract.
             ReportTargetType.DM_MESSAGE, ReportTargetType.USER, ReportTargetType.MATE_POST -> null
         }
+        val sanction = sanctions.findFirstByReportIdOrderByCreatedAtDesc(requireNotNull(r.id))
         val decision = r.decisionAction?.let { action -> AdminDecisionSummary(action, r.decisionReasonCode,
             r.publicReason, r.internalNote, r.resolvedAt,
-            sanctions.findFirstByReportIdOrderByCreatedAtDesc(requireNotNull(r.id))?.endsAt) }
+            sanction?.endsAt, sanction?.revokedAt, sanction?.revocationReason) }
         return AdminReportDetail(summary(r), r.assignedOperatorId,
             AdminEvidence(if (text == null) "UNAVAILABLE" else "AVAILABLE", text, r.detail),
             audits.findAllByReportIdOrderByOccurredAtDesc(requireNotNull(r.id)).map { AdminAuditItem(it.action, it.summary, it.occurredAt) },
             allowed, decision)
+    }
+    private fun allowedActions(report: UserReport, actorId: UUID, role: AdminRole): List<ModerationAction> {
+        if (report.status != ReportStatus.REVIEWING) return emptyList()
+        val subjectId = subjectIdOf(report)
+        if (subjectId == null || subjectId == actorId) return listOf(ModerationAction.NONE)
+        if (role != AdminRole.SUPER_ADMIN && roles.findByUserIdAndRevokedAtIsNull(subjectId) != null) {
+            return listOf(ModerationAction.NONE)
+        }
+        if (!users.existsById(subjectId)) return listOf(ModerationAction.NONE)
+        return ModerationAction.entries.filter { it != ModerationAction.SUSPEND || role != AdminRole.MODERATOR }
     }
     private fun summary(r: UserReport): AdminReportSummary { val id = requireNotNull(r.id); return AdminReportSummary(id, "R-${id.toString().take(8).uppercase()}", r.targetType, titleOf(r), r.reason, r.status, r.createdAt, r.version, subject(r)) }
     private fun subject(r: UserReport): AdminSubjectUser? = subjectIdOf(r)?.let { userId -> profiles.findById(userId).orElse(null)?.let { AdminSubjectUser(userId, it.nickname) } ?: AdminSubjectUser(userId, null) }

@@ -31,7 +31,7 @@ import java.util.UUID
 class MateServiceTest {
     private val posts = mock(MatePostRepository::class.java)
     private val applications = mock(MateParticipationRepository::class.java)
-    private val service = MateService(posts, applications, mock(SportRepository::class.java), mock(RegionRepository::class.java), mock(IdempotencyKeyRepository::class.java), mock(NotificationWriter::class.java), Clock.fixed(Instant.parse("2026-09-07T00:00:00Z"), ZoneOffset.UTC), mock(MateChatRoomRepository::class.java), mock(UserProfileRepository::class.java), ObjectMapper().findAndRegisterModules(), mock(MateAccessPolicy::class.java))
+    private val service = MateService(posts, applications, mock(SportRepository::class.java), mock(RegionRepository::class.java), mock(IdempotencyKeyRepository::class.java), mock(NotificationWriter::class.java), Clock.fixed(Instant.parse("2026-09-07T00:00:00Z"), ZoneOffset.UTC), mock(MateChatRoomRepository::class.java), mock(UserProfileRepository::class.java), ObjectMapper().findAndRegisterModules(), mock(MateAccessPolicy::class.java), mock(com.fitmate.backend.admin.application.ModerationRuleEngine::class.java))
     private val author = UUID.randomUUID()
 
     @Test fun `list binds every sport filter as an enum`() {

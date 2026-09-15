@@ -37,6 +37,9 @@ class AdminSanction(
     @Column(name = "ends_at") var endsAt: Instant? = null,
     @Column(name = "created_by", nullable = false, columnDefinition = "BINARY(16)") var createdBy: UUID? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.EPOCH,
+    @Column(name = "revoked_at") var revokedAt: Instant? = null,
+    @Column(name = "revoked_by", columnDefinition = "BINARY(16)") var revokedBy: UUID? = null,
+    @Column(name = "revocation_reason", length = 500) var revocationReason: String? = null,
 )
 
 @Entity

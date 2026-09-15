@@ -10,6 +10,24 @@ import kotlinx.coroutines.CompletableDeferred
 class AdminCenterDeviceTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun toolsAndRelatedRecordsRestoreTheirNavigationState() {
+        val restore = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        restore.setContent { FitmateTheme { AdminCenter(AdminUiState(FakeAdminRepository())) {} } }
+        awaitText("처리할 일을 한눈에")
+        compose.onNodeWithTag("admin-tab-3").performClick()
+        compose.onNodeWithText("신고 관련 회원").performScrollTo().performClick()
+        awaitText("신고에 연결된 회원이 없습니다.")
+        restore.emulateSavedInstanceStateRestore()
+        awaitText("신고에 연결된 회원이 없습니다.")
+        compose.onNodeWithContentDescription("뒤로가기").performClick()
+        compose.onNodeWithTag("admin-tab-3").assertIsSelected()
+        compose.onNodeWithText("공지 관리").assertExists()
+        compose.onNodeWithTag("admin-tab-1").performClick()
+        compose.onNodeWithText("신고 관리").assertExists()
+        compose.onNodeWithTag("admin-tab-0").performClick()
+        compose.onNodeWithText("처리할 일을 한눈에").assertExists()
+    }
+
     @Test fun reportCanBeReviewedAndSanctionedInDemoOnly() {
         compose.setContent { FitmateTheme { AdminCenter(AdminUiState(FakeAdminRepository())) {} } }
         awaitText("최근 24시간 운영 현황")

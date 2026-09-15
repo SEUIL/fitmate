@@ -18,12 +18,14 @@ class AccountSuspensionService(
     @Transactional
     fun restoreIfExpired(user: User): User {
         if (user.accountStatus != AccountStatus.SUSPENDED) return user
-        val suspensions = sanctions.findAllByUserIdAndAction(requireNotNull(user.id), ModerationAction.SUSPEND)
+        val locked = users.findForOperatorUpdate(requireNotNull(user.id)) ?: return user
+        if (locked.accountStatus != AccountStatus.SUSPENDED) return locked
+        val suspensions = sanctions.findAllByUserIdAndAction(requireNotNull(locked.id), ModerationAction.SUSPEND)
         // An older, longer suspension must not be cancelled by a newer short one.
-        if (suspensions.isNotEmpty() && suspensions.all { it.endsAt?.isAfter(clock.instant()) == false }) {
-            user.accountStatus = AccountStatus.ACTIVE
-            return users.save(user)
+        if (suspensions.isNotEmpty() && suspensions.all { it.revokedAt != null || it.endsAt?.isAfter(clock.instant()) == false }) {
+            locked.accountStatus = AccountStatus.ACTIVE
+            return users.save(locked)
         }
-        return user
+        return locked
     }
 }
