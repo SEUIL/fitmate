@@ -27,17 +27,22 @@ class WorkoutInsightService(
     private val rules: WorkoutInsightRules,
     private val ai: WorkoutInsightAi,
     private val mapper: ObjectMapper,
+    private val history: WorkoutInsightHistory,
+    private val reports: WorkoutReportService,
     transactionManager: PlatformTransactionManager,
     @Qualifier("workoutInsightExecutor") private val executor: Executor,
 ) {
     private val tx = TransactionTemplate(transactionManager)
-    fun options(user: UUID, session: UUID): Map<String, Any> = requireNotNull(tx.execute {
+    fun options(user: UUID, session: UUID, weeks: Int = 4): Map<String, Any> = requireNotNull(tx.execute {
         checkSession(user, session)
+        val historical = history.options(user, reports.get(user, session), weeks)
         mapOf("aiAvailable" to ai.available(), "consentVersion" to WorkoutInsightConsent.VERSION,
-            "consentNotice" to WorkoutInsightConsent.NOTICE, "samsungHealthAvailable" to reader.hasSamsungSummary(user, session))
+            "consentNotice" to WorkoutInsightConsent.NOTICE, "samsungHealthAvailable" to
+                (reader.hasSamsungSummary(user, session) || (historical["samsungHistoryCount"] as Int) > 0)) + historical
     })
 
     fun create(user: UUID, session: UUID, request: CreateWorkoutInsightRequest): WorkoutInsightResponse {
+        history.validate(request)
         if (request.externalAiConsent && request.consentVersion != WorkoutInsightConsent.VERSION)
             throw ApiException(ApiErrorCode.VALIDATION_ERROR, "리포트 전송 안내를 확인하고 다시 동의해 주세요.")
         var launch: WorkoutInsightEntity? = null

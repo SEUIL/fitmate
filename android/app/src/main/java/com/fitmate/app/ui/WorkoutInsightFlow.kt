@@ -20,10 +20,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-internal fun workoutInsightPayload(id: String, inbody: String?, samsung: Boolean, consent: Boolean, version: String): Map<String, Any> = buildMap {
+internal fun workoutInsightPayload(id: String, inbody: String?, samsung: Boolean, consent: Boolean, version: String,
+    weeks: Int = 4, bodyIds: List<String> = emptyList(), previousReports: Boolean = false): Map<String, Any> = buildMap {
+    require(weeks in listOf(4, 8, 12) && bodyIds.size <= 12 && bodyIds.distinct().size == bodyIds.size)
+    require(inbody == null || bodyIds.isEmpty())
     put("requestId", UUID.fromString(id).toString())
     inbody?.let { put("inbodyRecordId", UUID.fromString(it).toString()) }
     put("includeSamsungHealth", samsung); put("externalAiConsent", consent)
+    put("historyWeeks", weeks); put("inbodyRecordIds", bodyIds.map { UUID.fromString(it).toString() })
+    put("includePreviousReports", previousReports)
     if (consent) { require(version.isNotBlank()); put("consentVersion", version) }
 }
 
@@ -45,8 +50,9 @@ internal fun workoutInsightPayload(id: String, inbody: String?, samsung: Boolean
     var options by remember { mutableStateOf<JsonObject?>(null) }
     var report by remember { mutableStateOf<JsonObject?>(null) }
     var records by remember { mutableStateOf(emptyList<JsonObject>()) }
-    var inbodyId by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
-    var inbodyDate by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
+    var bodyIds by rememberSaveable(sessionId) { mutableStateOf(arrayListOf<String>()) }
+    var weeks by rememberSaveable(sessionId) { mutableIntStateOf(4) }
+    var previousReports by rememberSaveable(sessionId) { mutableStateOf(false) }
     var samsung by rememberSaveable(sessionId) { mutableStateOf(false) }
     var consent by rememberSaveable(sessionId) { mutableStateOf(false) }
     var editing by rememberSaveable(sessionId) { mutableStateOf(false) }
@@ -65,13 +71,15 @@ internal fun workoutInsightPayload(id: String, inbody: String?, samsung: Boolean
             finally { busy = false }
         }
     }
-    LaunchedEffect(api, sessionId, reload) {
+    LaunchedEffect(api, sessionId, reload, weeks) {
         loading = true; error = null
         try {
             val result = withContext(Dispatchers.IO) {
-                api.request("GET", "$root/options").asJsonObject to api.request("GET", root)
+                api.request("GET", "$root/options?historyWeeks=$weeks").asJsonObject to api.request("GET", root)
             }
             options = result.first
+            records = result.first.rows("inbodyOptions")
+            bodyIds = ArrayList(bodyIds.filter { id -> records.any { it.text("id") == id } })
             if (result.first.get("samsungHealthAvailable")?.asBoolean != true && samsung) {
                 samsung = false; requestJson = null
             }
@@ -98,7 +106,7 @@ internal fun workoutInsightPayload(id: String, inbody: String?, samsung: Boolean
     val available = options?.get("aiAvailable")?.asBoolean == true
     val samsungAvailable = options?.get("samsungHealthAvailable")?.asBoolean == true
     fun generate() = launchAction {
-        if (requestJson == null) requestJson = gson.toJson(workoutInsightPayload(UUID.randomUUID().toString(), inbodyId, samsung, consent && available, options!!.text("consentVersion")))
+        if (requestJson == null) requestJson = gson.toJson(workoutInsightPayload(UUID.randomUUID().toString(), null, samsung, consent && available, options!!.text("consentVersion"), weeks, bodyIds, previousReports))
         report = withContext(Dispatchers.IO) { api.request("POST", root, gson.fromJson(requestJson, JsonObject::class.java)).asJsonObject }
         editing = false
     }
@@ -121,20 +129,39 @@ internal fun workoutInsightPayload(id: String, inbody: String?, samsung: Boolean
                     Text("취소해도 이미 외부 AI에 전송한 요청은 회수할 수 없어요.", style = MaterialTheme.typography.bodySmall)
                 }
                 showConditions && !loading -> {
-                    PlanHeading("오늘의 기록을\n다음 운동으로", "기본 운동 기록은 그대로 유지돼요.")
-                    PlanSummary { Text("이번 운동 + 프로필 목표·숙련도", fontWeight = FontWeight.SemiBold); Text("이전 동일 운동 기록이 있으면 함께 비교해요.") }
-                    PlanDisclosure("인바디 · ${if (inbodyId == null) "사용 안 함" else inbodyDate ?: "선택한 기록"}") {
-                        TextButton({ inbodyId = null; inbodyDate = null; requestJson = null }, enabled = !busy) { Text("인바디 사용 안 함") }
-                        TextButton({ launchAction { records = withContext(Dispatchers.IO) { api.items("inbody-records") }; if (records.isEmpty()) error = "저장한 인바디가 없어요. 인바디 없이 진행할 수 있어요." } }, enabled = !busy) { Text("내 인바디 불러오기") }
+                    PlanHeading("최근의 흐름에서\n오늘을 살펴봐요", "이번 운동 + 기간 내 헬스 기록을 함께 분석해요.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(4, 8, 12).forEach { value -> FilterChip(weeks == value, {
+                            weeks = value; bodyIds = arrayListOf(); requestJson = null; consent = false
+                        }, { Text("${value}주") }, enabled = !busy) }
+                    }
+                    PlanSummary {
+                        Text("${options?.text("fromDate")} ~ ${options?.text("throughDate")}", fontWeight = FontWeight.SemiBold)
+                        Text("이번 운동 + 이전 헬스 ${options?.recordInt("historySessionCount") ?: 0}회 · 현재 목표·숙련도")
+                        if (options?.get("demo")?.asBoolean == true) Text("[DEMO] 가상 운동 분석 · 실제 상태 평가가 아니에요.")
+                        if (options?.get("historyTruncated")?.asBoolean == true) Text("최근 40개 후보 내 일부 기록만 분석해요.")
+                    }
+                    PlanDisclosure("인바디 · ${bodyIds.size}개 선택") {
+                        Text("기간 내 여러 측정값을 선택하면 변화 추이를 함께 볼 수 있어요. 최대 12개, 선택하지 않아도 진행할 수 있어요.")
+                        TextButton({ bodyIds = ArrayList(records.map { it.text("id") }); requestJson = null; consent = false }, enabled = !busy && records.isNotEmpty()) { Text("기간 내 기록 추천 선택 (${records.size}개)") }
+                        TextButton({ bodyIds = arrayListOf(); requestJson = null; consent = false }, enabled = !busy) { Text("인바디 사용 안 함") }
+                        if (records.isEmpty()) Text("선택 기간에 운동일 이전 인바디가 없어요.")
                         records.forEach { row -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(inbodyId == row.text("id"), { inbodyId = row.text("id"); inbodyDate = row.text("measuredDate"); requestJson = null }, enabled = !busy)
+                            Checkbox(row.text("id") in bodyIds, { checked ->
+                                bodyIds = ArrayList(if (checked) bodyIds + row.text("id") else bodyIds - row.text("id")); requestJson = null; consent = false
+                            }, enabled = !busy)
                             Text(row.text("measuredDate"))
                         } }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(samsung, { samsung = it; requestJson = null }, enabled = !busy && samsungAvailable)
-                        Column { Text("연결한 Samsung Health 요약 사용"); Text(if (samsungAvailable) "이 운동에 연결해 저장한 요약만 사용해요." else "연결된 요약이 없어요. 운동 기록에서 먼저 연결해 주세요.", style = MaterialTheme.typography.bodySmall) }
+                        Checkbox(samsung, { samsung = it; requestJson = null; consent = false }, enabled = !busy && samsungAvailable)
+                        Column { Text("기간 내 Samsung Health 요약 사용"); Text(if (samsungAvailable) "이번 운동과 분석 대상 과거 운동에 연결된 요약을 사용해요." else "분석 대상 운동에 연결된 요약이 없어요.", style = MaterialTheme.typography.bodySmall) }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(previousReports, { previousReports = it; requestJson = null; consent = false }, enabled = !busy)
+                        Text("이전 리포트의 제안 참고 (최대 3건)")
+                    }
+                    Text("이전 제안은 사실이나 이행 완료로 간주하지 않아요. 이번 운동 시작 전에 작성된 리포트만 사용해요.", style = MaterialTheme.typography.bodySmall)
                     if (available) {
                         Text(options!!.text("consentNotice"), style = MaterialTheme.typography.bodySmall)
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -157,16 +184,23 @@ internal fun workoutInsightPayload(id: String, inbody: String?, samsung: Boolean
 @Composable internal fun WorkoutInsightResultView(result: JsonObject, message: String = "") {
     val snapshot = result.getAsJsonObject("snapshot")
     val summary = result.getAsJsonObject("summary")
-    val narrative = result.text("methodVersion") == "grounded-narrative-v2"
+    val narrative = result.text("methodVersion") in listOf("grounded-narrative-v2", "longitudinal-narrative-v3")
     PlanBadge(if (result.text("source") == "AI") { if (narrative) "AI 종합 리포트" else "AI 해석 · 기록 근거 검증" } else "기록 기반 기본 해석")
     PlanHeading(summary.text("title"), summary.text("explanation"))
+    snapshot.get("longitudinal")?.takeUnless { it.isJsonNull }?.asJsonObject?.let { h ->
+        PlanSummary {
+            Text("최근 ${h.recordInt("weeks")}주 · 헬스 ${h.rows("sessions").size + 1}회")
+            Text("인바디 ${h.rows("bodies").size}건 · 이전 리포트 ${h.rows("previousAdvice").size}건")
+            if (h.get("demo")?.asBoolean == true) Text("가상 데이터로 만든 시연용 해석입니다.")
+        }
+    }
     if (narrative) PlanDisclosure("종합 평가의 근거") {
         summary.getAsJsonArray("evidence")?.forEach { Text(it.asString, style = MaterialTheme.typography.bodySmall) }
     } else summary.getAsJsonArray("evidence")?.forEach { Text(it.asString, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
     Text("기록에서 확인한 점", fontWeight = FontWeight.SemiBold)
     result.rows("observations").forEach { InsightPointView(it, narrative) }
-    Text("다음 운동에서", fontWeight = FontWeight.SemiBold)
+    Text("다음 운동과 앞으로의 방향", fontWeight = FontWeight.SemiBold)
     result.rows("nextActions").forEach { InsightPointView(it, narrative) }
     val body = snapshot.get("inbody")?.takeUnless { it.isJsonNull }?.asJsonObject
     Text(body?.let { "인바디 측정일 ${it.text("measuredDate")}" } ?: "인바디 미사용", style = MaterialTheme.typography.bodySmall)

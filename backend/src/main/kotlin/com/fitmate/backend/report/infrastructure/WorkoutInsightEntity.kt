@@ -25,6 +25,7 @@ class WorkoutInsightEntity(
 )
 
 interface WorkoutInsightRepository : JpaRepository<WorkoutInsightEntity, String> {
+    fun findFirstByOwnerUserIdAndSessionIdAndStatusAndCreatedAtLessThanEqualOrderByCreatedAtDescIdDesc(ownerUserId: UUID, sessionId: UUID, status: String, createdAt: Instant): WorkoutInsightEntity?
     @org.springframework.data.jpa.repository.Modifying
     @Query(value = """INSERT INTO fitness_workout_insights
         (id, owner_user_id, session_id, request_json, snapshot_json, status, generation_token, created_at, updated_at, version)

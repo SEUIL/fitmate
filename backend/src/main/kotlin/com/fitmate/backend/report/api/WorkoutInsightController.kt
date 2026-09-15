@@ -12,7 +12,8 @@ import java.util.UUID
 @RequestMapping("/api/v1/workout-sessions/{sessionId}/insights")
 class WorkoutInsightController(private val service: WorkoutInsightService) {
     @GetMapping("/options")
-    fun options(@AuthenticationPrincipal user: AuthenticatedUser, @PathVariable sessionId: UUID) = ApiResponse.success(service.options(user.userId, sessionId))
+    fun options(@AuthenticationPrincipal user: AuthenticatedUser, @PathVariable sessionId: UUID,
+        @RequestParam(defaultValue = "4") historyWeeks: Int) = ApiResponse.success(service.options(user.userId, sessionId, historyWeeks))
     @GetMapping
     fun latest(@AuthenticationPrincipal user: AuthenticatedUser, @PathVariable sessionId: UUID) = ApiResponse.success(service.latest(user.userId, sessionId))
     @PostMapping

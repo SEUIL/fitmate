@@ -17,6 +17,8 @@ import java.util.UUID
 import com.fitmate.backend.fitness.domain.SportCode
 
 interface WorkoutSessionRepository : JpaRepository<WorkoutSession, UUID> {
+    @Query("select s from WorkoutSession s where s.userId = :user and s.sportCode = :sport and s.status = :status and s.startedAt >= :from and s.endedAt <= :through order by s.startedAt desc, s.id desc")
+    fun insightHistory(user: UUID, sport: SportCode, status: WorkoutSessionStatus, from: Instant, through: Instant, pageable: Pageable): Slice<WorkoutSession>
     fun countByStatusAndEndedAtGreaterThanEqual(status: WorkoutSessionStatus, endedAt: Instant): Long
     @EntityGraph(attributePaths = ["routine"])
     fun findByIdAndUserId(id: UUID, userId: UUID): WorkoutSession?

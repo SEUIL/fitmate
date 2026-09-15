@@ -63,13 +63,28 @@ class OpenAiWorkoutInsightTest {
         server("{}", pause = 1500) { ai, _, _ -> assertNull(ai.select(snapshot, catalog, request)) }
         server("{}", code = 429) { ai, _, _ -> assertNull(ai.select(snapshot, catalog, request)) }
     }
-    private fun server(output: String, status: String = "completed", type: String = "output_text", pause: Long = 0, code: Int = 200, review: String = "{\"accepted\":true,\"reason\":\"NONE\"}", reviewStatus: String = "completed",
+    @Test fun `structural repair retries once and still requires independent review`() {
+        val good = mapper.writeValueAsString(narrativeFixture())
+        val bad = mapper.writeValueAsString(narrativeFixture().let { it.copy(summary = it.summary.copy(evidenceIds = listOf("session"))) })
+        server(bad, repairOutput = good) { ai, count, _ ->
+            assertNotNull(ai.select(snapshot, catalog, request)); assertEquals(3, count.get())
+        }
+        server(bad, repairOutput = good, review = "{\"accepted\":false,\"reason\":\"UNSUPPORTED_CLAIM\"}") { ai, count, _ ->
+            assertNull(ai.select(snapshot, catalog, request)); assertEquals(3, count.get())
+        }
+        server(bad) { ai, count, _ ->
+            assertNull(ai.select(snapshot, catalog, request)); assertEquals(2, count.get())
+        }
+    }
+    private fun server(output: String, status: String = "completed", type: String = "output_text", pause: Long = 0, code: Int = 200, review: String = "{\"accepted\":true,\"reason\":\"NONE\"}", reviewStatus: String = "completed", repairOutput: String = output,
         test: (OpenAiWorkoutInsight, AtomicInteger, () -> String) -> Unit) {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0); val count = AtomicInteger(); var captured = ""
         server.createContext("/") { exchange ->
             val number = count.incrementAndGet(); val body = exchange.requestBody.bufferedReader().use { it.readText() }; if (number == 1) captured = body
             if (pause > 0) Thread.sleep(pause)
-            val bytes = mapper.writeValueAsBytes(mapOf("status" to if (number == 1) status else reviewStatus, "output" to listOf(mapOf("content" to listOf(mapOf("type" to type, "text" to if (number == 1) output else review))))))
+            val generation = mapper.readTree(body).path("text").path("format").path("name").asText() == "workout_insight"
+            val content = if (generation) { if (number == 1) output else repairOutput } else review
+            val bytes = mapper.writeValueAsBytes(mapOf("status" to if (generation) status else reviewStatus, "output" to listOf(mapOf("content" to listOf(mapOf("type" to type, "text" to content))))))
             try { exchange.responseHeaders.add("Content-Type", "application/json"); exchange.sendResponseHeaders(code, bytes.size.toLong()); exchange.responseBody.use { it.write(bytes) } }
             catch (_: java.io.IOException) { exchange.close() }
         }
