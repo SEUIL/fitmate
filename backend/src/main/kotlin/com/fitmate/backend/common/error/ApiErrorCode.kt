@@ -20,6 +20,7 @@ enum class ApiErrorCode(
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
     VERSION_CONFLICT(HttpStatus.CONFLICT, "수정 버전이 일치하지 않습니다."),
     EXTERNAL_WORKOUT_CONFLICT(HttpStatus.CONFLICT, "외부 운동 기록이 이미 연결되었거나 변경되었습니다."),
+    SPORT_RECORD_CONFLICT(HttpStatus.CONFLICT, "같은 기록 ID에 다른 내용이 저장되어 있습니다."),
     INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서는 처리할 수 없습니다."),
     FORBIDDEN_RESOURCE(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     MATE_POST_NOT_RECRUITING(HttpStatus.CONFLICT, "모집 중인 글이 아닙니다."),

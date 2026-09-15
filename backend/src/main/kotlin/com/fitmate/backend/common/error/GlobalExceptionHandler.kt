@@ -29,6 +29,7 @@ class GlobalExceptionHandler {
                     error = ApiErrorBody(
                         code = exception.errorCode.name,
                         message = exception.message,
+                        fields = exception.fields,
                     ),
                 ),
             )

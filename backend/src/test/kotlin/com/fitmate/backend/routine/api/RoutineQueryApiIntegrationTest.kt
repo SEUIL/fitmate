@@ -98,11 +98,15 @@ class RoutineQueryApiIntegrationTest {
     fun `reference catalog exposes logical ids that its detail endpoints accept`() {
         val sport = http.getForEntity("/api/v1/sports", JsonNode::class.java)
         val sportItems = sport.body!!["data"]["items"]
-        assertEquals(listOf("HEALTH", "RUNNING"), sportItems.map { it["code"].asText() })
+        assertEquals(listOf("HEALTH", "RUNNING", "BADMINTON", "HIKING", "CLIMBING", "GOLF"), sportItems.map { it["code"].asText() })
         assertEquals(
             listOf(
                 "01000000-0000-0000-0000-000000000001",
                 "01000000-0000-0000-0000-000000000002",
+                "01000000-0000-0000-0000-000000000003",
+                "01000000-0000-0000-0000-000000000005",
+                "01000000-0000-0000-0000-000000000009",
+                "01000000-0000-0000-0000-000000000010",
             ),
             sportItems.map { it["id"].asText() },
         )

@@ -7,6 +7,7 @@ import com.fitmate.backend.report.api.PreviousWorkoutComparisonResponse
 import com.fitmate.backend.report.api.WorkoutExerciseReportResponse
 import com.fitmate.backend.report.api.WorkoutReportResponse
 import com.fitmate.backend.workout.domain.WorkoutSessionStatus
+import com.fitmate.backend.fitness.domain.SportCode
 import com.fitmate.backend.workout.domain.WorkoutSet
 import com.fitmate.backend.workout.repository.WorkoutSessionExerciseRepository
 import com.fitmate.backend.workout.repository.WorkoutSessionRepository
@@ -30,6 +31,9 @@ class WorkoutReportService(
             ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "운동 세션을 찾을 수 없습니다.")
         if (session.status != WorkoutSessionStatus.COMPLETED || session.endedAt == null) {
             throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION, "완료한 운동만 리포트를 조회할 수 있습니다.")
+        }
+        if (session.sportCode != SportCode.HEALTH) {
+            throw ApiException(ApiErrorCode.VALIDATION_ERROR, "신규 종목 기록은 sport-records 상세 API로 조회해야 합니다.")
         }
         val exerciseReports = sessionExercises
             .findAllByWorkoutSessionIdOrderBySequenceNoAsc(requireNotNull(session.id))

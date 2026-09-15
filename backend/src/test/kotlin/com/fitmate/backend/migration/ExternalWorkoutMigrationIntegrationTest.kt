@@ -13,7 +13,7 @@ class ExternalWorkoutMigrationIntegrationTest {
     fun `V19 upgrades to V20 and empty database reaches V20`() {
         withDatabase { url, user, password ->
             assertEquals(19, flyway(url, user, password, "19").migrate().migrationsExecuted)
-            val latest = flyway(url, user, password)
+            val latest = flyway(url, user, password, "20")
             assertEquals(1, latest.migrate().migrationsExecuted)
             assertEquals(1, objectExists(url, user, password, "TABLES", "table_name", "health_external_workout_summaries"))
             assertEquals(1, objectExists(url, user, password, "COLUMNS", "column_name", "source_app_key", "table_name", "health_external_workout_summaries"))
@@ -21,7 +21,7 @@ class ExternalWorkoutMigrationIntegrationTest {
             assertEquals(0, latest.migrate().migrationsExecuted)
         }
         withDatabase { url, user, password ->
-            val latest = flyway(url, user, password)
+            val latest = flyway(url, user, password, "20")
             assertEquals(20, latest.migrate().migrationsExecuted)
             assertEquals(0, latest.migrate().migrationsExecuted)
         }
