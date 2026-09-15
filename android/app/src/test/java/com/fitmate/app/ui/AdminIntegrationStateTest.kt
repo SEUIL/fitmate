@@ -7,6 +7,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AdminIntegrationStateTest {
+    @Test fun listRefreshCannotUnlockAnUncertainDecision() = runBlocking {
+        val fake = FakeAdminRepository(latencyMs = 0)
+        val state = AdminUiState(object : AdminRepository by fake {
+            override suspend fun claim(id: String, version: Long): AdminSnapshot = throw AdminFailure(AdminError.NETWORK)
+        })
+        state.load()
+        state.open("R-1001")
+        state.claim(requireNotNull(state.selected))
+        assertTrue(state.requiresRefresh)
+        state.search("", null)
+        assertTrue(state.requiresRefresh)
+        state.load()
+        assertFalse(state.requiresRefresh)
+    }
+
     @Test fun structuredDecisionIsIdempotentAndRejectsChangedPayload() = runBlocking {
         val repo = FakeAdminRepository(latencyMs = 0)
         repo.claim("R-1001", 0)

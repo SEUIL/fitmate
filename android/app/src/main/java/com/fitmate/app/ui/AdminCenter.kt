@@ -26,16 +26,12 @@ import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit) {
-    if (!BuildConfig.DEBUG) {
-        Column(Modifier.safeDrawingPadding().padding(24.dp)) {
-            Text("운영자 인증 연동 준비 중")
-            TextButton(onExit) { Text("돌아가기") }
-        }
-        return
-    }
-    val state = stateOverride ?: remember { AdminUiState(FakeAdminRepository()) }
+internal fun AdminCenter(stateOverride: AdminUiState? = null, apiClient: com.fitmate.app.data.remote.FitMateApiClient? = null, onExit: () -> Unit) {
+    val api = apiClient ?: rememberFitMateApiClient()
+    val state = stateOverride ?: remember(api) { AdminUiState(ServerAdminRepository(api)) }
     val scope = rememberCoroutineScope()
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     LaunchedEffect(state) { state.load() }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -43,8 +39,25 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf<AdminReportStatus?>(null) }
     val snapshot = state.snapshot
-    val reports = remember(snapshot, query, filter) { snapshot?.search(query, filter).orEmpty() }
-    val selected = snapshot?.reports?.find { it.id == selectedId }
+    val reports = snapshot?.reports.orEmpty()
+    var firstSearch by remember { mutableStateOf(true) }
+    LaunchedEffect(query, filter, selectedId) {
+        if (selectedId != null) return@LaunchedEffect
+        if (firstSearch) { firstSearch = false; if (query.isEmpty() && filter == null) return@LaunchedEffect }
+        kotlinx.coroutines.delay(300)
+        while (state.busy) kotlinx.coroutines.delay(50)
+        state.search(query, filter)
+    }
+    LaunchedEffect(selectedId) {
+        val id = selectedId
+        if (id == null) state.closeDetail() else {
+            focusManager.clearFocus()
+            keyboard?.hide()
+            while (state.busy) kotlinx.coroutines.delay(50)
+            state.open(id)
+        }
+    }
+    val selected = state.selected?.takeIf { it.id == selectedId }
     val scrollState = remember(tab, selectedId, sanction) { androidx.compose.foundation.ScrollState(0) }
     LaunchedEffect(state.error) { if (state.error != null) scrollState.animateScrollTo(0) }
     val back = { if (!state.busy) { if (sanction) sanction = false else if (selectedId != null) selectedId = null else onExit() } }
@@ -67,7 +80,7 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
             .verticalScroll(scrollState).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("개발용 데모 · 가상 데이터 · 실제 계정에 반영되지 않습니다", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+            Text(if (snapshot?.remote == true) "서버 연결 · 조치는 실제 계정에 적용됩니다" else if (stateOverride != null) "테스트 데이터" else "운영자 권한 확인", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
             if (state.busy) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text("불러오거나 처리하는 중…", fontSize = 13.sp)
@@ -98,36 +111,36 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit
                     }
                     AdminHeading("신고 근거")
                     AdminCard {
-                        Text("가상 신고 내용", fontWeight = FontWeight.SemiBold)
-                        Text("${selected.title}에 대한 검토 요청입니다. 신고된 내용과 운영 기준을 함께 확인해 주세요.", fontSize = 14.sp)
-                        Text("실제 게시물·DM 원문이 아닙니다. 근거 조회 API는 아직 연결되지 않았습니다.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("신고 대상 본문", fontWeight = FontWeight.SemiBold)
+                        Text(selected.evidence ?: "원문 근거를 제공할 수 없습니다.", fontSize = 14.sp)
+                        selected.reporterStatement?.let { Text("신고자 설명: $it", fontSize = 14.sp) }
                     }
                     AdminHeading("처리 이력")
                     Text("• ${selected.time} 신고 접수", fontSize = 14.sp)
-                    if (selected.status != AdminReportStatus.RECEIVED) Text("• 운영자 데모에서 검토 시작", fontSize = 14.sp)
-                    selected.decision?.let { AdminCard { Text("데모 처리 완료", fontWeight = FontWeight.SemiBold); Text(it) } }
+                    selected.history.forEach { Text(it, fontSize = 14.sp) }
+                    selected.decision?.let { AdminCard { Text("처리 결과", fontWeight = FontWeight.SemiBold); Text(it) } }
                     when (selected.status) {
                         AdminReportStatus.RECEIVED -> Button({ scope.launch { state.claim(selected) } }, Modifier.fillMaxWidth(), enabled = !state.busy && !state.requiresRefresh) { Text("검토 시작") }
-                        AdminReportStatus.REVIEWING -> Button({ sanction = true }, Modifier.fillMaxWidth(), enabled = !state.busy && !state.requiresRefresh) { Text("반려 / 조치 선택") }
+                        AdminReportStatus.REVIEWING -> Button({ sanction = true }, Modifier.fillMaxWidth(), enabled = !state.busy && !state.requiresRefresh && selected.allowedActions.isNotEmpty()) { Text("반려 / 조치 선택") }
                         else -> Text("완료된 신고는 다시 처리할 수 없습니다.", fontSize = 12.sp)
                     }
                 }
                 tab == 0 -> {
-                    Text("오늘의 운영 현황", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Text("최근 24시간 운영 현황", fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     Text("처리가 필요한 항목부터 확인하세요.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         AdminMetric("대기 신고", snapshot.pendingCount.toString(), Modifier.weight(1f)) { tab = 1; filter = null; query = "" }
-                        AdminMetric("신규 회원", "8", Modifier.weight(1f)) { tab = 2 }
+                        AdminMetric("신규 회원", snapshot.metrics?.getOrNull(1)?.toString() ?: "—", Modifier.weight(1f)) { tab = 2 }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        AdminMetric("운동 완료", "24", Modifier.weight(1f)) { tab = 4 }
-                        AdminMetric("판독 실패", "2", Modifier.weight(1f)) { tab = 4 }
+                        AdminMetric("운동 완료", snapshot.metrics?.getOrNull(2)?.toString() ?: "—", Modifier.weight(1f)) { tab = 4 }
+                        AdminMetric("판독 실패", snapshot.metrics?.getOrNull(3)?.toString() ?: "—", Modifier.weight(1f)) { tab = 4 }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         AdminHeading("최근 신고")
                         TextButton({ tab = 1; filter = null; query = "" }) { Text("전체 보기") }
                     }
-                    snapshot.reports.take(3).forEach { report -> AdminReportRow(report) { selectedId = report.id } }
+                    snapshot.recentReports.forEach { report -> AdminReportRow(report) { selectedId = report.id } }
                     AdminHeading("최근 처리")
                     if (snapshot.history.isEmpty()) Text("아직 처리한 신고가 없습니다.", fontSize = 14.sp)
                     snapshot.history.take(3).forEach { Text(it, fontSize = 14.sp) }
@@ -142,20 +155,18 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit
                     Text("${reports.size}건", fontSize = 12.sp)
                     if (reports.isEmpty()) AdminCard { Text("조건에 맞는 신고가 없습니다."); TextButton({ query = ""; filter = null }) { Text("검색 초기화") } }
                     reports.forEach { report -> AdminReportRow(report) { selectedId = report.id } }
+                    if (snapshot.nextCursor != null) TextButton({ scope.launch { state.more() } }, enabled = !state.busy) { Text("더 보기") }
                 }
                 tab == 2 -> {
                     AdminHeading("회원")
-                    Text("신고와 연결된 가상 회원입니다. 회원 검색·상세 API는 연동 예정입니다.", fontSize = 14.sp)
-                    snapshot.reports.forEach { report -> AdminCard(Modifier.clickable { selectedId = report.id }) {
-                        Text(report.member, fontWeight = FontWeight.SemiBold)
-                        Text("관련 신고 ${report.id} · ${report.status.label}", fontSize = 13.sp)
-                        Text("관련 신고 보기 →", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
-                    } }
+                    Text("신고에 연결된 회원입니다.", fontSize = 14.sp)
+                    snapshot.members.forEach { member -> AdminCard { Text(member) } }
+                    if (snapshot.members.isEmpty()) Text("신고에 연결된 회원이 없습니다.")
                 }
                 tab == 3 -> {
                     AdminHeading("콘텐츠")
                     Text("신고된 콘텐츠 미리보기입니다. 숨김·복구·삭제 기능은 아직 제공하지 않습니다.", fontSize = 14.sp)
-                    snapshot.reports.filter { it.type in listOf("커뮤니티", "댓글", "메이트") }.forEach { report -> AdminReportRow(report) { selectedId = report.id } }
+                    snapshot.contents.forEach { report -> AdminReportRow(report) { selectedId = report.id } }
                 }
                 else -> {
                     AdminHeading("운영 도구")
@@ -163,10 +174,10 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit
                         Text(title, fontWeight = FontWeight.SemiBold)
                         Text("후속 화면 · 백엔드 연동 준비 중", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } }
-                    AdminHeading("이번 데모의 처리 기록")
+                    AdminHeading("최근 처리 기록")
                     if (snapshot.history.isEmpty()) Text("처리 기록 없음")
                     snapshot.history.forEach { AdminCard { Text(it, fontSize = 14.sp) } }
-                    Text("데모 기록은 운영자 센터 종료 시 초기화됩니다. 실제 권한 검사·MFA·감사 로그는 백엔드 연동이 필요합니다.", fontSize = 12.sp)
+                    Text("처리 기록은 서버에 저장됩니다. MFA와 운영 전용 세션은 아직 지원하지 않습니다.", fontSize = 12.sp)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -203,8 +214,8 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit
 }
 
 @Composable private fun AdminSanctionForm(report: AdminReport, enabled: Boolean, onCancel: () -> Unit, onSave: (AdminDecisionCommand) -> Unit) {
-    var action by rememberSaveable { mutableStateOf(AdminAction.WARNING) }
-    var reasonCode by rememberSaveable { mutableStateOf(AdminDecisionReason.POLICY_VIOLATION) }
+    var action by rememberSaveable { mutableStateOf(report.allowedActions.firstOrNull { it == AdminAction.WARNING } ?: AdminAction.NONE) }
+    var reasonCode by rememberSaveable { mutableStateOf(if (action == AdminAction.NONE) AdminDecisionReason.NO_VIOLATION else AdminDecisionReason.POLICY_VIOLATION) }
     var days by rememberSaveable { mutableIntStateOf(7) }
     var reason by rememberSaveable { mutableStateOf("") }
     var note by rememberSaveable { mutableStateOf("") }
@@ -215,7 +226,7 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit
     AdminCard { Text(report.member, fontSize = 20.sp, fontWeight = FontWeight.SemiBold); Text("연결 신고 · ${report.id}", fontSize = 12.sp) }
     AdminHeading("조치 종류")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        AdminAction.entries.forEach { value -> FilterChip(action == value, {
+        report.allowedActions.forEach { value -> FilterChip(action == value, {
             action = value
             reasonCode = if (value == AdminAction.NONE) AdminDecisionReason.NO_VIOLATION else AdminDecisionReason.POLICY_VIOLATION
         }, enabled = enabled, label = { Text(value.label) }) }
@@ -234,17 +245,17 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, onExit: () -> Unit
     }
     OutlinedTextField(reason, { if (it.length <= 500) reason = it }, Modifier.fillMaxWidth(), enabled = enabled, label = { Text("처리 사유 및 사용자 안내 (필수)") }, minLines = 3, supportingText = { Text("${reason.length}/500 · 사용자에게 전달할 안내") })
     OutlinedTextField(note, { if (it.length <= 500) note = it }, Modifier.fillMaxWidth(), enabled = enabled, label = { Text("내부 메모 (선택)") }, minLines = 2, supportingText = { Text("사용자에게 공개하지 않는 운영 메모") })
-    Text(if (action == AdminAction.SUSPEND) "실연동 시 기간 동안 로그인·서비스 이용이 제한됩니다. 현재는 가상 데이터만 변경합니다." else "입력 내용을 확인한 뒤 데모 신고에 적용합니다.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(if (action == AdminAction.SUSPEND) "기간 동안 실제 회원의 로그인·서비스 이용이 제한됩니다." else "입력 내용을 확인한 뒤 신고에 적용합니다.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Button({ confirm = true }, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = enabled && command.isValid()) { Text("처리 내용 확인") }
     TextButton(onCancel, Modifier.fillMaxWidth(), enabled = enabled) { Text("취소") }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("데모 조치를 적용할까요?") },
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("조치를 적용할까요?") },
         text = { Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("${report.member} · ${report.id}")
             Text("${action.label}${if (action == AdminAction.SUSPEND) " ${days}일" else ""}", fontWeight = FontWeight.Bold)
             Text("처리 사유: ${reasonCode.label}")
             Text(reason)
-            Text("실제 회원에게 적용되거나 알림이 발송되지 않습니다.", fontSize = 12.sp)
+            Text("처리는 서버에 저장되며 기간 정지는 실제 계정에 적용됩니다. 알림 발송은 지원하지 않습니다.", fontSize = 12.sp)
         } },
-        confirmButton = { TextButton({ confirm = false; onSave(command) }, enabled = enabled && command.isValid()) { Text("데모 적용") } },
+        confirmButton = { TextButton({ confirm = false; onSave(command) }, enabled = enabled && command.isValid()) { Text("적용") } },
         dismissButton = { TextButton({ confirm = false }) { Text("돌아가기") } })
 }

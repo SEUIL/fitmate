@@ -22,9 +22,10 @@ data class AdminReportPage(val items: List<AdminReportSummary>, val nextCursor: 
 data class AdminMemberPage(val items: List<AdminSubjectUser>)
 data class AdminContentItem(val reportId: UUID, val targetType: ReportTargetType, val targetId: UUID, val title: String, val status: ReportStatus, val createdAt: Instant)
 data class AdminContentPage(val items: List<AdminContentItem>)
-data class AdminEvidence(val availability: String, val text: String?)
+data class AdminEvidence(val availability: String, val text: String?, val reporterStatement: String? = null)
+data class AdminDecisionSummary(val action: String, val reasonCode: String?, val publicReason: String?, val internalNote: String?, val decidedAt: Instant?, val sanctionEndsAt: Instant?)
 data class AdminAuditItem(val action: String, val summary: String, val occurredAt: Instant)
-data class AdminReportDetail(val report: AdminReportSummary, val assignedOperatorId: UUID?, val evidence: AdminEvidence, val history: List<AdminAuditItem>, val allowedActions: List<ModerationAction>)
+data class AdminReportDetail(val report: AdminReportSummary, val assignedOperatorId: UUID?, val evidence: AdminEvidence, val history: List<AdminAuditItem>, val allowedActions: List<ModerationAction>, val decision: AdminDecisionSummary? = null)
 data class ClaimReportRequest(@field:NotNull @field:Min(0) val expectedVersion: Long)
 data class DecideReportRequest(
     @field:NotNull @field:Min(0) val expectedVersion: Long,

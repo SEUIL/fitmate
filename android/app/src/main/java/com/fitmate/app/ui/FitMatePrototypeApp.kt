@@ -607,7 +607,7 @@ fun FitMatePrototypeApp(
                 selfUserId = serverAccount.text("id"),
             )
             PrototypeRoute.SAFETY -> SafetyScreen(Modifier.padding(padding))
-            PrototypeRoute.ADMIN -> WorkoutDesignTheme { AdminCenter { route = PrototypeRoute.SETTINGS } }
+            PrototypeRoute.ADMIN -> WorkoutDesignTheme { AdminCenter(apiClient = apiClient) { route = PrototypeRoute.SETTINGS } }
             PrototypeRoute.ADS -> AdsScreen(Modifier.padding(padding))
         }
         if (storageError) AlertDialog(onDismissRequest = { storageError = false }, title = { Text("기기 저장 확인 필요") }, text = { Text("기록을 읽거나 저장하지 못했어요. 저장 공간을 확인해 주세요. 최근 변경은 재실행 후 복원되지 않을 수 있습니다.") }, confirmButton = { TextButton({ storageError = false }) { Text("확인") } })

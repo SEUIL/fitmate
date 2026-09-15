@@ -228,7 +228,9 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
         } finally { loadingRemembered = false }
     }
     FitMateWordmark()
-    SocialScreenTitle("다시 만나서 반가워요", "계정으로 로그인하고 운동을 이어가세요.")
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+        SocialScreenTitle("다시 만나서 반가워요", "계정으로 로그인하고 운동을 이어가세요.")
+    }
     rememberedEmail?.let { savedEmail -> WorkoutCard {
         Text("기억한 계정", style = MaterialTheme.typography.titleMedium)
         Text(savedEmail, style = MaterialTheme.typography.bodyLarge)

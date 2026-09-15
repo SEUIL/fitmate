@@ -92,8 +92,8 @@ class AdminModerationServiceTest {
     @Test
     fun `expired suspension becomes active for next login`() {
         val suspended = User(id = adminId, accountStatus = AccountStatus.SUSPENDED)
-        `when`(sanctions.findFirstByUserIdAndActionOrderByCreatedAtDesc(adminId, ModerationAction.SUSPEND))
-            .thenReturn(AdminSanction(userId = adminId, action = ModerationAction.SUSPEND, endsAt = now.minusSeconds(1)))
+        `when`(sanctions.findAllByUserIdAndAction(adminId, ModerationAction.SUSPEND))
+            .thenReturn(listOf(AdminSanction(userId = adminId, action = ModerationAction.SUSPEND, endsAt = now.minusSeconds(1))))
         `when`(users.save(suspended)).thenReturn(suspended)
         val suspensionService = AccountSuspensionService(sanctions, users, Clock.fixed(now, ZoneOffset.UTC))
 
@@ -101,6 +101,23 @@ class AdminModerationServiceTest {
 
         assertEquals(AccountStatus.ACTIVE, result.accountStatus)
         verify(users).save(suspended)
+    }
+
+    @Test
+    fun `short suspension expiry does not cancel older active suspension`() {
+        val user = User(id = adminId, accountStatus = AccountStatus.SUSPENDED)
+        `when`(sanctions.findAllByUserIdAndAction(adminId, ModerationAction.SUSPEND)).thenReturn(listOf(
+            AdminSanction(endsAt = now.plusSeconds(86400 * 20)), AdminSanction(endsAt = now.minusSeconds(1))))
+        val result = AccountSuspensionService(sanctions, users, Clock.fixed(now, ZoneOffset.UTC)).restoreIfExpired(user)
+        assertEquals(AccountStatus.SUSPENDED, result.accountStatus)
+        verify(users, never()).save(user)
+    }
+
+    @Test
+    fun `missing suspension record never reactivates an account`() {
+        val user = User(id = adminId, accountStatus = AccountStatus.SUSPENDED)
+        assertEquals(AccountStatus.SUSPENDED,
+            AccountSuspensionService(sanctions, users, Clock.fixed(now, ZoneOffset.UTC)).restoreIfExpired(user).accountStatus)
     }
 
     private fun authorize() {

@@ -8,6 +8,8 @@ import java.util.UUID
 
 interface AdminRoleRepository : JpaRepository<AdminRoleAssignment, UUID> { fun findByUserIdAndRevokedAtIsNull(userId: UUID): AdminRoleAssignment? }
 interface AdminSanctionRepository : JpaRepository<AdminSanction, UUID> {
+    fun findAllByUserIdAndAction(userId: UUID, action: com.fitmate.backend.admin.domain.ModerationAction): List<AdminSanction>
+    fun findFirstByReportIdOrderByCreatedAtDesc(reportId: UUID): AdminSanction?
     fun findFirstByUserIdAndActionOrderByCreatedAtDesc(userId: UUID, action: com.fitmate.backend.admin.domain.ModerationAction): AdminSanction?
 }
 interface AdminAuditLogRepository : JpaRepository<AdminAuditLog, UUID> {
