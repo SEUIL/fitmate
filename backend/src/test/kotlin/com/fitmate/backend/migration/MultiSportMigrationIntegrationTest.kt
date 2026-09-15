@@ -9,17 +9,17 @@ import java.util.UUID
 
 @EnabledIfEnvironmentVariable(named = "FITMATE_TEST_DB_URL", matches = ".+")
 class MultiSportMigrationIntegrationTest {
-    @Test fun `V20 upgrades to V21 and empty database reaches V21`() {
+    @Test fun `V20 upgrades to V27 and empty database reaches V27`() {
         withDatabase { url, user, password ->
             assertEquals(20, flyway(url, user, password, "20").migrate().migrationsExecuted)
-            val latest = flyway(url, user, password, "21")
-            assertEquals(1, latest.migrate().migrationsExecuted)
+            val latest = flyway(url, user, password, "27")
+            assertEquals(7, latest.migrate().migrationsExecuted)
             assertEquals(1, exists(url, user, password, "tables", "table_name", "fitness_sport_records"))
             assertEquals(0, latest.migrate().migrationsExecuted)
         }
         withDatabase { url, user, password ->
-            val latest = flyway(url, user, password, "21")
-            assertEquals(21, latest.migrate().migrationsExecuted)
+            val latest = flyway(url, user, password, "27")
+            assertEquals(27, latest.migrate().migrationsExecuted)
             assertEquals(4, activeSports(url, user, password))
             assertEquals(0, latest.migrate().migrationsExecuted)
         }

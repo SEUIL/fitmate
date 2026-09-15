@@ -192,12 +192,16 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     )
 }
 
+@Composable internal fun FitMateWordmark(modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text("Fit", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp, color = MaterialTheme.colorScheme.onSurface)
+        Text("Mate", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
 @Composable internal fun SocialHome(modifier: Modifier, profile: UserProfile, social: SocialState, workoutCount: Int, runCount: Int, start: () -> Unit, mates: () -> Unit, community: () -> Unit, dm: () -> Unit, inbody: () -> Unit, resuming: Boolean = false, notifications: () -> Unit = {}, server: ServerSocialApi? = null, history: () -> Unit = {}, resumeDescription: String? = null) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Text("Fit", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp, color = MaterialTheme.colorScheme.onSurface)
-            Text("Mate", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp, color = MaterialTheme.colorScheme.primary)
-        }
+        FitMateWordmark(Modifier.weight(1f))
         IconButton(notifications) {
             BadgedBox(badge = { if (social.accounts.notices.any { !it.read }) Badge { Text(social.accounts.notices.count { !it.read }.toString()) } }) {
                 Icon(Icons.Outlined.NotificationsNone, "알림")
@@ -268,6 +272,9 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     TextButton(community, Modifier.fillMaxWidth()) { Text("커뮤니티에서 더 보기", color = FitMateColors.TextPrimary) }
 }
 
+internal fun profileDisplayCounts(serverBacked: Boolean, serverCounts: List<String>?, localCounts: List<String>): List<String> =
+    if (serverBacked) serverCounts ?: listOf("—", "—", "—") else localCounts
+
 @Composable internal fun ProfileOverview(profile: UserProfile, social: SocialState, workouts: List<WorkoutSummary>, runs: List<RunResult>, edit: () -> Unit, inbody: () -> Unit, samsung: () -> Unit, admin: () -> Unit, account: () -> Unit, history: () -> Unit, notifications: () -> Unit, reports: () -> Unit, openSettings: () -> Unit, server: ServerSocialApi? = null, recordApi: FitMateApiClient? = null, selfUserId: String = "") {
     var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("게시물") }
     var opened by remember { mutableStateOf<FeedEntry?>(null) }
@@ -278,8 +285,11 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         social.following.size.toString(),
     )
     var serverCounts by remember(server, recordApi, selfUserId) { mutableStateOf<List<String>?>(null) }
-    LaunchedEffect(server, recordApi, selfUserId) {
+    var countsFailed by remember(server, recordApi, selfUserId) { mutableStateOf(false) }
+    var countsAttempt by remember(server, recordApi, selfUserId) { mutableStateOf(0) }
+    LaunchedEffect(server, recordApi, selfUserId, countsAttempt) {
         if (server == null || recordApi == null || selfUserId.isBlank()) return@LaunchedEffect
+        countsFailed = false
         runCatching {
             withContext(Dispatchers.IO) {
                 val serverProfile = server.profile(selfUserId)
@@ -290,12 +300,17 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
                     (serverProfile.get("followingCount")?.asLong ?: 0L).toString(),
                 )
             }
-        }.onSuccess { serverCounts = it }
+        }.onSuccess { serverCounts = it }.onFailure {
+            if (it is kotlinx.coroutines.CancellationException) throw it
+            countsFailed = true
+        }
     }
     SocialScreenTitle(profile.nickname, action = { IconButton(openSettings) { Icon(Icons.Outlined.Menu, "프로필 설정") } })
-    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo, serverCounts ?: fallbackCounts, server, accent = true) {
+    ProfileIdentityRow(profile.nickname, profile.profileImageUrl ?: social.accounts.photo,
+        profileDisplayCounts(server != null || recordApi != null, serverCounts, fallbackCounts), server, accent = true) {
         if (it == "운동 기록") tab = it else social.accounts.directory = it
     }
+    if (countsFailed) TextButton({ countsAttempt++ }) { Text("프로필 통계를 불러오지 못했어요 · 다시 시도") }
     Text(profile.displayName.ifBlank { profile.nickname }, fontWeight = FontWeight.SemiBold)
     if (profile.bio.isNotBlank()) Text(profile.bio, style = MaterialTheme.typography.bodyMedium)
     Text("${profile.region} · ${(profile.interests.map { it.label } + profile.customInterests).joinToString(" · ")}", style = MaterialTheme.typography.bodySmall, color = FitMateColors.TextSecondary)
@@ -339,6 +354,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     onFollowRequests: () -> Unit,
     onReports: () -> Unit,
     onOpenAdmin: () -> Unit,
+    remembersAccount: Boolean = false,
 ) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     var confirmLogout by remember { mutableStateOf(false) }
     SettingsGroup("계정 및 프로필") {
@@ -346,7 +362,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         SettingsRow(Icons.Outlined.Lock, "공개 범위", if (profile.isPrivate) "현재 비공개 계정" else "현재 공개 계정", onProfileEdit)
         SettingsRow(Icons.Outlined.Image, "프로필 사진", "프로필 편집에서 사진을 변경해요", onProfileEdit)
         SettingsRow(Icons.Outlined.Lock, "계정·개인정보", "비밀번호, 동의와 기기 데이터를 관리해요", onAccount)
-        SettingsRow(Icons.Outlined.Logout, "로그아웃", "이 기기에서 안전하게 로그아웃합니다", { confirmLogout = true })
+        SettingsRow(Icons.Outlined.Logout, "로그아웃", if (remembersAccount) "로그인 화면에서 기억한 계정으로 다시 접속할 수 있어요" else "이 기기에서 안전하게 로그아웃합니다", { confirmLogout = true })
     }
     SettingsGroup("운동 및 기기") {
         SettingsRow(Icons.Outlined.FitnessCenter, "운동 프로필", "관심 운동, 목표, 가능 시간을 설정해요", onProfileEdit)
@@ -363,7 +379,8 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     DebugOnly { SettingsGroup("개발") { SettingsRow(Icons.Outlined.AdminPanelSettings, "운영자 데모", "개발 환경에서만 표시됩니다", onOpenAdmin) } }
     if (confirmLogout) StateConfirm(
         "로그아웃",
-        "현재 기기의 로그인 세션을 종료하고 로그인 화면으로 이동합니다. 기기 내 운동 기록은 유지됩니다.",
+        if (remembersAccount) "로그인 화면으로 이동합니다. 이 기기에 기억한 계정은 비밀번호 없이 다시 접속할 수 있습니다. 간편 접속을 해제하려면 로그인 화면에서 ‘기억한 계정 삭제’를 눌러 주세요."
+        else "현재 기기의 로그인 세션을 종료하고 로그인 화면으로 이동합니다. 기기 내 운동 기록은 유지됩니다.",
         { confirmLogout = false },
         confirm = { confirmLogout = false; onLogout() }
     )

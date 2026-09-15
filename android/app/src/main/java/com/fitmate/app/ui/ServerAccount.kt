@@ -215,28 +215,78 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    Text("FITMATE", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
+    var rememberAccount by remember { mutableStateOf(true) }
+    var rememberedEmail by remember { mutableStateOf<String?>(null) }
+    var loadingRemembered by remember { mutableStateOf(true) }
+    var continuing by remember { mutableStateOf(false) }
+    var errorFromRemembered by remember { mutableStateOf(false) }
+    LaunchedEffect(api) {
+        try { rememberedEmail = withContext(Dispatchers.IO) { api.rememberedEmail() } }
+        catch (failure: Exception) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            error = failure.message ?: "기억한 계정을 불러오지 못했어요."
+        } finally { loadingRemembered = false }
+    }
+    FitMateWordmark()
     SocialScreenTitle("다시 만나서 반가워요", "계정으로 로그인하고 운동을 이어가세요.")
+    rememberedEmail?.let { savedEmail -> WorkoutCard {
+        Text("기억한 계정", style = MaterialTheme.typography.titleMedium)
+        Text(savedEmail, style = MaterialTheme.typography.bodyLarge)
+        ErrorText(error.takeIf { errorFromRemembered })
+        AuthAction(if (continuing) "접속 중…" else "이 계정으로 계속하기", enabled = !busy) {
+            busy = true; continuing = true; error = null; errorFromRemembered = true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { api.continueRememberedAccount() }
+                    signedIn()
+                } catch (failure: Exception) {
+                    if (failure is kotlinx.coroutines.CancellationException) throw failure
+                    error = failure.message ?: "계정에 접속하지 못했어요. 다시 시도해 주세요."
+                    rememberedEmail = withContext(Dispatchers.IO) { api.rememberedEmail() }
+                    if (rememberedEmail == null) email = savedEmail
+                } finally { busy = false; continuing = false }
+            }
+        }
+        TextButton({
+            busy = true; error = null; errorFromRemembered = true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { api.clearSession() }
+                    rememberedEmail = null
+                } catch (failure: Exception) {
+                    if (failure is kotlinx.coroutines.CancellationException) throw failure
+                    error = failure.message ?: "기억한 계정을 삭제하지 못했어요."
+                } finally { busy = false }
+            }
+        }, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !busy) { Text("기억한 계정 삭제") }
+        Text("삭제하면 이 기기의 간편 접속 정보만 지워집니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } }
     WorkoutCard {
     OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("이메일") }, singleLine = true, enabled = !busy, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
     AuthSecretField(password, { password = it }, "비밀번호", !busy)
-    AuthAction(if (busy) "로그인 중…" else "로그인", enabled = !busy && validDemoEmail(email.trim()) && password.isNotEmpty()) {
+    AuthToggle("이 기기에 계정 기억", rememberAccount, { rememberAccount = it }, enabled = !busy,
+        description = "최근 로그인한 계정 1개를 기억합니다. 로그아웃 후에도 비밀번호 없이 접속할 수 있어요.")
+    ErrorText(error.takeIf { !errorFromRemembered || rememberedEmail == null })
+    AuthAction(if (busy && !continuing) "로그인 중…" else "로그인", enabled = !busy && !loadingRemembered && validDemoEmail(email.trim()) && password.isNotEmpty()) {
         val submittedEmail = email.trim(); val submittedPassword = password
-        busy = true; error = null
+        busy = true; error = null; errorFromRemembered = false
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { api.authenticate("auth/login", mapOf("email" to submittedEmail, "password" to submittedPassword)) }
+                withContext(Dispatchers.IO) { api.authenticate("auth/login", mapOf("email" to submittedEmail, "password" to submittedPassword), rememberEmail = submittedEmail.takeIf { rememberAccount }) }
                 password = ""; signedIn()
-            } catch (failure: Exception) { error = failure.message ?: "로그인에 실패했습니다." }
+            } catch (failure: Exception) {
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                error = failure.message ?: "로그인에 실패했습니다."
+            }
             finally { busy = false }
         }
     }
-    ErrorText(error)
     }
     TextButton(signup, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !busy) { Text("회원가입") }
 } }
 
 @Composable internal fun ServerSessionGate(api: FitMateApiClient, signup: @Composable (() -> Unit) -> Unit,
+    launchReady: Boolean = true,
     content: @Composable (JsonObject) -> Unit) {
     var account by remember { mutableStateOf<JsonObject?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -251,10 +301,10 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
     }
     val sessionError = error
     when {
-        loading -> LaunchScreen()
+        loading || !launchReady -> LaunchScreen()
         account != null -> content(requireNotNull(account))
         sessionError != null -> WorkoutDesignTheme { Screen(Modifier.safeDrawingPadding(), background = MaterialTheme.colorScheme.background) {
-            Text("FITMATE", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            FitMateWordmark()
             StateCard("계정을 불러오지 못했어요", sessionError, androidx.compose.material.icons.Icons.Outlined.ErrorOutline) {
                 AuthAction("다시 시도") { attempt++ }
                 TextButton({ error = null; registration = false }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("다시 로그인") }

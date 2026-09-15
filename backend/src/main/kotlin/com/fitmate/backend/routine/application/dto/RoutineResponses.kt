@@ -36,6 +36,8 @@ data class RoutineDetail(
     val template: Boolean,
     val version: Long,
     val items: List<RoutineItemResponse>,
+    val recommendation: com.fasterxml.jackson.databind.JsonNode? = null,
+    val nextSplitDayNo: Int? = null,
 )
 
 data class RoutineItemResponse(

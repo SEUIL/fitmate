@@ -1,8 +1,8 @@
 # 인바디 AI 판독 API 프론트엔드 연동 가이드
 
 - 작성일: 2026-09-08
-- 최종 수정일: 2026-09-10
-- 버전: v0.2
+- 최종 수정일: 2026-09-14
+- 버전: v0.3
 - 상태: 검토 중
 - 대상: Android Client, Kotlin Spring Boot Backend
 
@@ -18,19 +18,25 @@ AI 공급자는 `InbodyAnalyzer` 인터페이스 뒤에 분리되어 있다. 현
 
 ## 2. 로컬 실행 설정
 
-`backend/local.properties.example`을 `backend/local.properties`로 복사하고 아래 두 값만 설정한다.
+`backend/src/main/resources/application-local.yml`의 `fitmate.inbody-ai`에 아래 값을 설정한다. 이 파일은 Git에서 제외된다.
 
-```properties
-FITMATE_INBODY_AI_PROVIDER=OPENAI
-OPENAI_API_KEY=발급받은_API_키
+```yaml
+fitmate:
+  inbody-ai:
+    provider: OPENAI
+    openai:
+      api-key: 발급받은_API_키
+      model: gpt-5.6-luna
 ```
 
-기본 모델은 `gpt-5.6-luna`이며 필요하면 `OPENAI_MODEL`로 바꿀 수 있다. `backend/local.properties`는 Git에서 제외된다. 키 문자열을 소스, 문서, Android 앱, 커밋에 넣지 않는다. 백엔드가 OpenAI를 호출하므로 Android에는 키가 필요하지 않다.
+`application.yml`은 기본으로 `local` 프로필을 사용하므로 별도 properties 파일이나 실행 인자가 필요 없다. 키 문자열을 소스, 문서, Android 앱, 커밋에 넣지 않는다. 백엔드가 OpenAI를 호출하므로 Android에는 키가 필요하지 않다.
 
 키 없이 전체 API 흐름부터 확인하려면 공급자를 `MOCK`로 설정한다.
 
-```properties
-FITMATE_INBODY_AI_PROVIDER=MOCK
+```yaml
+fitmate:
+  inbody-ai:
+    provider: MOCK
 ```
 
 ## 3. 이미지 업로드

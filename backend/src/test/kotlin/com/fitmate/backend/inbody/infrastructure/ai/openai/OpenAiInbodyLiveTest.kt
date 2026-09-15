@@ -28,7 +28,6 @@ class OpenAiInbodyLiveTest {
     fun `backend analyzer reads one synthetic report using local configuration`() {
         val application = SpringApplication(LiveConfig::class.java).apply {
             webApplicationType = WebApplicationType.NONE
-            setAdditionalProfiles("local")
         }
         application.run("--spring.main.banner-mode=off").use { context ->
             val properties = context.getBean(InbodyAiProperties::class.java)

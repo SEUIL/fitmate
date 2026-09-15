@@ -17,6 +17,7 @@ import java.util.UUID
 import com.fitmate.backend.fitness.domain.SportCode
 
 interface WorkoutSessionRepository : JpaRepository<WorkoutSession, UUID> {
+    fun countByStatusAndEndedAtGreaterThanEqual(status: WorkoutSessionStatus, endedAt: Instant): Long
     @EntityGraph(attributePaths = ["routine"])
     fun findByIdAndUserId(id: UUID, userId: UUID): WorkoutSession?
 

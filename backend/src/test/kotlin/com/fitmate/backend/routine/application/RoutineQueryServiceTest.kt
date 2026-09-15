@@ -36,7 +36,8 @@ class RoutineQueryServiceTest {
     private val goals = mock(UserGoalRepository::class.java)
     private val userSports = mock(UserSportRepository::class.java)
     private val sports = mock(SportRepository::class.java)
-    private val service = RoutineQueryService(routines, items, goals, userSports, sports)
+    private val workoutSessions = mock(com.fitmate.backend.workout.repository.WorkoutSessionRepository::class.java)
+    private val service = RoutineQueryService(routines, items, goals, userSports, sports, workoutSessions)
     private val userId = UUID.randomUUID()
     private val sportId = UUID.randomUUID()
     private val health = Sport(id = sportId, code = SportCode.HEALTH, name = "헬스", isActive = true)
@@ -76,6 +77,17 @@ class RoutineQueryServiceTest {
     }
 
     @Test
+    fun `trained user can use a matching fitness template before a goal-wide beginner template`() {
+        `when`(goals.findAllByIdUserId(userId)).thenReturn(listOf(UserGoal(UserGoalId(userId, GoalCode.DIET), true)))
+        `when`(userSports.findAllByIdUserId(userId)).thenReturn(listOf(UserSport(UserSportId(userId, sportId), SkillLevel.ONE_TO_THREE_YEARS)))
+        val beginnerDiet = template("다이어트 전신", GoalCode.DIET, null)
+        val experiencedFitness = template("숙련 근비대", GoalCode.FITNESS, SkillLevel.ONE_TO_THREE_YEARS)
+        `when`(routines.findAllByIsTemplateTrueAndIsActiveTrueOrderByNameAsc()).thenReturn(listOf(beginnerDiet, experiencedFitness))
+
+        assertEquals("숙련 근비대", service.getRecommended(userId, SportCode.HEALTH).name)
+    }
+
+    @Test
     fun `recommended routine falls back when profile has no matching template`() {
         `when`(goals.findAllByIdUserId(userId)).thenReturn(listOf(UserGoal(UserGoalId(userId, GoalCode.RECORD_IMPROVEMENT), true)))
         `when`(userSports.findAllByIdUserId(userId)).thenReturn(listOf(UserSport(UserSportId(userId, sportId), SkillLevel.OVER_THREE_YEARS)))
@@ -112,6 +124,19 @@ class RoutineQueryServiceTest {
         val hidden = assertThrows(ApiException::class.java) { service.getDetail(userId, otherApiId) }
         assertEquals(ApiErrorCode.RESOURCE_NOT_FOUND, hidden.errorCode)
         verify(items, never()).findAllByRoutineIdOrderBySequenceNoAsc(requireNotNull(other.id))
+    }
+
+    @Test
+    fun `next split day follows completed sessions and wraps`() {
+        val routine = userRoutine("분할 루틴", userId).apply { splitCount = 3 }
+        val id = requireNotNull(routine.id)
+        `when`(routines.findByIdAndIsActiveTrue(id)).thenReturn(routine)
+        for (completed in 0L..4L) {
+            `when`(workoutSessions.countByUserIdAndRoutineIdAndStatus(userId, id,
+                com.fitmate.backend.workout.domain.WorkoutSessionStatus.COMPLETED)).thenReturn(completed)
+            assertEquals((completed % 3).toInt() + 1,
+                service.getDetail(userId, UuidBinaryConverter.fromMysqlOrderedUuid(id)).nextSplitDayNo)
+        }
     }
 
     @Test

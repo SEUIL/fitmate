@@ -29,6 +29,9 @@ FitMate 프로젝트 문서 보관 위치입니다.
 - [운동 기록 API 프론트엔드 연동](./02-technical/운동-기록-api-프론트엔드-연동.md)
 - [러닝 기록 API 프론트엔드 연동](./02-technical/러닝-기록-api-프론트엔드-연동.md)
 - [인바디 AI 판독 API 프론트엔드 연동](./02-technical/인바디-ai-api-프론트엔드-연동.md)
+- [운동 추천 AI 연동 가이드](./02-technical/운동-추천-ai-연동-가이드.md)
+- [맞춤 운동 추천 확장 API 계약](./02-technical/운동-추천-확장-api-계약.md)
+- [운동 AI 종합 리포트 API 계약](./02-technical/운동-리포트-ai-확장-api-계약.md)
 
 ## 발표 시연
 

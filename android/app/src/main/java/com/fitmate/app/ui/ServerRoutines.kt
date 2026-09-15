@@ -19,8 +19,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@Composable internal fun ServerRoutineLibrary(modifier: Modifier, api: FitMateApiClient, healthSelected: Boolean,
-    select: (JsonObject) -> Unit, local: () -> Unit) = Screen(modifier) {
+@Composable internal fun ServerRoutineList(modifier: Modifier, api: FitMateApiClient, healthSelected: Boolean,
+    select: (JsonObject) -> Unit, local: () -> Unit, recommend: () -> Unit) = Screen(modifier) {
     val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf("추천 루틴") }
     var rows by remember { mutableStateOf(emptyList<JsonObject>()) }
@@ -34,6 +34,7 @@ import kotlinx.coroutines.withContext
     var selected by remember { mutableStateOf(emptyList<String>()) }
     var deleting by remember { mutableStateOf<JsonObject?>(null) }
     var detail by remember { mutableStateOf<JsonObject?>(null) }
+    var recommendationDetails by remember { mutableStateOf<String?>(null) }
     fun perform(block: () -> Unit, done: () -> Unit = {}) {
         if (busy) return
         busy = true; error = null
@@ -63,6 +64,7 @@ import kotlinx.coroutines.withContext
         value.add("substitutions", com.google.gson.JsonArray().also { list -> api.items("exercises/$id/substitutions", false).forEach { list.add(it) } })
         detail = value
     })
+    PlanHeading("헬스 루틴", "지금 나에게 맞는 루틴으로 시작해요.")
     Row(Modifier.fillMaxWidth()) {
         listOf("추천 루틴", "기본 루틴", "내 루틴").forEach { label ->
             Column(Modifier.weight(1f).selectable(tab == label, enabled = !busy, role = Role.Tab, onClick = { tab = label }), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -80,8 +82,18 @@ import kotlinx.coroutines.withContext
         Text(if (tab == "추천 루틴" && !healthSelected) "프로필에서 헬스 숙련도를 설정하면 추천을 받을 수 있어요. 기본 루틴은 바로 이용할 수 있습니다." else "기본 루틴으로 시작하거나 나만의 루틴을 만들어 보세요.")
         if (tab != "기본 루틴") OutlinedButton({ tab = "기본 루틴" }, Modifier.fillMaxWidth()) { Text("기본 루틴 보기") }
     }
+    if (tab == "추천 루틴") OutlinedButton(recommend, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = !busy) {
+        Text("맞춤 조건으로 추천 받기")
+    }
     rows.forEach { row -> WorkoutCard {
         RoutineExerciseList(row, tab, !busy, ::showDetail)
+        row.get("recommendation")?.takeIf { it.isJsonObject }?.asJsonObject?.let { evidence ->
+            TextButton({ recommendationDetails = if (recommendationDetails == row.text("id")) null else row.text("id") }) { Text("저장 당시 추천 조건·근거") }
+            if (recommendationDetails == row.text("id")) {
+                Text("아래는 저장 당시 추천입니다. 이후 직접 수정한 운동 구성과 다를 수 있어요.")
+                WorkoutPlanResultContent(evidence)
+            }
+        }
         if (row.get("template").asBoolean) TextButton({ perform({ api.request("POST", "routines", mapOf("name" to "${row.text("name")} 복사", "sourceType" to "USER_COPY", "sourceRoutineId" to row.text("id"))) }, { tab = "내 루틴"; revision++ }) }, enabled = !busy) { Text("내 루틴으로 복사") }
         else Row {
             TextButton({ original = row; name = row.text("name"); selected = row.rows("items").map { it.text("exerciseId") }; edit = true }, enabled = !busy) { Text("수정") }
@@ -134,17 +146,21 @@ import kotlinx.coroutines.withContext
     val sets = items.map { it.text("targetSets").toIntOrNull() }
     Text("운동 ${items.size}개" + if (sets.isNotEmpty() && sets.all { it != null }) " · 총 ${sets.filterNotNull().sum()}세트" else "",
         color = MaterialTheme.colorScheme.onSurfaceVariant)
-    items.forEachIndexed { index, item ->
+    val splitCount = row.text("splitCount").toIntOrNull() ?: 1
+    items.groupBy { it.text("splitDayNo").toIntOrNull() ?: 1 }.toSortedMap().forEach { (splitDayNo, splitItems) ->
+        if (splitCount > 1) Text("${splitDayNo}일차", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        splitItems.forEach { item ->
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         TextButton({ detail(item.text("exerciseId")) }, Modifier.fillMaxWidth().heightIn(min = 64.dp), enabled = enabled,
             contentPadding = PaddingValues(vertical = 8.dp)) {
-            Text((index + 1).toString().padStart(2, '0'), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(item.text("sequenceNo").toIntOrNull()?.toString()?.padStart(2, '0') ?: "--", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(Icons.Outlined.FitnessCenter, null, Modifier.padding(horizontal = 12.dp).size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(item.text("exerciseName"), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
                 Text(routineTargetLabel(item), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "${item.text("exerciseName")} 상세·대체", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         }
     }
 }

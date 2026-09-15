@@ -27,7 +27,7 @@ v1.1은 결정 로그의 `2026-09-14 백엔드·DB 검토 보완 확정`을 반�
 | `fitness_running_records` | 러닝 전용 상세 | 변경 없이 유지 |
 | `health_external_workout_summaries` | V20 외부 운동 요약 | 신규 종목 연동 범위에 포함하지 않음 |
 
-현재 저장소는 V1~V20까지 있다. 구현 시 최신 번호를 다시 확인하고, 충돌이 없다면 `V21__add_multi_sport_records.sql` 하나로 활성화·CHECK 변경·상세 테이블 생성을 묶는다. 기존 migration을 수정하거나 DB를 초기화하지 않는다.
+현재 병합 기준 저장소는 V1~V26까지 있다. 다종목 migration은 기존 V21과 번호가 충돌하므로 `V27__add_multi_sport_records.sql`로 활성화·CHECK 변경·상세 테이블 생성을 묶는다. 기존 migration을 수정하거나 DB를 초기화하지 않는다.
 
 종목 활성화는 공통 `/sports` 조회에 영향을 준다. 가입·프로필·메이트 모집의 기존 종목 선택에 네 종목이 노출될 수 있다. 기존 관심 운동 데이터의 자동 변환이나 신규 메이트 운동 세션 연결은 수행하지 않는다.
 
@@ -97,7 +97,7 @@ MySQL DDL 전체가 하나의 트랜잭션으로 롤백된다고 가정하지 �
 
 - `ExternalWorkoutMigrationIntegrationTest`는 현재 최신 target을 지정하지 않고 V19 이후 1개·빈 DB 20개 적용을 단정한다. 해당 두 Flyway 호출에 target `20`을 명시해 기존 V19→V20·빈 DB→V20 검사의 의미를 보존한다. 신규 migration 때문에 단순히 기대 개수만 늘리지 않는다.
 - `MateMigrationUpgradeIntegrationTest`는 이미 target `19`를 사용하므로 기존 범위를 유지한다.
-- 신규 `MultiSportMigrationIntegrationTest`를 추가해 V20→V21, 빈 DB→V21, 재적용 시 0개를 검증한다. 실제 구현 시 번호가 바뀌면 신규 검사의 target과 문서를 함께 맞춘다.
+- 신규 `MultiSportMigrationIntegrationTest`를 추가해 V20→V27, 빈 DB→V27, 재적용 시 0개를 검증한다. 실제 구현 시 번호가 바뀌면 신규 검사의 target과 문서를 함께 맞춘다.
 - 이행 검증에 기존 헬스·러닝 부모/상세 기록의 식별자와 주요 값 보존을 포함한다. 종목 행 수만 같다고 기존 운동 기록 보존을 통과 처리하지 않는다.
 - 활성 종목 코드와 기존 UUID가 유지되는지 검사한다. display_order를 바꾸지 않으므로 응답 순서는 `HEALTH`, `RUNNING`, `BADMINTON`, `HIKING`, `CLIMBING`, `GOLF`다.
 - `RoutineQueryApiIntegrationTest`의 카탈로그 응답에 있는 코드 목록과 UUID 목록의 기존 두 종목 단정을 여섯 종목으로 갱신한다. 가입·프로필·메이트의 종목 관련 한정 검증은 백엔드 계획 7절을 따른다.

@@ -60,5 +60,15 @@ class AuthSettingsLiveDeviceTest {
         listOf("inAppEnabled", "mateEnabled", "communityEnabled").forEach { assertEquals(original.get(it), stored.get(it)) }
         assertTrue(api.hasSession())
         assertTrue(api.request("GET", "users/me").asJsonObject.text("email") == email)
+        repeat(2) {
+            api.logout()
+            assertFalse(api.hasSession()); assertTrue(api.rememberedEmail() == email)
+            api.continueRememberedAccount()
+            assertTrue(api.request("GET", "users/me").asJsonObject.text("email") == email)
+        }
+        api.logout()
+        seed.logout(all = true)
+        assertThrows(com.fitmate.app.data.remote.ApiFailure::class.java) { api.continueRememberedAccount() }
+        assertNull(api.rememberedEmail())
     }
 }
