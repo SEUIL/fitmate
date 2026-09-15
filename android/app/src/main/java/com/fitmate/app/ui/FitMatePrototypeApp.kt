@@ -125,6 +125,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class PrototypeRoute(val title: String) {
+    NOTICES("공지사항"),
     PERSON("프로필"),
     LOGIN("로그인"), SETTINGS("설정"), APPEARANCE("화면 모드"), FOLLOW_REQUESTS("팔로우 요청"), ACCOUNT("계정·개인정보"), NOTIFICATIONS("알림"), REPORTS("신고 내역"), HISTORY("운동 기록"),
     ONBOARDING("운동 프로필"), HOME("FitMate"), SOLO("운동 선택"), HEALTH_ROUTINE("헬스 루틴 선택"), WORKOUT_PREP("운동 준비"), RUNNING("러닝"),
@@ -346,7 +347,7 @@ fun FitMatePrototypeApp(
                         }
                     })
             } else if (route !in setOf(PrototypeRoute.SOLO, PrototypeRoute.HEALTH_ROUTINE, PrototypeRoute.WORKOUT_PREP, PrototypeRoute.RUNNING,
-                    PrototypeRoute.ADMIN, PrototypeRoute.HOME, PrototypeRoute.ONBOARDING, PrototypeRoute.COMMUNITY, PrototypeRoute.PROFILE, PrototypeRoute.PERSON, PrototypeRoute.MATE_LIST, PrototypeRoute.DM, PrototypeRoute.DM_DETAIL, PrototypeRoute.WORKOUT)) {
+                    PrototypeRoute.NOTICES, PrototypeRoute.ADMIN, PrototypeRoute.HOME, PrototypeRoute.ONBOARDING, PrototypeRoute.COMMUNITY, PrototypeRoute.PROFILE, PrototypeRoute.PERSON, PrototypeRoute.MATE_LIST, PrototypeRoute.DM, PrototypeRoute.DM_DETAIL, PrototypeRoute.WORKOUT)) {
                 TopAppBar(
                     title = { Text(if (route == PrototypeRoute.INBODY && inbodyState.phase in setOf("상세", "기록 상세")) "신체 구성 상세" else if (route == PrototypeRoute.DM_DETAIL) currentChat?.name.orEmpty() else if (route == PrototypeRoute.PERSON) socialState.accounts.opened.orEmpty() else route.title) },
                     navigationIcon = {
@@ -419,6 +420,7 @@ fun FitMatePrototypeApp(
                 onFollowRequests = { route = PrototypeRoute.FOLLOW_REQUESTS },
                 onReports = { route = PrototypeRoute.REPORTS },
                 onOpenAdmin = { route = PrototypeRoute.ADMIN },
+                onNotices = { route = PrototypeRoute.NOTICES },
                 remembersAccount = apiClient.rememberedEmail() != null,
             )
             PrototypeRoute.APPEARANCE -> Screen(Modifier.padding(padding), background = MaterialTheme.colorScheme.background) {
@@ -464,7 +466,7 @@ fun FitMatePrototypeApp(
                         mateServerState.page = if (notice.target.isNullOrBlank()) "문의 목록" else "채팅"
                         route = PrototypeRoute.MATE_LIST
                     }
-                    "NOTICE" -> socialState.notice = "공지사항 예시 · 실제 운영 공지는 서버 연결 후 제공됩니다."
+                    "NOTICE" -> route = PrototypeRoute.NOTICES
                     else -> route = runCatching { PrototypeRoute.valueOf(notice.destination) }.getOrDefault(PrototypeRoute.HOME)
                 }
             }, serverSocial)
@@ -608,6 +610,7 @@ fun FitMatePrototypeApp(
             )
             PrototypeRoute.SAFETY -> SafetyScreen(Modifier.padding(padding))
             PrototypeRoute.ADMIN -> WorkoutDesignTheme { AdminCenter(apiClient = apiClient) { route = PrototypeRoute.SETTINGS } }
+            PrototypeRoute.NOTICES -> WorkoutDesignTheme { NoticeScreen(apiClient, managing = false) { route = PrototypeRoute.SETTINGS } }
             PrototypeRoute.ADS -> AdsScreen(Modifier.padding(padding))
         }
         if (storageError) AlertDialog(onDismissRequest = { storageError = false }, title = { Text("기기 저장 확인 필요") }, text = { Text("기록을 읽거나 저장하지 못했어요. 저장 공간을 확인해 주세요. 최근 변경은 재실행 후 복원되지 않을 수 있습니다.") }, confirmButton = { TextButton({ storageError = false }) { Text("확인") } })

@@ -16,6 +16,8 @@ internal class MateUiTestServer(private val automaticLogin: Boolean = true, priv
     private val socket = ServerSocket(0, 10, InetAddress.getByName("127.0.0.1"))
     private val gson = Gson()
     @Volatile private var failure: Throwable? = null
+    @Volatile var requestHeaders: Map<String, String> = emptyMap()
+        private set
     private val worker = thread(name = "mate-ui-fixture", isDaemon = true) {
         try {
             while (!socket.isClosed) socket.accept().use { client ->
@@ -32,11 +34,14 @@ internal class MateUiTestServer(private val automaticLogin: Boolean = true, priv
                 }
                 val request = line().split(' ')
                 var length = 0
+                val headers = mutableMapOf<String, String>()
                 while (true) {
                     val header = line()
                     if (header.isEmpty()) break
+                    headers[header.substringBefore(':').lowercase()] = header.substringAfter(':').trim()
                     if (header.startsWith("Content-Length:", true)) length = header.substringAfter(':').trim().toInt()
                 }
+                requestHeaders = headers
                 val bytes = ByteArray(length)
                 var offset = 0
                 while (offset < length) {

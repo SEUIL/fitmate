@@ -16,7 +16,8 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
 
     override suspend fun search(query: String, status: AdminReportStatus?, cursor: String?): AdminSnapshot = io {
         currentQuery = query; currentStatus = status
-        if (!get("admin/access")["eligible"].asBoolean) throw AdminFailure(AdminError.FORBIDDEN)
+        val access = get("admin/access")
+        if (!access["eligible"].asBoolean) throw AdminFailure(AdminError.FORBIDDEN)
         val dashboard = get("admin/dashboard")
         val params = mutableListOf("size=20", "query=${encode(query)}")
         status?.let { params += "status=${it.name}" }
@@ -33,10 +34,49 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
                 AdminReport(value["reportId"].asString, type(value["targetType"].asString), value["title"].asString,
                     "", "", time(value["createdAt"].asString), AdminReportStatus.valueOf(value["status"].asString), remote = true)
             },
-            recentReports = dashboard.getAsJsonArray("recentReports").map { summary(it.asJsonObject) }, remote = true)
+            recentReports = dashboard.getAsJsonArray("recentReports").map { summary(it.asJsonObject) }, remote = true, role = access.text("role"))
     }
 
     override suspend fun detail(id: String): AdminReport = io { parseDetail(get("admin/reports/$id")) }
+    suspend fun notices(managing: Boolean, cursor: String? = null): NoticePageData = io {
+        val path = if (managing) "admin/notices" else "notices"
+        val value = get(path + "?size=20" + (cursor?.let { "&cursor=${encode(it)}" } ?: ""))
+        NoticePageData(value.getAsJsonArray("items").map { notice(it.asJsonObject) }, value.text("nextCursor"))
+    }
+    suspend fun noticeDetail(managing: Boolean, id: String): NoticeData = io {
+        notice(get((if (managing) "admin/notices/" else "notices/") + id))
+    }
+    suspend fun saveNotice(id: String?, title: String, body: String, version: Long, key: String): NoticeData = io {
+        notice(api.request(if (id == null) "POST" else "PUT", "admin/notices" + (id?.let { "/$it" } ?: ""),
+            mapOf("title" to title, "body" to body, "expectedVersion" to version), headers = mapOf("Idempotency-Key" to key)).asJsonObject)
+    }
+    suspend fun transitionNotice(id: String, action: String, version: Long, key: String): NoticeData = io {
+        require(action in listOf("publish", "end"))
+        notice(api.request("POST", "admin/notices/$id/$action", mapOf("expectedVersion" to version), headers = mapOf("Idempotency-Key" to key)).asJsonObject)
+    }
+    suspend fun categories(): CategoryCatalogData = io { catalog(get("admin/categories")) }
+    suspend fun reorderCategories(ids: List<String>, version: Long, key: String): CategoryCatalogData = io {
+        catalog(api.request("PUT", "admin/categories/order", mapOf("ids" to ids, "expectedVersion" to version), headers = mapOf("Idempotency-Key" to key)).asJsonObject)
+    }
+    private fun notice(value: JsonObject) = NoticeData(value["id"].asString, value["title"].asString, value.text("body").orEmpty(),
+        value["status"].asString, value["version"].asLong, value.text("publishedAt")?.let(::time))
+    private fun catalog(value: JsonObject) = CategoryCatalogData(value["version"].asLong,
+        value.getAsJsonArray("items").map { row -> row.asJsonObject.let { CategoryData(it["id"].asString, it["code"].asString, it["name"].asString, it["active"].asBoolean) } },
+        value.getAsJsonArray("otherSports").map { row -> row.asJsonObject.let { it["name"].asString to it["memberCount"].asLong } })
+    suspend fun systemSummary(days: Int): AdminSystemData = io {
+        require(days in listOf(1, 7, 30))
+        // Let the server choose the end timestamp; the device clock cannot produce a future 'to'.
+        val baseline = get("admin/system/summary")
+        val value = if (days == 1) baseline else {
+            val end = java.time.Instant.parse(baseline["to"].asString)
+            get("admin/system/summary?from=${encode(end.minusSeconds(days * 86400L).toString())}&to=${encode(end.toString())}")
+        }
+        fun counts(key: String) = value.getAsJsonArray(key).map { row ->
+            row.asJsonObject.let { it["code"].asString to it["count"].asLong }
+        }
+        AdminSystemData(time(value["from"].asString), time(value["to"].asString), time(value["asOf"].asString),
+            counts("statuses"), counts("failures"), value.get("failureRate")?.takeUnless { it.isJsonNull }?.asDouble)
+    }
     override suspend fun claim(id: String, version: Long): AdminSnapshot {
         io { api.request("POST", "admin/reports/$id/claim", mapOf("expectedVersion" to version)) }
         return fetch()

@@ -28,7 +28,8 @@ internal data class AdminDecisionCommand(
 internal data class AdminSnapshot(val reports: List<AdminReport>, val history: List<String>,
     val metrics: List<Long>? = null, val nextCursor: String? = null,
     val members: List<String> = emptyList(), val contents: List<AdminReport> = emptyList(),
-    val recentReports: List<AdminReport> = reports.take(3), val remote: Boolean = false) {
+    val recentReports: List<AdminReport> = reports.take(3), val remote: Boolean = false,
+    val role: String? = null) {
     val pendingCount get() = metrics?.firstOrNull()?.toInt() ?: reports.count { it.status == AdminReportStatus.RECEIVED || it.status == AdminReportStatus.REVIEWING }
     fun search(query: String, status: AdminReportStatus?) = reports.filter { report ->
         (status == null || report.status == status) && listOf(report.id, report.title, report.member, report.type).any { it.contains(query.trim(), true) }

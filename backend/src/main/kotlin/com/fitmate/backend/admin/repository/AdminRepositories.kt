@@ -6,7 +6,12 @@ import com.fitmate.backend.admin.domain.AdminSanction
 import org.springframework.data.jpa.repository.JpaRepository
 import java.util.UUID
 
-interface AdminRoleRepository : JpaRepository<AdminRoleAssignment, UUID> { fun findByUserIdAndRevokedAtIsNull(userId: UUID): AdminRoleAssignment? }
+interface AdminRoleRepository : JpaRepository<AdminRoleAssignment, UUID> {
+    fun findByUserIdAndRevokedAtIsNull(userId: UUID): AdminRoleAssignment?
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select r from AdminRoleAssignment r where r.userId = :userId and r.revokedAt is null")
+    fun findActiveForUpdate(userId: UUID): AdminRoleAssignment?
+}
 interface AdminSanctionRepository : JpaRepository<AdminSanction, UUID> {
     fun findAllByUserIdAndAction(userId: UUID, action: com.fitmate.backend.admin.domain.ModerationAction): List<AdminSanction>
     fun findFirstByReportIdOrderByCreatedAtDesc(reportId: UUID): AdminSanction?

@@ -32,7 +32,11 @@ interface UserProfileRepository : JpaRepository<UserProfile, UUID> {
 
 interface UserCustomSportRepository : JpaRepository<UserCustomSport, UserCustomSportId> {
     fun findAllByIdUserIdOrderByIdNormalizedNameAsc(userId: UUID): List<UserCustomSport>
+    @Query("select s.id.normalizedName as name, count(s) as total from UserCustomSport s group by s.id.normalizedName order by count(s) desc, s.id.normalizedName asc")
+    fun aggregateNames(pageable: org.springframework.data.domain.Pageable): List<CustomSportCount>
 }
+
+interface CustomSportCount { val name: String; val total: Long }
 
 interface RegionRepository : JpaRepository<Region, UUID> {
     fun findAllByIsActiveTrueAndCode(code: String): List<Region>

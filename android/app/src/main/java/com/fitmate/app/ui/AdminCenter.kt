@@ -28,6 +28,15 @@ import java.util.UUID
 @Composable
 internal fun AdminCenter(stateOverride: AdminUiState? = null, apiClient: com.fitmate.app.data.remote.FitMateApiClient? = null, onExit: () -> Unit) {
     val api = apiClient ?: rememberFitMateApiClient()
+    var tool by rememberSaveable { mutableStateOf<String?>(null) }
+    if (tool != null) {
+        when (tool) {
+            "공지 관리" -> NoticeScreen(api, managing = true) { tool = null }
+            "카테고리 관리" -> AdminCategoryScreen(api) { tool = null }
+            else -> AdminSystemScreen(api) { tool = null }
+        }
+        return
+    }
     val state = stateOverride ?: remember(api) { AdminUiState(ServerAdminRepository(api)) }
     val scope = rememberCoroutineScope()
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -67,7 +76,7 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, apiClient: com.fit
         topBar = { TopAppBar(
             title = { Text(if (sanction) "회원 제재" else if (selected != null) "신고 상세" else "운영자 센터", fontSize = 21.sp, fontWeight = FontWeight.SemiBold) },
             navigationIcon = { IconButton(back, enabled = !state.busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "뒤로가기") } },
-            actions = { Text("ADMIN", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(end = 20.dp)) }
+            actions = { Text(snapshot?.role ?: if (stateOverride != null) "TEST" else "", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(end = 20.dp)) }
         ) },
         bottomBar = {
             if (selected == null) NavigationBar {
@@ -172,7 +181,10 @@ internal fun AdminCenter(stateOverride: AdminUiState? = null, apiClient: com.fit
                     AdminHeading("운영 도구")
                     listOf("공지 관리", "카테고리 관리", "이의신청", "운영 규칙", "시스템 현황", "운영자 권한").forEach { title -> AdminCard {
                         Text(title, fontWeight = FontWeight.SemiBold)
-                        Text("후속 화면 · 백엔드 연동 준비 중", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (title in listOf("공지 관리", "카테고리 관리", "시스템 현황") && snapshot.remote) {
+                            TextButton({ tool = title }, enabled = snapshot.role in listOf("ADMIN", "SUPER_ADMIN")) { Text(if (title == "시스템 현황") "인바디 판독 현황 보기" else "열기") }
+                            if (snapshot.role !in listOf("ADMIN", "SUPER_ADMIN")) Text("ADMIN 이상 조회 가능", fontSize = 12.sp)
+                        } else Text("후속 화면 · 백엔드 연동 준비 중", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } }
                     AdminHeading("최근 처리 기록")
                     if (snapshot.history.isEmpty()) Text("처리 기록 없음")

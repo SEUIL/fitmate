@@ -1,10 +1,10 @@
-# [검토 중] 운영자 API 프론트엔드 연동 v0.3 — 신고·제재 HTTP 연동
+# [검토 중] 운영자 API 프론트엔드 연동 v0.4 — 신고·제재와 공지·카테고리·OCR
 
-- 작성일: 2026-09-14 / 최종 수정일: 2026-09-15
-- 버전: v0.3
+- 작성일: 2026-09-14 / 최종 수정일: 2026-09-16
+- 버전: v0.4
 - 상태: 검토 중. 1차 API와 Android HTTP 저장소 연결 구현. 운영 계정 역할 부여와 배포는 별도다.
 - 대상: Android 프론트 / Spring Boot 백엔드 담당자
-- 기준: main `832e07e`, PR #60 운영자 백엔드와 후속 Android HTTP 연동 보완
+- 기준: main `7f59e66`(PR #65)와 로컬 공지·카테고리·OCR 후속 구현
 - 제품 범위: [운영자 기능 설계](../01-spec/검토중-운영자-기능-설계-v0.1.md). 광고 제외.
 
 ## 1. 프론트 담당자에게 전달할 결론
@@ -15,7 +15,39 @@ Android 기본 경로는 `ServerAdminRepository`다. 앱의 로그인 세션을 
 
 MFA·운영 전용 세션·Release 서버 주소·사용자 알림/이의신청은 이번 범위에 포함되지 않는다.
 
-현재 서버는 활성 운영자 여부만 검사하며 MODERATOR·ADMIN·SUPER_ADMIN 사이의 세부 조치 권한은 분리하지 않는다. 더보기의 공지·카테고리·이의신청·규칙·시스템·운영자 권한 관리 6개 기능은 후속 구현 범위다.
+현재 로컬 후속 구현은 MODERATOR의 기간 정지를 금지하고, 다른 운영자 제재는 SUPER_ADMIN만 허용한다. 더보기의 공지·카테고리·OCR 현황은 ADMIN/SUPER_ADMIN 전용이다. 이의신청·규칙·권한 관리·MFA는 후속 범위다. 이 제한이 설계 전체의 권한·운영 세션 구현 완료를 의미하지 않는다.
+
+### v0.4 공지·카테고리·시스템 API
+
+모든 경로는 `/api/v1` 기준이며 로그인 인증이 필요하다. `/admin` 도구는 ADMIN/SUPER_ADMIN만 사용한다. 공지·순서 변경은 UUID `Idempotency-Key`를 필수로 받는다. 같은 계정·동작·본문·키는 저장된 응답을 반환하며 다른 요청에 키를 재사용하면 409다. 응답 유실 시 Android는 입력을 잠그고 같은 키로 결과를 확인한다. 역할은 재시도에서도 다시 검사한다.
+
+| 메서드 / 경로 | 계약 |
+|---|---|
+| GET `/admin/notices`, GET `/notices` | `cursor`, `size`(기본 20, 최대 50). `items,nextCursor,hasNext`. 관리자 전체 / 사용자 PUBLISHED만 |
+| GET `/admin/notices/{id}`, GET `/notices/{id}` | 제목·본문·상태·게시/종료 시각·version·targetType=ALL. 사용자에게 초안·종료는 404 |
+| POST `/admin/notices` | title(1~100), body(1~5000), expectedVersion=0. 초안 생성 |
+| PUT `/admin/notices/{id}` | title, body, expectedVersion. 초안 또는 게시 중 수정, 종료 후 수정 불가 |
+| POST `/admin/notices/{id}/publish`, `/end` | expectedVersion. DRAFT→PUBLISHED→ENDED만 허용, 서버 시각 저장 |
+| GET `/admin/categories` | version, 전체 items(id,code,name,active,displayOrder), otherSports(name,memberCount), otherSportsLimit=50 |
+| PUT `/admin/categories/order` | expectedVersion, 전체 ids. 중복·누락 거부, 전체 순서 원자적 저장 |
+| GET `/admin/system/summary` | UTC from/to 선택, 기본 최근 24시간, 최대 31일 길이, 끝 시각 미포함. statuses, failures, failureRate, asOf |
+
+- 공지 목록은 본문을 제외한다. Android 설정의 공지사항에서 사용자 목록·상세를 연다. 공지 알림 진입도 이 목록으로 연결한다. 예약·고정·지역/종목 대상·Push는 미구현이다.
+- 게시 중 공지는 수정 확인 후 즉시 반영한다. 게시/종료/편집은 잠금과 version으로 동시 수정 충돌을 거부한다. 사용자 화면은 상세 진입 때 재조회하며 이미 열린 본문을 실시간 회수하는 기능은 없다.
+- 카테고리는 기존 UUID/code/name/isActive를 변경하지 않는다. 전체 카탈로그의 단일 version으로 정렬 충돌을 검출한다. 기타 운동은 기존 normalized_name별 등록 회원 수 상위 50개만 반환하며 개인 식별자는 포함하지 않는다.
+- OCR은 `[from,to)`에 **접수된 요청의 현재 상태** 집계다. 종료 시각 기반 처리량이나 재시도 시도별 통계가 아니다. FAILED에 completedAt이 없는 기존 구조 때문에 종료 시각 기반 지표로 표시하지 않는다.
+- 실패율은 FAILED/(COMPLETED+REVIEW_REQUIRED+FAILED), 분모 0이면 null. API 오류율·응답 시간·활성 사용자는 UNAVAILABLE/null이다. 판독 본문·건강 수치·이미지·회원 ID·오류 원문은 조회하지 않는다.
+- 도구 감사 로그에는 조작 코드와 대상 ID를 남기며 공지 본문·기타 운동 입력 내용은 복제하지 않는다.
+
+### v0.4 migration·검증 상태
+
+- 집 환경 DB는 확인 당시 V24였다. 백업 후 사용자 승인으로 기존 V25~V27을 적용했으며 Flyway 27개 검증이 통과했다.
+- 노트북 Handoff의 V28 파일은 확인 가능한 Git 이력에서 발견되지 않았다. 충돌 예방을 위해 번호를 예약하고 신규 파일은 `V29__create_admin_notices_and_category_settings.sql`로 준비했다. V28의 출처가 밝혀지면 별도로 대조한다.
+- V29는 사용자 승인과 별도 DB 통합 검증 후 기존 DB를 다시 백업하고 적용했다. 적용 후 Flyway 28개 검증이 통과했다(V28 번호는 미사용). 기존 DB의 공지·제재·운영자 역할은 0건이며 카테고리 version은 0이다. 테스트 데이터는 기존 DB에 쓰지 않았다.
+- 백엔드 22건 통과: 권한·OCR 단위 13건 + 신규 도구/신고 페이지 HTTP/MySQL 8건 + 기존 신고·중첩 정지 HTTP/MySQL 1건. Android 115건 전부 통과(실서버 저장소 왕복 포함, skipped 0). Debug 앱·기기 테스트 APK 빌드 통과.
+- Samsung SM-S947N / Android 16에서 누적 고유 테스트 17건 통과. 실제 로그인→설정→센터, 일반 계정 차단, 공지 작성·게시·수정·사용자 조회·종료, 카테고리 저장, OCR 라이트/다크, 경고·반려·내부 메모, 기간 정지·기존 세션 차단·중첩 만료·로그인 복구를 확인했다. 추가로 20건 초과 조회·원문 없는 신고·저장 후 응답 TCP 유실 복구·로그인 테마 비교·회전/프로세스 재시작 진입을 확인했다. 실행 구분과 제한은 검증 기록을 따른다.
+- 만료는 임시 DB의 가상 회원 제재 시각을 조정해 모의했다. 실제 30일을 기다린 검증은 아니다. 임시 서버·DB·USB 테스트 포트는 검증 후 정리했다. 기존 설치 앱은 보존하고 별도 테스트 패키지를 사용했다.
+- [검증 상세 및 남은 항목](../03-qa/운영자-후속-검증-260915.md). 아래 v0.3 통과 기록은 노트북에서 수행한 과거 결과다.
 
 ### 구현된 API
 
