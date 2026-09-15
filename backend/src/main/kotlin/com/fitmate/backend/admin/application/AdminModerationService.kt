@@ -57,12 +57,18 @@ class AdminModerationService(
     fun list(user: AuthenticatedUser, status: ReportStatus?, query: String?, cursor: String?, size: Int): AdminReportPage {
         authorize(user); val page = decodeCursor(cursor); val filtered = reports.findAllByOrderByCreatedAtDescIdDesc()
             .filter { status == null || it.status == status }
-            .filter { report -> query.isNullOrBlank() || report.id.toString().contains(query, true) || report.reason.name.contains(query, true) || titleOf(report).contains(query, true) || subject(report)?.nickname?.contains(query, true) == true }
-        val start = page * size; val items = filtered.drop(start).take(size).map(::summary); val hasNext = start + items.size < filtered.size
+            .filter { report -> query.isNullOrBlank() || (report.id.toString().contains(query, true) || "R-${report.id.toString().take(8)}".contains(query, true)) || report.reason.name.contains(query, true) || titleOf(report).contains(query, true) || subject(report)?.nickname?.contains(query, true) == true }
+        val start = try { Math.multiplyExact(page, size) } catch (_: ArithmeticException) { throw ApiException(ApiErrorCode.VALIDATION_ERROR) }; val items = filtered.drop(start).take(size).map(::summary); val hasNext = start + items.size < filtered.size
         return AdminReportPage(items, if (hasNext) encodeCursor(page + 1) else null, hasNext)
     }
 
-    fun detail(user: AuthenticatedUser, reportId: UUID): AdminReportDetail { authorize(user); val report = find(reportId); return detailOf(report) }
+    @Transactional
+    fun detail(user: AuthenticatedUser, reportId: UUID): AdminReportDetail {
+        authorize(user)
+        val report = find(reportId)
+        audit(user.userId, report, "REPORT_VIEWED", "신고 상세와 근거를 열람했습니다.")
+        return detailOf(report, user.userId)
+    }
 
     fun members(user: AuthenticatedUser, query: String?): AdminMemberPage {
         authorize(user)
@@ -84,7 +90,7 @@ class AdminModerationService(
         if (report.status != ReportStatus.RECEIVED) throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION)
         report.status = ReportStatus.REVIEWING; report.assignedOperatorId = user.userId; audit(user.userId, report, "REPORT_CLAIMED", "신고 검토를 시작했습니다.")
         reports.saveAndFlush(report)
-        return detailOf(report)
+        return detailOf(report, user.userId)
     }
 
     @Transactional
@@ -92,7 +98,7 @@ class AdminModerationService(
         authorize(user)
         val idempotencyKey = runCatching { UUID.fromString(key) }.getOrElse { throw ApiException(ApiErrorCode.VALIDATION_ERROR, "Idempotency-Key는 UUID여야 합니다.") }
         val hash = hash("$reportId|$request"); val existing = idempotency.findByUserIdAndIdempotencyKey(user.userId, idempotencyKey)
-        if (existing != null) { if (existing.requestHash != hash) throw ApiException(ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT); return detailOf(find(reportId)) }
+        if (existing != null) { if (existing.requestHash != hash) throw ApiException(ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT); return detailOf(find(reportId), user.userId) }
         val report = findLocked(reportId); checkVersion(report, request.expectedVersion)
         if (report.status != ReportStatus.REVIEWING) throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION)
         validateDecision(request)
@@ -104,7 +110,7 @@ class AdminModerationService(
         audit(user.userId, report, "REPORT_DECIDED", "${request.action.name} 조치를 완료했습니다.")
         idempotency.save(IdempotencyKeyRecord(UUID.randomUUID(), user.userId, idempotencyKey, hash, 200, null, clock.instant().plus(1, ChronoUnit.DAYS)))
         reports.saveAndFlush(report)
-        return detailOf(report)
+        return detailOf(report, user.userId)
     }
 
     private fun suspendSubject(actor: UUID, report: UserReport, request: DecideReportRequest) {
@@ -127,7 +133,24 @@ class AdminModerationService(
         if (r.action == ModerationAction.NONE && r.reasonCode !in setOf(ModerationReason.NO_VIOLATION, ModerationReason.INSUFFICIENT_EVIDENCE)) throw ApiException(ApiErrorCode.VALIDATION_ERROR)
         if (r.action != ModerationAction.NONE && r.reasonCode in setOf(ModerationReason.NO_VIOLATION, ModerationReason.INSUFFICIENT_EVIDENCE)) throw ApiException(ApiErrorCode.VALIDATION_ERROR)
     }
-    private fun detailOf(r: UserReport) = AdminReportDetail(summary(r), r.assignedOperatorId, AdminEvidence(if (r.detail == null) "UNAVAILABLE" else "AVAILABLE", r.detail), audits.findAllByReportIdOrderByOccurredAtDesc(requireNotNull(r.id)).map { AdminAuditItem(it.action, it.summary, it.occurredAt) }, if (r.status == ReportStatus.REVIEWING) ModerationAction.entries else emptyList())
+    private fun detailOf(r: UserReport, actorId: UUID): AdminReportDetail {
+        val subjectId = subjectIdOf(r)
+        val allowed = if (r.status != ReportStatus.REVIEWING) emptyList() else
+            if (subjectId == null || subjectId == actorId) listOf(ModerationAction.NONE) else ModerationAction.entries
+        val text = when (r.targetType) {
+            ReportTargetType.POST -> r.targetId?.let { posts.findByIdAndDeletedAtIsNull(it)?.content }
+            ReportTargetType.COMMENT -> r.targetId?.let { comments.findByIdAndDeletedAtIsNull(it)?.content }
+            // Private message evidence needs a separately audited access contract.
+            ReportTargetType.DM_MESSAGE, ReportTargetType.USER, ReportTargetType.MATE_POST -> null
+        }
+        val decision = r.decisionAction?.let { action -> AdminDecisionSummary(action, r.decisionReasonCode,
+            r.publicReason, r.internalNote, r.resolvedAt,
+            sanctions.findFirstByReportIdOrderByCreatedAtDesc(requireNotNull(r.id))?.endsAt) }
+        return AdminReportDetail(summary(r), r.assignedOperatorId,
+            AdminEvidence(if (text == null) "UNAVAILABLE" else "AVAILABLE", text, r.detail),
+            audits.findAllByReportIdOrderByOccurredAtDesc(requireNotNull(r.id)).map { AdminAuditItem(it.action, it.summary, it.occurredAt) },
+            allowed, decision)
+    }
     private fun summary(r: UserReport): AdminReportSummary { val id = requireNotNull(r.id); return AdminReportSummary(id, "R-${id.toString().take(8).uppercase()}", r.targetType, titleOf(r), r.reason, r.status, r.createdAt, r.version, subject(r)) }
     private fun subject(r: UserReport): AdminSubjectUser? = subjectIdOf(r)?.let { userId -> profiles.findById(userId).orElse(null)?.let { AdminSubjectUser(userId, it.nickname) } ?: AdminSubjectUser(userId, null) }
     private fun subjectIdOf(r: UserReport): UUID? = r.subjectUserId ?: when (r.targetType) {
@@ -149,7 +172,12 @@ class AdminModerationService(
     private fun findLocked(id: UUID) = reports.findForUpdate(id) ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND)
     private fun checkVersion(r: UserReport, expected: Long) { if (r.version != expected) throw ApiException(ApiErrorCode.VERSION_CONFLICT) }
     private fun authorize(user: AuthenticatedUser): AdminRoleAssignment = roles.findByUserIdAndRevokedAtIsNull(user.userId) ?: throw ApiException(ApiErrorCode.FORBIDDEN_RESOURCE)
-    private fun decodeCursor(value: String?) = value?.let { String(Base64.getUrlDecoder().decode(it), StandardCharsets.UTF_8).toIntOrNull() ?: throw ApiException(ApiErrorCode.VALIDATION_ERROR) } ?: 0
+    private fun decodeCursor(value: String?): Int {
+        if (value == null) return 0
+        return try {
+            String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8).toInt().also { require(it >= 0) }
+        } catch (_: IllegalArgumentException) { throw ApiException(ApiErrorCode.VALIDATION_ERROR) }
+    }
     private fun encodeCursor(value: Int) = Base64.getUrlEncoder().withoutPadding().encodeToString(value.toString().toByteArray(StandardCharsets.UTF_8))
     private fun hash(value: String) = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
 }

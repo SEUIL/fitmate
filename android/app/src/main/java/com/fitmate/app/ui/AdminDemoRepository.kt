@@ -9,7 +9,10 @@ internal data class AdminReport(
     val reason: String, val time: String,
     val status: AdminReportStatus = AdminReportStatus.RECEIVED,
     val decision: String? = null,
-    val version: Long = 0
+    val version: Long = 0,
+    val evidence: String? = null, val reporterStatement: String? = null,
+    val history: List<String> = emptyList(), val allowedActions: List<AdminAction> = AdminAction.entries,
+    val remote: Boolean = false
 )
 
 /** Local preview boundary. Never reads or mutates real accounts or server reports. */

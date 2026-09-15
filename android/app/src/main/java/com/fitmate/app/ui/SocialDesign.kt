@@ -376,7 +376,7 @@ internal fun profileDisplayCounts(serverBacked: Boolean, serverCounts: List<Stri
         SettingsRow(Icons.Outlined.GroupAdd, "팔로우 요청", "승인 대기 중인 요청을 확인해요", onFollowRequests)
         SettingsRow(Icons.Outlined.GppMaybe, "내 신고 내역", "신고 처리 상태를 확인해요", onReports)
     }
-    DebugOnly { SettingsGroup("개발") { SettingsRow(Icons.Outlined.AdminPanelSettings, "운영자 데모", "개발 환경에서만 표시됩니다", onOpenAdmin) } }
+    DebugOnly { SettingsGroup("개발") { SettingsRow(Icons.Outlined.AdminPanelSettings, "운영자 센터", "운영자 권한이 있는 계정만 이용할 수 있습니다", onOpenAdmin) } }
     if (confirmLogout) StateConfirm(
         "로그아웃",
         if (remembersAccount) "로그인 화면으로 이동합니다. 이 기기에 기억한 계정은 비밀번호 없이 다시 접속할 수 있습니다. 간편 접속을 해제하려면 로그인 화면에서 ‘기억한 계정 삭제’를 눌러 주세요."

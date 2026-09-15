@@ -179,7 +179,9 @@ internal class FitMateApiClient(
             if (status !in 200..299) {
                 val message = runCatching { gson.fromJson(body, JsonObject::class.java)
                     .getAsJsonObject("error")?.get("message")?.asString }.getOrNull()
-                throw ApiFailure(status, message ?: "서버 요청에 실패했습니다. ($status)")
+                val code = runCatching { gson.fromJson(body, JsonObject::class.java)
+                    .getAsJsonObject("error")?.get("code")?.asString }.getOrNull()
+                throw ApiFailure(status, message ?: "서버 요청에 실패했습니다. ($status)", code)
             }
             if (body.isBlank()) return JsonObject()
             gson.fromJson(body, JsonObject::class.java) ?: error("빈 응답을 받았습니다.")
@@ -230,7 +232,7 @@ internal class FitMateApiClient(
     private companion object { const val REQUEST_TIMEOUT_MS = 10_000 }
 }
 
-internal class ApiFailure(val status: Int, message: String) : Exception(message)
+internal class ApiFailure(val status: Int, message: String, val code: String? = null) : Exception(message)
 
 internal data class ApiSport(val id: String, val code: String, val name: String, val displayOrder: Int)
 
