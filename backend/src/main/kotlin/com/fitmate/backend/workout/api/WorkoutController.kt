@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
+import com.fitmate.backend.fitness.domain.SportCode
 
 @RestController
 @RequestMapping("/api/v1")
@@ -45,10 +46,11 @@ class WorkoutController(
     fun list(
         @AuthenticationPrincipal user: AuthenticatedUser,
         @RequestParam(required = false) status: com.fitmate.backend.workout.domain.WorkoutSessionStatus?,
+        @RequestParam(required = false) sportCode: SportCode?,
         @RequestParam(defaultValue = "0") cursor: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<CursorPageResponse<WorkoutSessionSummaryResponse>> =
-        ApiResponse.success(workoutService.list(user.userId, status, cursor, size))
+        ApiResponse.success(workoutService.list(user.userId, status, sportCode, cursor, size))
 
     @PostMapping("/workout-sessions/{sessionId}/{action:start|pause|resume|complete|cancel}")
     fun state(

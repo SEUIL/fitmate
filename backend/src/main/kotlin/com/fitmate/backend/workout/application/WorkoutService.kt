@@ -111,15 +111,18 @@ class WorkoutService(
     fun list(
         userId: UUID,
         status: WorkoutSessionStatus?,
+        sportCode: SportCode?,
         cursor: Int,
         size: Int,
     ): CursorPageResponse<WorkoutSessionSummaryResponse> {
         if (cursor < 0 || size !in 1..100) invalid("cursor는 0 이상, size는 1부터 100까지 가능합니다.")
         val pageable = PageRequest.of(cursor, size)
-        val found = if (status == null) {
-            sessions.findAllByUserIdOrderByStartedAtDescIdDesc(userId, pageable)
-        } else {
-            sessions.findAllByUserIdAndStatusOrderByStartedAtDescIdDesc(userId, status, pageable)
+        if (sportCode != null && sportCode !in setOf(SportCode.HEALTH, SportCode.RUNNING, SportCode.BADMINTON, SportCode.CLIMBING, SportCode.HIKING, SportCode.GOLF)) invalid("지원하지 않는 sportCode입니다.")
+        val found = when {
+            status != null && sportCode != null -> sessions.findAllByUserIdAndStatusAndSportCodeOrderByStartedAtDescIdDesc(userId, status, sportCode, pageable)
+            status != null -> sessions.findAllByUserIdAndStatusOrderByStartedAtDescIdDesc(userId, status, pageable)
+            sportCode != null -> sessions.findAllByUserIdAndSportCodeOrderByStartedAtDescIdDesc(userId, sportCode, pageable)
+            else -> sessions.findAllByUserIdOrderByStartedAtDescIdDesc(userId, pageable)
         }
         return CursorPageResponse(
             items = found.content.map(::toSummary),
@@ -138,6 +141,7 @@ class WorkoutService(
         cancelReason: String? = null,
     ): WorkoutSessionResponse {
         val session = ownedSession(userId, sessionId)
+        ensureHealthSession(session)
         if (session.version != version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
         val target = when (action) {
             "start" -> if (session.status == WorkoutSessionStatus.READY) WorkoutSessionStatus.IN_PROGRESS else null
@@ -260,6 +264,7 @@ class WorkoutService(
         if (setNo !in 1..100) invalid("세트 번호는 1부터 100까지 가능합니다.")
         validateSet(request)
         val session = ownedSession(userId, sessionId)
+        ensureHealthSession(session)
         if (session.status != WorkoutSessionStatus.IN_PROGRESS) {
             throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION, "운동 진행 중에만 세트를 기록할 수 있습니다.")
         }
@@ -356,10 +361,17 @@ class WorkoutService(
 
     private fun mutableSession(userId: UUID, sessionId: UUID): WorkoutSession =
         ownedSession(userId, sessionId).also {
+            ensureHealthSession(it)
             if (it.status !in setOf(WorkoutSessionStatus.READY, WorkoutSessionStatus.IN_PROGRESS, WorkoutSessionStatus.PAUSED)) {
                 throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION, "진행 가능한 세션에서만 운동을 편집할 수 있습니다.")
             }
         }
+
+    private fun ensureHealthSession(session: WorkoutSession) {
+        if (session.sportCode != SportCode.HEALTH) {
+            throw ApiException(ApiErrorCode.INVALID_STATE_TRANSITION, "이 종목은 기존 헬스 세션 API로 변경할 수 없습니다.")
+        }
+    }
 
     private fun ownedExercise(
         session: WorkoutSession,

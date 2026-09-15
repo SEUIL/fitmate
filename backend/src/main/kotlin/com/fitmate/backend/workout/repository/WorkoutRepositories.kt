@@ -14,6 +14,7 @@ import jakarta.persistence.LockModeType
 import org.springframework.data.repository.query.Param
 import java.time.Instant
 import java.util.UUID
+import com.fitmate.backend.fitness.domain.SportCode
 
 interface WorkoutSessionRepository : JpaRepository<WorkoutSession, UUID> {
     fun countByStatusAndEndedAtGreaterThanEqual(status: WorkoutSessionStatus, endedAt: Instant): Long
@@ -30,6 +31,8 @@ interface WorkoutSessionRepository : JpaRepository<WorkoutSession, UUID> {
         status: WorkoutSessionStatus,
         pageable: Pageable,
     ): Slice<WorkoutSession>
+    fun findAllByUserIdAndSportCodeOrderByStartedAtDescIdDesc(userId: UUID, sportCode: SportCode, pageable: Pageable): Slice<WorkoutSession>
+    fun findAllByUserIdAndStatusAndSportCodeOrderByStartedAtDescIdDesc(userId: UUID, status: WorkoutSessionStatus, sportCode: SportCode, pageable: Pageable): Slice<WorkoutSession>
 
     fun countByUserIdAndRoutineIdAndStatus(
         userId: UUID,
