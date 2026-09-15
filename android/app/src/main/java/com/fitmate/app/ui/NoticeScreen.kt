@@ -72,7 +72,7 @@ internal fun NoticeScreen(api: FitMateApiClient, managing: Boolean, onExit: () -
         }
     }
     BackHandler(onBack = back)
-    Scaffold(topBar = { TopAppBar(title = { Text(if (managing) "공지 관리" else "공지사항") }, navigationIcon = {
+    Scaffold(topBar = { if (managing) AdminTopBar("공지 관리", back, enabled = !busy) else TopAppBar(title = { Text("공지사항") }, navigationIcon = {
         IconButton(back, enabled = !busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "뒤로가기") }
     }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
@@ -109,9 +109,15 @@ internal fun NoticeScreen(api: FitMateApiClient, managing: Boolean, onExit: () -
                 }
                 if (!busy && pendingAction == null) TextButton({ scope.launch { refresh() } }) { Text("최신 공지 조회") }
             } else if (!blocked) {
+                if (managing) AdminPageHeading("사용자에게 전할 소식", "공지를 작성하고 게시 상태를 관리하세요.")
                 if (managing) Button({ title = ""; body = ""; draftVersion = 0; editing = true; error = null; commandKey = UUID.randomUUID().toString() }, enabled = !busy) { Text("새 공지 작성") }
                 if (loaded && items.isEmpty() && !busy && error == null) Text("공지사항이 없습니다.")
-                items.forEach { value ->
+                if (managing && items.isNotEmpty()) AdminListGroup { items.forEachIndexed { index, value ->
+                    AdminListRow(value.title, value.publishedAt?.let(::appealTime) ?: "아직 게시하지 않은 공지", enabled = !busy,
+                        status = { AdminBadge(noticeStatus(value.status), complete = value.status != "PUBLISHED") }) { selected = value.id }
+                    if (index < items.lastIndex) AdminRowDivider()
+                } }
+                if (!managing) items.forEach { value ->
                     OutlinedCard(onClick = { selected = value.id }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(value.title, style = MaterialTheme.typography.titleMedium)

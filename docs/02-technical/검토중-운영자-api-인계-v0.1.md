@@ -1,21 +1,78 @@
-# [검토 중] 운영자 API 프론트엔드 연동 v0.4 — 신고·제재와 공지·카테고리·OCR
+# [검토 중] 운영자 API 프론트엔드 연동 v0.5 — 권한·이의신청·운영 규칙
 
 - 작성일: 2026-09-14 / 최종 수정일: 2026-09-16
-- 버전: v0.4
+- 버전: v0.5
 - 상태: 검토 중. 1차 API와 Android HTTP 저장소 연결 구현. 운영 계정 역할 부여와 배포는 별도다.
 - 대상: Android 프론트 / Spring Boot 백엔드 담당자
-- 기준: main `7f59e66`(PR #65)와 로컬 공지·카테고리·OCR 후속 구현
+- 기준: main `7f59e66`(PR #65), PR #66의 공지·카테고리·OCR, 이후 로컬 핵심 기능 구현
 - 제품 범위: [운영자 기능 설계](../01-spec/검토중-운영자-기능-설계-v0.1.md). 광고 제외.
 
 ## 1. 프론트 담당자에게 전달할 결론
 
 Android 기본 경로는 `ServerAdminRepository`다. 앱의 로그인 세션을 공유하며 서버 실패를 Fake 데이터로 대체하지 않는다. Fake는 테스트에서 명시적으로 주입할 때만 사용한다.
 
-설정의 개발 메뉴에서 **운영자 센터**로 진입한다. `/access`의 `eligible=false` 또는 401/403 응답이면 데이터와 조치를 차단한다. 운영자 역할은 `ops_admin_roles`에 사전에 부여해야 한다. 자동 통합 테스트는 분리된 임시 DB와 임시 계정을 사용했다. 이후 수동 확인 환경은 사용자 요청으로 기존 개발 DB에 연결했으며, 지정 계정의 역할을 별도로 부여했다. 계정 정보와 로컬 실행 설정은 저장소에 포함하지 않는다.
+설정의 개발 메뉴에서 **운영자 센터**로 진입한다. `/access`의 `eligible=false` 또는 401/403 응답이면 데이터와 조치를 차단한다. 최초 운영자 역할은 `ops_admin_roles`에 사전에 부여해야 한다. 자동 통합 테스트는 분리된 임시 DB와 임시 계정을 사용한다. 현재 사용자 수동 확인 환경도 기존 `fitmate` DB와 분리된 테스트 DB와 합성 계정을 사용한다. 계정 정보와 로컬 실행 설정은 저장소에 포함하지 않는다.
 
-MFA·운영 전용 세션·Release 서버 주소·사용자 알림/이의신청은 이번 범위에 포함되지 않는다.
+실제 MFA·운영 전용 일반 세션·Release 서버 주소·Push 결과 알림은 이번 범위에 포함되지 않는다. 사용자 이의신청 결과는 로그인 화면 및 설정의 전용 화면에서 조회한다.
 
-현재 로컬 후속 구현은 MODERATOR의 기간 정지를 금지하고, 다른 운영자 제재는 SUPER_ADMIN만 허용한다. 더보기의 공지·카테고리·OCR 현황은 ADMIN/SUPER_ADMIN 전용이다. 이의신청·규칙·권한 관리·MFA는 후속 범위다. 이 제한이 설계 전체의 권한·운영 세션 구현 완료를 의미하지 않는다.
+현재 로컬 후속 구현은 MODERATOR의 기간 정지를 금지하고, 다른 운영자 제재는 SUPER_ADMIN만 허용한다. 공지·카테고리·OCR·운영 규칙은 ADMIN/SUPER_ADMIN, 운영자 권한 관리는 SUPER_ADMIN 전용이다. 이의신청은 MODERATOR도 조회할 수 있지만 검토 시작·결정은 ADMIN/SUPER_ADMIN만 가능하다.
+
+### v0.5 운영자 권한·테스트 인증
+
+| 메서드 / 경로 | 계약 |
+|---|---|
+| GET `/admin/operators` | 20건 cursor 목록, 전역 catalog version, actorId, 활성/회수 역할 |
+| GET `/admin/operators/candidates/{userId}` | UUID로 회원 닉네임·계정 상태·현재 역할 확인. 이메일 검색/노출 없음 |
+| POST `/admin/operators/reauth` | 6자리 code. 불투명 token, expiresAt, mode=DEMO_CODE |
+| PUT `/admin/operators/{userId}` | expectedVersion, role, enabled, reason(1~300). Idempotency-Key 및 X-Admin-Reauth 필수 |
+
+- `fitmate.admin.demo-auth-enabled` 기본 false, `fitmate.admin.demo-code` 기본 빈 값. local/test 프로필에서만 명시적으로 켤 수 있다. 운영 프로필이 섞이면 거부한다. 코드 값은 환경 설정으로만 공급하며 저장소에 기록하지 않는다.
+- 인증 증명은 해시로 저장하고 현재 계정·일반 로그인 세션·authVersion에 묶으며 5분 후 만료한다. 잘못된 코드 5회는 해당 운영자 인증을 5분간 제한한다.
+- 본인 역할 변경과 마지막 SUPER_ADMIN 회수를 차단한다. 전역 카탈로그 잠금으로 상호 동시 회수를 직렬화한다. 역할 변경은 대상 authVersion을 올리고 기존 일반 로그인 세션을 회수한다.
+- 응답 유실 시 동일 키·본문으로 재확인한다. 재인증 만료 시 코드를 다시 확인한 뒤 같은 요청을 재시도한다.
+
+### v0.5 사용자 이의신청·운영자 재검토
+
+| 메서드 / 경로 | 계약 |
+|---|---|
+| POST `/auth/appeal-sessions` | email/password 검증 → 30분 전용 token. 정지 중에도 사용 가능 |
+| GET `/appeal-access/sanctions` | 본인 제재, 사유·기간·해제 시각·신청 가능 여부·최근 신청 결과. cursor 20건 |
+| GET `/appeal-access/appeals` | 본인 전체 신청·공개 처리 사유·결과. cursor 20건 |
+| POST `/appeal-access/appeals` | sanctionId, statement(1~2000), Idempotency-Key |
+| GET `/admin/appeals`, GET `/{id}` | 상태별 cursor 목록·상세. 원래 제재·신청 내용·내부 메모·canReview |
+| POST `/admin/appeals/{id}/claim` | expectedVersion. RECEIVED→REVIEWING |
+| POST `/admin/appeals/{id}/decision` | expectedVersion, status=ACCEPTED/REJECTED, publicReason(1~500), internalNote(선택 500), Idempotency-Key |
+
+- `/appeal-access/**`는 `Authorization: Appeal <token>`만 허용한다. 일반 Bearer 세션과 저장·갱신을 공유하지 않으며 일반/운영자 API에 사용할 수 없다. 비밀번호 오류 5회 시 5분 제한, authVersion 변경·탈퇴·기간 만료 시 증명을 거부한다.
+- 제재 한 건에 미처리 신청은 하나만 허용한다. 기각 뒤 재신청은 가능하며 모든 신청 결과는 신청 내역에 남는다. 본인 제재만 신청할 수 있고, 이미 해제된 제재는 접수할 수 없다.
+- 본인 신청은 검토할 수 없다. ADMIN은 다른 활성 운영자의 신청을 처리할 수 없고 SUPER_ADMIN은 가능하다.
+- 수용은 해당 제재만 revokedAt/by/reason으로 해제한다. 다른 유효한 정지가 있으면 SUSPENDED를 유지하고 마지막 유효 정지가 없어지면 ACTIVE로 복구한다. 제재·신고 이력은 삭제하지 않는다. 신고 상세에도 해제 시각·사유를 표시한다.
+- 사용자 응답은 내부 메모를 제외한다. 상세 열람·검토 시작·결정은 감사 로그에 기록한다. 결과 Push는 미구현이다.
+
+### v0.5 운영 규칙
+
+| 메서드 / 경로 | 계약 |
+|---|---|
+| GET `/admin/rules` | 20건 cursor 규칙 목록 |
+| PUT `/admin/rules/{id}` | 클라이언트 UUID, expectedVersion, name(1~80), kind, scope, term(최대 100), thresholdCount(2~100), windowSeconds(10~3600), enabled, reason(1~300), Idempotency-Key |
+| POST `/admin/rules/preview` | rule 초안, sampleText(최대 5000), priorMatchingCount(0~100). 샘플 저장 없음 |
+| GET `/admin/rules/{id}/history` | 버전별 설정 전체·변경 사유·시각, 20건 cursor |
+| GET `/admin/rules/detections`, GET `/detections/{id}` | reviewed 필터·20건 cursor. 상세는 현재 공개 원문만 별도 조회·감사 |
+| POST `/admin/rules/detections/{id}/review` | reason(1~300), Idempotency-Key. 검토 완료 표시만 수행 |
+
+- WORD는 NFKC, 소문자, 연속 공백 정규화 뒤 포함 일치한다. 임의 정규식·코드를 실행하지 않는다.
+- REPEAT는 정규화한 전체 내용의 같은 해시, RATE는 내용과 무관한 작성 횟수다. 같은 회원·영역(POST/COMMENT/MATE), `(현재-구간, 현재]`의 신규 공개 작성만 세고 현재 글을 포함한다. 수정은 횟수에 더하지 않으며 WORD 검사는 다시 한다.
+- POST는 본문, COMMENT는 댓글 본문, MATE는 제목+본문을 검사한다. 비공개 커뮤니티 프로필·비공개 글/댓글·비공개 메이트와 DM은 탐지 대상에서 제외한다.
+- 적용된 규칙이 있는 시점부터 이벤트를 기록하며 기존 글을 소급 수집하지 않는다. 이벤트는 내용 해시·대상 ID·시각만 보관한다. 한 시간 이전 이벤트는 해당 회원의 다음 쓰기에서 정리하므로 휴면 회원의 해시는 별도 보관 정책 수립 전까지 남을 수 있다.
+- 탐지는 규칙 ID·버전·콘텐츠 ID당 한 건이다. 후보에 원문을 복제하지 않는다. 삭제/비공개 전환 시 현재 원문을 제공하지 않는다. 검토 완료는 글 숨김·경고·계정 정지를 실행하지 않는다.
+- 규칙별 설정·버전·사유는 이력으로 저장한다. 앱의 새 규칙은 기본 중지 상태다. 후보 자동 제재와 대량 조치는 포함하지 않는다.
+
+### v0.5 적용 경계
+
+- V30: 권한 관리 카탈로그·인증 시도·재인증 증명. V31: 제재 해제 필드·이의신청 및 제한 인증. V32: 규칙·설정 이력·탐지 해시·후보. V33: 작성자별 탐지 직렬화 잠금.
+- V28은 계속 예약 번호다. 이미 적용된 migration은 수정하지 않는다. V32 적용 후 동시 작성 시험에서 발견한 잠금 보완도 V33으로 분리했다.
+- 신규 migration은 별도 자동 테스트 DB에서 검증한 뒤 사용자 승인으로 수동 테스트 DB를 백업하고 적용했다. 수동 환경은 V33, Flyway 32개 검증 완료 상태이며 백엔드·앱 업데이트와 실서버 실기기 4건을 통과했다. 원래 `fitmate` DB는 V29를 유지한다. 백업과 검증 구분은 [핵심 기능 검증](../03-qa/검토중-운영자-핵심기능-검증-260916.md)에 기록했다.
+- [핵심 기능 검증 기록](../03-qa/검토중-운영자-핵심기능-검증-260916.md)을 참고한다. 아래 v0.4/v0.3 결과는 이전 범위의 기록이다.
 
 ### v0.4 공지·카테고리·시스템 API
 

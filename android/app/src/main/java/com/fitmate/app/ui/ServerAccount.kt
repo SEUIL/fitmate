@@ -209,7 +209,10 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
     } }
 }
 
-@Composable internal fun ServerLogin(modifier: Modifier, api: FitMateApiClient, signedIn: () -> Unit, signup: () -> Unit) = WorkoutDesignTheme { Screen(modifier, background = MaterialTheme.colorScheme.background) {
+@Composable internal fun ServerLogin(modifier: Modifier, api: FitMateApiClient, signedIn: () -> Unit, signup: () -> Unit) = WorkoutDesignTheme {
+    var appeals by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    if (appeals) { AppealAccessScreen(api) { appeals = false }; return@WorkoutDesignTheme }
+    Screen(modifier, background = MaterialTheme.colorScheme.background) {
     val scope = rememberCoroutineScope()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -285,6 +288,7 @@ internal fun profilePatch(before: UserProfile, after: UserProfile, version: Long
     }
     }
     TextButton(signup, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !busy) { Text("회원가입") }
+    TextButton({ appeals = true }, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !busy) { Text("제재 안내 · 이의신청") }
 } }
 
 @Composable internal fun ServerSessionGate(api: FitMateApiClient, signup: @Composable (() -> Unit) -> Unit,

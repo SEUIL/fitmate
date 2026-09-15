@@ -120,7 +120,7 @@ class AdminModerationService(
 
     private fun suspendSubject(actor: UUID, report: UserReport, request: DecideReportRequest) {
         val subjectId = report.subjectUserId ?: subjectIdOf(report)?.also { report.subjectUserId = it } ?: throw ApiException(ApiErrorCode.VALIDATION_ERROR, "제재 대상 회원이 없습니다.")
-        val subject = users.findById(subjectId).orElseThrow { ApiException(ApiErrorCode.RESOURCE_NOT_FOUND) }
+        val subject = users.findForOperatorUpdate(subjectId) ?: throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND)
         subject.accountStatus = AccountStatus.SUSPENDED; subject.authVersion += 1
         createSanction(actor, report, request, clock.instant().plus(request.durationDays!!.toLong(), ChronoUnit.DAYS))
     }
@@ -148,9 +148,10 @@ class AdminModerationService(
             // Private message evidence needs a separately audited access contract.
             ReportTargetType.DM_MESSAGE, ReportTargetType.USER, ReportTargetType.MATE_POST -> null
         }
+        val sanction = sanctions.findFirstByReportIdOrderByCreatedAtDesc(requireNotNull(r.id))
         val decision = r.decisionAction?.let { action -> AdminDecisionSummary(action, r.decisionReasonCode,
             r.publicReason, r.internalNote, r.resolvedAt,
-            sanctions.findFirstByReportIdOrderByCreatedAtDesc(requireNotNull(r.id))?.endsAt) }
+            sanction?.endsAt, sanction?.revokedAt, sanction?.revocationReason) }
         return AdminReportDetail(summary(r), r.assignedOperatorId,
             AdminEvidence(if (text == null) "UNAVAILABLE" else "AVAILABLE", text, r.detail),
             audits.findAllByReportIdOrderByOccurredAtDesc(requireNotNull(r.id)).map { AdminAuditItem(it.action, it.summary, it.occurredAt) },

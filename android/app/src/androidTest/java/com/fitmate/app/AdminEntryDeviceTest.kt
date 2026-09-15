@@ -40,9 +40,9 @@ class AdminEntryDeviceTest {
         compose.waitUntil(20_000) { compose.onAllNodesWithContentDescription("프로필 설정").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("프로필 설정").performClick()
         compose.onNodeWithText("운영자 센터").performScrollTo().performClick()
-        compose.waitUntil(20_000) { compose.onAllNodesWithText("SUPER_ADMIN").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("SUPER_ADMIN").assertExists()
-        compose.onNodeWithText("더보기", useUnmergedTree = true).performClick()
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("최고 관리자").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("최고 관리자").assertExists()
+        compose.onNodeWithText("운영 도구", useUnmergedTree = true).performClick()
         compose.onNodeWithText("공지 관리").performScrollTo().assertExists()
     }
 }

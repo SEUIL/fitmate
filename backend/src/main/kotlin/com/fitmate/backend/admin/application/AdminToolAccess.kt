@@ -43,8 +43,8 @@ class AdminToolAccess(private val roles: AdminRoleRepository, private val keys: 
             mapper.writeValueAsString(result), clock.instant().plusSeconds(86400)))
         return result
     }
-    fun audit(user: AuthenticatedUser, action: String, targetType: String, target: UUID) {
+    fun audit(user: AuthenticatedUser, action: String, targetType: String, target: UUID, summary: String = action) {
         audits.save(AdminAuditLog(UUID.randomUUID(), user.userId, action, targetType, target,
-            summary = action, occurredAt = clock.instant()))
+            summary = summary, occurredAt = clock.instant()))
     }
 }

@@ -39,15 +39,13 @@ internal fun AdminSystemScreen(api: FitMateApiClient, onExit: () -> Unit) {
         } finally { loading = false }
     }
     BackHandler(onBack = onExit)
-    Scaffold(topBar = { TopAppBar(title = { Text("시스템 현황") }, navigationIcon = {
-        IconButton(onExit) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "뒤로가기") }
-    }) }) { padding ->
+    Scaffold(topBar = { AdminTopBar("시스템 현황", onExit) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
             .verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("인바디 판독 현황", style = MaterialTheme.typography.titleLarge)
+            AdminPageHeading("인바디 판독 현황", "접수된 이미지의 처리 상태를 확인하세요.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(1, 7, 30).forEach { value ->
-                    FilterChip(selected = days == value, onClick = { days = value }, enabled = !loading,
+                    AdminFilterChip(selected = days == value, onClick = { days = value }, enabled = !loading,
                         label = { Text(if (value == 1) "최근 24시간" else "최근 ${value}일") })
                 }
             }
@@ -59,25 +57,25 @@ internal fun AdminSystemScreen(api: FitMateApiClient, onExit: () -> Unit) {
                 } else TextButton({ refresh++ }) { Text("다시 조회") }
             }
             data?.let { value ->
-                Text("${value.from} ~ ${value.to}", style = MaterialTheme.typography.bodySmall)
-                Text("이 기간에 접수된 판독의 현재 상태입니다. 재시도 횟수는 별도로 집계하지 않습니다.")
+                Text("${appealTime(value.from)} ~ ${appealTime(value.to)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("이 기간에 접수된 판독의 현재 상태입니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (value.statuses.sumOf { it.second } == 0L) Text("접수된 판독이 없습니다.")
                 val labels = mapOf("UPLOADED" to "접수", "PROCESSING" to "판독 중", "COMPLETED" to "완료",
                     "REVIEW_REQUIRED" to "확인 필요", "FAILED" to "실패")
-                value.statuses.forEach { (code, count) ->
+                AdminPanel { value.statuses.forEach { (code, count) ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(labels[code] ?: code); Text("${count}건", fontWeight = FontWeight.SemiBold)
                     }
-                }
+                } }
                 HorizontalDivider()
                 Text("종료된 판독 중 실패율: " + (value.failureRate?.let { String.format(Locale.KOREA, "%.1f%%", it * 100) }
                     ?: "계산할 종료 건수 없음"))
-                Text("실패 코드", style = MaterialTheme.typography.titleMedium)
+                AdminSectionHeading("실패 내역")
                 if (value.failures.isEmpty()) Text("실패 기록 없음")
                 value.failures.forEach { (code, count) -> Text("$code · ${count}건") }
                 HorizontalDivider()
-                Text("API 오류율 · 응답 시간 · 활성 사용자: 미집계")
-                Text("집계 시각: ${value.asOf}", style = MaterialTheme.typography.bodySmall)
+                Text("API 오류율 · 응답 시간 · 활성 사용자: 미집계", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("집계 시각: ${appealTime(value.asOf)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton({ refresh++ }, enabled = !loading) { Text("새로고침") }
             }
         }

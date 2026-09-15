@@ -38,7 +38,8 @@ class ServerAdminRepositoryTest {
                         "asOf" to "2026-09-15T00:00:00Z", "statuses" to listOf(mapOf("code" to "COMPLETED", "count" to 0)),
                         "failures" to emptyList<Any>(), "failureRate" to null)
                     path == "/admin/dashboard" -> mapOf("pendingReports" to mapOf("value" to 123), "newUsers" to mapOf("value" to 7),
-                        "completedWorkouts" to mapOf("value" to 9), "failedAnalyses" to mapOf("value" to 0), "recentReports" to listOf(report), "recentHistory" to emptyList<Any>())
+                        "completedWorkouts" to mapOf("value" to 9), "failedAnalyses" to mapOf("value" to 0), "recentReports" to listOf(report),
+                        "recentHistory" to listOf(mapOf("action" to "REPORT_DECIDED", "summary" to "WARNING 조치를 완료했습니다.", "occurredAt" to "2026-09-15T00:00:00Z")))
                     path == "/admin/reports" -> { seenQuery = exchange.requestURI.rawQuery; mapOf("items" to listOf(report), "nextCursor" to "MQ", "hasNext" to true) }
                     path == "/admin/members" || path == "/admin/contents" -> mapOf("items" to emptyList<Any>())
                     else -> { seenKey = exchange.requestHeaders.getFirst("Idempotency-Key"); if (code != null) status = 409
@@ -61,6 +62,7 @@ class ServerAdminRepositoryTest {
         Fixture().use { f ->
             val page = f.repo.search("신고 검색", AdminReportStatus.REVIEWING, "MQ")
             assertEquals(123, page.pendingCount)
+            assertEquals(listOf(AdminActivity("REPORT_DECIDED", "WARNING 조치를 완료했습니다.", "2026-09-15T00:00:00Z")), page.recentActivity)
             assertEquals("MODERATOR", page.role)
             assertEquals("MQ", page.nextCursor)
             assertTrue(f.seenQuery!!.contains("status=REVIEWING"))

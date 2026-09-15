@@ -115,6 +115,7 @@ class AdminToolsApiIntegrationTest {
             mapOf("ids" to ids.map { ids.first() }, "expectedVersion" to version), method = HttpMethod.PUT).statusCode)
         val key = UUID.randomUUID().toString()
         val command = mapOf("ids" to ids, "expectedVersion" to version)
+        try {
         val changed = call("admin/categories/order", token, command, key, HttpMethod.PUT)
         assertEquals(HttpStatus.OK, changed.statusCode, changed.body.toString())
         assertEquals(ids, changed.body!!["data"]["items"].map { it["id"].asText() })
@@ -125,6 +126,11 @@ class AdminToolsApiIntegrationTest {
             assertEquals(original[it["id"].asText()]!!["active"], it["active"])
             assertEquals(original[it["id"].asText()]!!["name"], it["name"])
         }
+        } finally {
+            val current = call("admin/categories", token).body!!["data"]["version"].asLong()
+            assertEquals(HttpStatus.OK, call("admin/categories/order", token,
+                mapOf("ids" to items.map { it["id"].asText() }, "expectedVersion" to current), method = HttpMethod.PUT).statusCode)
+        }
     }
 
     @Test fun `system summary returns aggregate only and validates range`() {
@@ -133,7 +139,14 @@ class AdminToolsApiIntegrationTest {
         assertEquals(HttpStatus.OK, response.statusCode)
         val data = response.body!!["data"]
         assertEquals(5, data["statuses"].size())
-        assertTrue(data["failureRate"].isNull)
+        val statuses = data["statuses"].associate { it["code"].asText() to it["count"].asLong() }
+        val finished = listOf("FAILED", "COMPLETED", "REVIEW_REQUIRED").sumOf { statuses[it] ?: 0 }
+        if (finished == 0L) assertTrue(data["failureRate"].isNull)
+        else assertEquals((statuses["FAILED"] ?: 0).toDouble() / finished, data["failureRate"].asDouble(), 0.000001)
+        val empty = call("admin/system/summary?from=1900-01-01T00:00:00Z&to=1900-01-02T00:00:00Z", token)
+        assertEquals(HttpStatus.OK, empty.statusCode)
+        assertTrue(empty.body!!["data"]["statuses"].all { it["count"].asLong() == 0L })
+        assertTrue(empty.body!!["data"]["failureRate"].isNull)
         assertEquals("UNAVAILABLE", data["activeUsers"]["availability"].asText())
         assertEquals(HttpStatus.BAD_REQUEST, call("admin/system/summary?from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z", token).statusCode)
     }

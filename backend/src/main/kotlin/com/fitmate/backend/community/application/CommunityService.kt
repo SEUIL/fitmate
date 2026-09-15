@@ -52,18 +52,22 @@ class CommunityService(
     private val blocks: BlockRepository,
     private val mediaAssets: MediaAssetService,
     private val notifications: NotificationService,
+    private val ruleEngine: com.fitmate.backend.admin.application.ModerationRuleEngine,
 ) {
     @Transactional
     fun create(userId: UUID, request: CreateCommunityPostRequest): CommunityPostResponse {
+        ruleEngine.beginWrite(userId)
         activeProfile(userId)
         validateContent(request.content, request.mediaIds)
         val post = posts.saveAndFlush(CommunityPost(UUID.randomUUID(), userId, request.content.trim(), request.visibility))
         replaceMedia(userId, requireNotNull(post.id), request.mediaIds)
+        inspectRules(userId, post, true)
         return response(userId, post)
     }
 
     @Transactional
     fun update(userId: UUID, postId: UUID, request: UpdateCommunityPostRequest): CommunityPostResponse {
+        ruleEngine.beginWrite(userId)
         val post = ownedPost(userId, postId)
         if (post.version != request.version) throw ApiException(ApiErrorCode.VERSION_CONFLICT)
         val mediaIds = request.mediaIds ?: postMedia.findAllByPostIdOrderByDisplayOrderAsc(postId).map { requireNotNull(it.mediaId) }
@@ -75,6 +79,7 @@ class CommunityService(
             postMedia.deleteAllByPostId(postId)
             replaceMedia(userId, postId, replacement)
         }
+        inspectRules(userId, post, false)
         return response(userId, post)
     }
 
@@ -83,6 +88,7 @@ class CommunityService(
         val post = ownedPost(userId, postId)
         post.deletedAt = Instant.now()
         posts.saveAndFlush(post)
+        inspectRules(userId, post, false)
     }
 
     @Transactional(readOnly = true)
@@ -132,11 +138,15 @@ class CommunityService(
 
     @Transactional
     fun addComment(userId: UUID, postId: UUID, request: CreateCommunityCommentRequest): CommunityCommentResponse {
+        ruleEngine.beginWrite(userId)
         val profile = activeProfile(userId)
         visiblePost(userId, postId)
         val comment = comments.saveAndFlush(CommunityPostComment(UUID.randomUUID(), postId, userId, request.content.trim()))
         val post = visiblePost(userId, postId)
         notifications.community(requireNotNull(post.authorUserId), userId, NotificationType.POST_COMMENTED, "POST", postId, "게시물에 댓글을 남겼습니다.")
+        ruleEngine.inspect(userId, com.fitmate.backend.admin.domain.RuleScope.COMMENT, requireNotNull(comment.id), comment.content,
+            post.visibility == PostVisibility.PUBLIC && profile.visibility == ProfileVisibility.PUBLIC &&
+                profiles.findById(requireNotNull(post.authorUserId)).orElse(null)?.visibility == ProfileVisibility.PUBLIC, true)
         return CommunityCommentResponse(requireNotNull(comment.id), author(profile), comment.content, comment.createdAt)
     }
 
@@ -150,6 +160,13 @@ class CommunityService(
         if (comment.authorUserId != userId && post.authorUserId != userId) throw ApiException(ApiErrorCode.FORBIDDEN_RESOURCE)
         comment.deletedAt = Instant.now()
         comments.saveAndFlush(comment)
+        ruleEngine.inspect(requireNotNull(comment.authorUserId), com.fitmate.backend.admin.domain.RuleScope.COMMENT, commentId, "", false, false)
+    }
+
+    private fun inspectRules(userId: UUID, post: CommunityPost, created: Boolean) {
+        ruleEngine.inspect(userId, com.fitmate.backend.admin.domain.RuleScope.POST, requireNotNull(post.id), post.content,
+            post.deletedAt == null && post.visibility == PostVisibility.PUBLIC &&
+                profiles.findById(userId).orElse(null)?.visibility == ProfileVisibility.PUBLIC, created)
     }
 
     @Transactional(readOnly = true)

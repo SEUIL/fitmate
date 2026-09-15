@@ -26,6 +26,9 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
         AdminSnapshot(
             reports = page.getAsJsonArray("items").map { summary(it.asJsonObject) },
             history = dashboard.getAsJsonArray("recentHistory").map { it.asJsonObject.text("summary").orEmpty() },
+            recentActivity = dashboard.getAsJsonArray("recentHistory").map { item -> item.asJsonObject.let {
+                AdminActivity(it.text("action").orEmpty(), it.text("summary").orEmpty(), it.text("occurredAt").orEmpty())
+            } },
             metrics = listOf("pendingReports", "newUsers", "completedWorkouts", "failedAnalyses").map { dashboard.getAsJsonObject(it)["value"].asLong },
             nextCursor = page.text("nextCursor"),
             members = get("admin/members").getAsJsonArray("items").map { it.asJsonObject.text("nickname") ?: "탈퇴 또는 프로필 없음" },
@@ -38,6 +41,21 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
     }
 
     override suspend fun detail(id: String): AdminReport = io { parseDetail(get("admin/reports/$id")) }
+    suspend fun operators(cursor: String? = null): OperatorPageData = io {
+        val data = get("admin/operators" + (cursor?.let { "?cursor=${encode(it)}" } ?: ""))
+        OperatorPageData(data["version"].asLong, data.getAsJsonArray("items").map { operator(it.asJsonObject) },
+            data.text("nextCursor"), data["actorId"].asString)
+    }
+    suspend fun operatorCandidate(id: String): OperatorData = io { operator(get("admin/operators/candidates/$id"), candidate = true) }
+    suspend fun authenticateOperator(code: String): String = io {
+        api.request("POST", "admin/operators/reauth", mapOf("code" to code)).asJsonObject["token"].asString
+    }
+    suspend fun changeOperator(id: String, role: String, enabled: Boolean, reason: String, version: Long, key: String, token: String): OperatorData = io {
+        operator(api.request("PUT", "admin/operators/$id", mapOf("expectedVersion" to version, "role" to role, "enabled" to enabled, "reason" to reason),
+            headers = mapOf("Idempotency-Key" to key, "X-Admin-Reauth" to token)).asJsonObject.getAsJsonObject("operator"))
+    }
+    private fun operator(value: JsonObject, candidate: Boolean = false) = OperatorData(value["userId"].asString,
+        value.text("nickname") ?: "프로필 없음", value.text(if (candidate) "currentRole" else "role"), value["enabled"].asBoolean, value["accountStatus"].asString)
     suspend fun notices(managing: Boolean, cursor: String? = null): NoticePageData = io {
         val path = if (managing) "admin/notices" else "notices"
         val value = get(path + "?size=20" + (cursor?.let { "&cursor=${encode(it)}" } ?: ""))
@@ -107,7 +125,9 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
             decision = decision?.let { d -> listOfNotNull(d.text("action")?.let { AdminAction.valueOf(it).label },
                 d.text("reasonCode")?.let { AdminDecisionReason.valueOf(it).label }, d.text("publicReason"),
                 d.text("decidedAt")?.let { "처리 시각: ${time(it)}" },
-                d.text("sanctionEndsAt")?.let { "정지 종료: ${time(it)}" }, d.text("internalNote")?.let { "내부 메모: $it" }).joinToString("\n") })
+                d.text("sanctionEndsAt")?.let { "정지 종료: ${time(it)}" },
+                d.text("sanctionRevokedAt")?.let { "제재 해제: ${time(it)}" }, d.text("revocationReason")?.let { "해제 사유: $it" },
+                d.text("internalNote")?.let { "내부 메모: $it" }).joinToString("\n") })
     }
     private fun time(value: String): String = java.time.Instant.parse(value).atZone(java.time.ZoneId.systemDefault())
         .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
@@ -121,6 +141,9 @@ internal class ServerAdminRepository(private val api: FitMateApiClient) : AdminR
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) {
         try { block() } catch (error: ApiFailure) {
             throw AdminFailure(when (error.code) {
+                "OPERATOR_REAUTH_REQUIRED" -> AdminError.REAUTH_REQUIRED
+                "OPERATOR_CODE_INVALID" -> AdminError.CODE_INVALID
+                "OPERATOR_AUTH_LOCKED" -> AdminError.AUTH_LOCKED
                 "VERSION_CONFLICT" -> AdminError.VERSION_CONFLICT
                 "IDEMPOTENCY_KEY_CONFLICT" -> AdminError.IDEMPOTENCY_CONFLICT
                 "INVALID_STATE_TRANSITION" -> AdminError.ALREADY_PROCESSED

@@ -13,6 +13,9 @@ import java.time.Instant
 import java.util.UUID
 
 interface UserRepository : JpaRepository<User, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    fun findForOperatorUpdate(id: UUID): User?
     fun findByEmailNormalizedAndAccountStatusNot(emailNormalized: String, accountStatus: AccountStatus): User?
     fun existsByEmailNormalizedAndAccountStatusNot(emailNormalized: String, accountStatus: AccountStatus): Boolean
     fun countByCreatedAtGreaterThanEqual(createdAt: Instant): Long
