@@ -48,6 +48,20 @@ class WorkoutInsightRules {
             summary.meanHeartRate?.let { hr -> observations += InsightPoint("samsung-heart", "운동 중 평균 심박이 기록됐어요", "기기 측정 요약입니다. 심박 수치만으로 운동 강도 구간이나 건강 상태를 판정하지 않아요.", listOf("Samsung Health 평균 심박 $hr bpm")) }
         }
         if (observations.isEmpty()) observations += InsightPoint("missing", "비교할 수행 정보가 부족해요", "완료한 세트의 중량과 반복 수를 기록해 주세요.", listOf("완료 ${report.completedSetCount}세트"))
+        snapshot.longitudinal?.let { h ->
+            summaries.add(0, InsightPoint("history-summary", if (h.demo) "가상 기록의 운동 흐름을 살펴봤어요" else "최근 운동 속에서 이번 기록을 살펴봤어요",
+                if (h.sessions.isEmpty()) "기간 내 이전 헬스 기록이 없어 이번 운동을 비교 기준으로 남겨요. 다음 동일 운동의 수행과 체감 강도를 함께 확인해 보세요."
+                else "이번 운동을 포함한 헬스 기록을 모았어요. 목표에 맞는 진행 여부는 수행 조건과 꾸준함을 함께 비교해야 해요.",
+                listOf("최근 ${h.weeks}주 · 이전 ${h.sessions.size}회 + 이번 운동", "현재 목표 기준 · 다른 종목 제외")))
+            observations.add(0, InsightPoint("history-frequency", "기록한 운동 간격을 확인해요",
+                "운동을 기록한 날짜를 비교해 다음에 이어갈 일정을 정해 보세요. 기록이 없는 날을 운동하지 않은 날로 단정하지 않아요.",
+                listOf((h.sessions.map { it.report.endedAt.toString().take(10) } + report.endedAt.toString().take(10)).joinToString(" · "))))
+            actions.add(InsightPoint("history-next", "다음에는 같은 운동의 체감 강도를 비교해요",
+                "같은 운동의 반복 수행 여부와 마지막 세트의 체감 강도를 함께 확인해 보세요. 중량 변화만으로 수행이 좋아졌다고 판단하지 않아요.", listOf("이번 완료 ${report.completedSetCount}세트 · 이전 헬스 ${h.sessions.size}회")))
+            if (h.previousAdvice.isNotEmpty()) observations.add(1, InsightPoint("prior-advice", "이전 제안을 다시 확인해요",
+                "지난 리포트의 제안과 이번 기록을 함께 확인해 보세요. 수행 기록만으로 제안을 실제로 지켰는지는 확인할 수 없어요.",
+                h.previousAdvice.flatMap { it.actions }.take(2).map { it.title }))
+        }
         return InsightCatalog(summaries, observations, actions)
     }
 

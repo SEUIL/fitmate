@@ -56,12 +56,12 @@ class WorkoutInsightApiIntegrationTest {
     @Test fun `AI executes outside transaction and invalid selection falls back`() {
         doAnswer { invocation ->
             assertFalse(TransactionSynchronizationManager.isActualTransactionActive())
-            InsightSelection(narrative = narrativeFixture())
+            InsightSelection(narrative = narrativeFixture().let { n -> n.copy(summary = n.summary.copy(evidenceIds = n.summary.evidenceIds + "history")) })
         }.`when`(ai).select(anySnapshot(), anyCatalog(), anyRequest())
         val owner = signup(); val root = root(session(owner))
         val first = post(root, owner, request()); val generated = await(root, first["id"].asText(), owner)
         assertEquals("AI", generated["result"]["source"].asText())
-        assertEquals("grounded-narrative-v2", generated["result"]["methodVersion"].asText())
+        assertEquals("longitudinal-narrative-v3", generated["result"]["methodVersion"].asText())
         assertEquals(generated, get("$root/${first["id"].asText()}", owner))
         assertEquals(7, generated["result"]["snapshot"]["report"]["exercises"][0]["completedSets"][0]["rpe"].asInt())
         doAnswer { InsightSelection("invented", listOf("invented"), listOf("invented")) }.`when`(ai).select(anySnapshot(), anyCatalog(), anyRequest())
@@ -132,6 +132,45 @@ class WorkoutInsightApiIntegrationTest {
         val omitted = post(root, owner, request(false))
         val without = await(root, omitted["id"].asText(), owner)["result"]["snapshot"]
         assertTrue(without["inbody"].isNull); assertTrue(without["samsungHealth"].isNull)
+    }
+
+    @Test fun `longitudinal history excludes future foreign and demo sessions and validates multiple owned bodies`() {
+        val owner = signup(); val stranger = signup()
+        val past = session(owner); val future = session(owner); val demo = session(owner); val current = session(owner)
+        jdbc.update("UPDATE fitness_workout_sessions SET started_at=DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 7 DAY), ended_at=DATE_ADD(DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 7 DAY), INTERVAL 30 MINUTE) WHERE id=UUID_TO_BIN(?,1)", past)
+        jdbc.update("UPDATE fitness_workout_sessions SET started_at=DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 1 DAY), ended_at=DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 2 DAY) WHERE id=UUID_TO_BIN(?,1)", future)
+        jdbc.update("UPDATE fitness_workout_sessions SET started_at=DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 3 DAY), ended_at=DATE_ADD(DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 3 DAY), INTERVAL 30 MINUTE) WHERE id=UUID_TO_BIN(?,1)", demo)
+        jdbc.update("UPDATE fitness_workout_session_exercises SET display_name_snapshot=CONCAT('[DEMO] ',display_name_snapshot) WHERE workout_session_id=UUID_TO_BIN(?,1)", demo)
+        session(stranger)
+        val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+        fun body(token: String, date: java.time.LocalDate) = post("/api/v1/inbody-records", token, mapOf("measuredDate" to date.toString(), "weightKg" to 70, "skeletalMuscleMassKg" to 30, "bodyFatPercentage" to 25), HttpStatus.CREATED)["id"].asText()
+        val first = body(owner, today.minusDays(10)); val second = body(owner, today.minusDays(2)); val foreign = body(stranger, today)
+        val path = root(current)
+        val selection = request(false) + mapOf("inbodyRecordIds" to listOf(first, second), "historyWeeks" to 4)
+        val id = post(path, owner, selection)["id"].asText()
+        val snapshot = await(path, id, owner)["result"]["snapshot"]
+        assertEquals(2, snapshot["longitudinal"]["bodies"].size())
+        assertEquals(1, snapshot["longitudinal"]["sessions"].size())
+        assertEquals(past, snapshot["longitudinal"]["sessions"][0]["report"]["workoutSessionId"].asText())
+        assertEquals(1, get("$path/options?historyWeeks=4", owner)["historySessionCount"].asInt())
+        assertEquals(HttpStatus.NOT_FOUND, call(path, owner, HttpMethod.POST, request(false) + mapOf("inbodyRecordIds" to listOf(foreign))).statusCode)
+        assertEquals(HttpStatus.BAD_REQUEST, call(path, owner, HttpMethod.POST, request(false) + mapOf("historyWeeks" to 5)).statusCode)
+        assertEquals(HttpStatus.BAD_REQUEST, call(path, owner, HttpMethod.POST, request(false) + mapOf("inbodyRecordIds" to listOf(first, first))).statusCode)
+        assertEquals(HttpStatus.BAD_REQUEST, call(path, owner, HttpMethod.POST, request(false) + mapOf("inbodyRecordId" to first, "inbodyRecordIds" to listOf(second))).statusCode)
+        val oldBody = body(owner, today.minusDays(40))
+        assertEquals(HttpStatus.BAD_REQUEST, call(path, owner, HttpMethod.POST, request(false) + mapOf("inbodyRecordIds" to listOf(oldBody))).statusCode)
+        val pastData = get("/api/v1/workout-sessions/$past", owner)
+        assertEquals(HttpStatus.OK, call("/api/v1/workout-sessions/$past/external-workout", owner, HttpMethod.PUT, mapOf(
+            "provider" to "SAMSUNG_HEALTH_DATA_SDK", "sourceRecordId" to UUID.randomUUID().toString(), "exerciseType" to "BENCH_PRESS",
+            "startedAt" to pastData["startedAt"].asText(), "endedAt" to pastData["endedAt"].asText(), "activeDurationSeconds" to 1500)).statusCode)
+        val oldReport = post(root(past), owner, request(false))["id"].asText(); await(root(past), oldReport, owner)
+        jdbc.update("UPDATE fitness_workout_insights SET created_at=DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 6 DAY) WHERE id=?", oldReport)
+        val withContext = post(path, owner, request(false) + mapOf("includeSamsungHealth" to true, "includePreviousReports" to true))["id"].asText()
+        val context = await(path, withContext, owner)["result"]["snapshot"]["longitudinal"]
+        assertEquals(1500, context["sessions"][0]["samsungHealth"]["activeDurationSeconds"].asInt())
+        assertEquals(1, context["previousAdvice"].size())
+        assertEquals(past, context["previousAdvice"][0]["sessionId"].asText())
+        assertTrue(get("$path/options", owner)["samsungHealthAvailable"].asBoolean())
     }
 
     private fun request(consent: Boolean = true) = mapOf<String, Any>("requestId" to UUID.randomUUID().toString(), "externalAiConsent" to consent, "consentVersion" to WorkoutInsightConsent.VERSION)

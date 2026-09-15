@@ -11,6 +11,9 @@ data class CreateWorkoutInsightRequest(
     val includeSamsungHealth: Boolean = false,
     val externalAiConsent: Boolean = false,
     val consentVersion: String? = null,
+    val historyWeeks: Int = 4,
+    val inbodyRecordIds: List<UUID> = emptyList(),
+    val includePreviousReports: Boolean = false,
 )
 
 data class InsightBodyComposition(val measuredDate: LocalDate, val bodyFatPercentage: BigDecimal, val skeletalMuscleMassKg: BigDecimal)
@@ -22,6 +25,15 @@ data class WorkoutInsightSnapshot(
     val inbody: InsightBodyComposition?,
     val samsungHealth: InsightSamsungSummary?,
     val notices: List<String>,
+    val longitudinal: InsightLongitudinal? = null,
+)
+
+data class InsightHistorySession(val report: WorkoutReportResponse, val samsungHealth: InsightSamsungSummary?)
+data class InsightPreviousAdvice(val sessionId: UUID, val createdAt: Instant, val actions: List<InsightPoint>)
+data class InsightLongitudinal(
+    val weeks: Int, val from: Instant, val through: Instant, val demo: Boolean,
+    val sessions: List<InsightHistorySession>, val bodies: List<InsightBodyComposition>,
+    val previousAdvice: List<InsightPreviousAdvice>, val truncated: Boolean = false,
 )
 data class InsightPoint(val id: String, val title: String, val explanation: String, val evidence: List<String>)
 data class InsightCatalog(val summaries: List<InsightPoint>, val observations: List<InsightPoint>, val actions: List<InsightPoint>)
