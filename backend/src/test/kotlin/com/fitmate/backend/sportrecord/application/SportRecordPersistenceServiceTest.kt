@@ -3,6 +3,10 @@ package com.fitmate.backend.sportrecord.application
 import com.fitmate.backend.sportrecord.domain.SportRecord
 import com.fitmate.backend.workout.domain.WorkoutSession
 import jakarta.persistence.EntityManager
+import jakarta.persistence.PersistenceException
+import org.hibernate.exception.ConstraintViolationException
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.mockito.Mockito.doThrow
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.mock
@@ -22,6 +26,22 @@ class SportRecordPersistenceServiceTest {
             verify(entityManager).flush()
             verify(entityManager).persist(record)
             verify(entityManager).flush()
+        }
+    }
+
+    @Test fun `converts direct flush constraint violation to Spring integrity exception`() {
+        doThrow(ConstraintViolationException("duplicate", java.sql.SQLException(), "pk")).`when`(entityManager).flush()
+
+        assertThrows(org.springframework.dao.DataIntegrityViolationException::class.java) {
+            service.save(WorkoutSession(), SportRecord())
+        }
+    }
+
+    @Test fun `converts wrapped flush constraint violation to Spring integrity exception`() {
+        doThrow(PersistenceException(ConstraintViolationException("duplicate", java.sql.SQLException(), "pk"))).`when`(entityManager).flush()
+
+        assertThrows(org.springframework.dao.DataIntegrityViolationException::class.java) {
+            service.save(WorkoutSession(), SportRecord())
         }
     }
 }

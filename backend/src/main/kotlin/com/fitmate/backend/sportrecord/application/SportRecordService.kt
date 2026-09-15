@@ -29,13 +29,7 @@ class SportRecordService(private val sessions: WorkoutSessionRepository, private
     fun create(userId: UUID, request: CreateSportRecordRequest): CreateResult {
         val normalized = normalize(request)
         val id = dbId(requireNotNull(request.clientRecordId))
-        val existing = sessions.findById(id).orElse(null)
-        if (existing != null) {
-            if (existing.userId != userId) throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "운동 기록을 찾을 수 없습니다.")
-            val record = records.findById(id).orElseThrow { ApiException(ApiErrorCode.SPORT_RECORD_CONFLICT, "같은 ID가 다른 기록에 사용되었습니다.") }
-            if (!same(record, existing, normalized)) throw ApiException(ApiErrorCode.SPORT_RECORD_CONFLICT)
-            return CreateResult(toResponse(record), false)
-        }
+        existingResult(userId, id, normalized)?.let { return it }
         val session = WorkoutSession(id = id, userId = userId, sportCode = normalized.sportCode,
             status = WorkoutSessionStatus.COMPLETED, startedAt = normalized.startedAt, endedAt = normalized.completedAt, clientUpdatedAt = normalized.completedAt)
         val record = SportRecord(workoutSessionId = id, workoutSession = session, activityType = normalized.activityType,
@@ -46,9 +40,7 @@ class SportRecordService(private val sessions: WorkoutSessionRepository, private
         return try {
             CreateResult(toResponse(persistence.save(session, record)), true)
         } catch (exception: DataIntegrityViolationException) {
-            val saved = records.findOwned(id, userId) ?: throw exception
-            if (!same(saved, requireNotNull(saved.workoutSession), normalized)) throw ApiException(ApiErrorCode.SPORT_RECORD_CONFLICT)
-            CreateResult(toResponse(saved), false)
+            existingResult(userId, id, normalized) ?: throw exception
         }
     }
 
@@ -100,6 +92,15 @@ class SportRecordService(private val sessions: WorkoutSessionRepository, private
         if (disallowed != null) invalid(disallowed, "NOT_ALLOWED", "다른 종목 또는 유형의 결과 필드는 입력할 수 없습니다.")
     }
     private fun same(r: SportRecord, s: WorkoutSession, i: Input) = s.sportCode == i.sportCode && s.startedAt == i.startedAt && s.endedAt == i.completedAt && r.activityType == i.activityType && r.activeDurationSeconds == i.activeDurationSeconds && r.placeName == i.placeName && r.memo == i.memo && r.gameCount == i.gameCount && r.winCount == i.winCount && r.attemptCount == i.attemptCount && r.completionCount == i.completionCount && r.difficultyMemo == i.difficultyMemo && r.courseName == i.courseName && r.distanceMeters == i.distanceMeters && r.shotCount == i.shotCount && r.holeCount == i.holeCount && r.strokeCount == i.strokeCount
+    private fun existingResult(userId: UUID, id: UUID, input: Input): CreateResult? {
+        val session = sessions.findById(id).orElse(null) ?: return null
+        if (session.userId != userId) throw ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "운동 기록을 찾을 수 없습니다.")
+        val record = records.findById(id).orElseThrow {
+            ApiException(ApiErrorCode.SPORT_RECORD_CONFLICT, "같은 ID가 다른 기록에 사용되었습니다.")
+        }
+        if (!same(record, session, input)) throw ApiException(ApiErrorCode.SPORT_RECORD_CONFLICT)
+        return CreateResult(toResponse(record), false)
+    }
     private fun toResponse(r: SportRecord): SportRecordResponse { val s = requireNotNull(r.workoutSession); return SportRecordResponse(apiId(r.workoutSessionId), s.sportCode, r.activityType, s.startedAt, requireNotNull(s.endedAt), r.activeDurationSeconds, Duration.between(s.startedAt, s.endedAt).seconds, r.placeName, r.memo, r.gameCount, r.winCount, r.attemptCount, r.completionCount, r.difficultyMemo, r.courseName, r.distanceMeters, r.shotCount, r.holeCount, r.strokeCount) }
     private fun clean(v: String?) = v?.trim()?.ifEmpty { null }
     private fun truncate(v: Instant) = v.truncatedTo(ChronoUnit.MILLIS)
