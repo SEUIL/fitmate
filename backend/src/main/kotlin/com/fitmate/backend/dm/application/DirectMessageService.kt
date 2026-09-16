@@ -117,6 +117,9 @@ class DirectMessageService(
     private fun requireDifferent(first: UUID, second: UUID) { if (first == second) throw ApiException(ApiErrorCode.VALIDATION_ERROR, "자기 자신에게 메시지를 보낼 수 없습니다.") }
     private fun validateMessage(content: String, mediaId: UUID?) { if (content.isBlank() && mediaId == null) throw ApiException(ApiErrorCode.VALIDATION_ERROR, "메시지 또는 이미지를 입력해 주세요.") }
     private fun canonicalPair(first: UUID, second: UUID) = if (first.toString() < second.toString()) first to second else second to first
-    private fun conversationResponse(viewerId: UUID, item: DirectConversation) = ConversationResponse(requireNotNull(item.id), otherUser(viewerId, item), item.status, requireNotNull(item.requesterUserId), item.lastMessageAt, item.createdAt)
+    private fun conversationResponse(viewerId: UUID, item: DirectConversation) = ConversationResponse(
+        requireNotNull(item.id), otherUser(viewerId, item), item.status, requireNotNull(item.requesterUserId), item.lastMessageAt, item.createdAt,
+        messages.findFirstByConversationIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(requireNotNull(item.id))?.let(::messageResponse),
+    )
     private fun messageResponse(item: DirectMessage) = DirectMessageResponse(requireNotNull(item.id), requireNotNull(item.senderUserId), item.content, item.mediaId?.let { "/api/v1/dm/conversations/${item.conversationId}/media/$it" }, item.readAt, item.createdAt)
 }

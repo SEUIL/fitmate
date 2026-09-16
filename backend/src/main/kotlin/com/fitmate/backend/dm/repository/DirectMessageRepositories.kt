@@ -13,6 +13,7 @@ interface DirectConversationRepository : JpaRepository<DirectConversation, UUID>
 }
 
 interface DirectMessageRepository : JpaRepository<DirectMessage, UUID> {
+    fun findFirstByConversationIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(conversationId: UUID): DirectMessage?
     fun findAllByConversationIdAndDeletedAtIsNullOrderByCreatedAtAsc(conversationId: UUID): List<DirectMessage>
     fun existsByConversationIdAndMediaIdAndDeletedAtIsNull(conversationId: UUID, mediaId: UUID): Boolean
     fun existsByMediaIdAndDeletedAtIsNull(mediaId: UUID): Boolean

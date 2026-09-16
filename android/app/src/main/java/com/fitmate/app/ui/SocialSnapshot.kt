@@ -5,13 +5,14 @@ import java.time.LocalDate
 internal data class ChatSnapshot(
     val id: Long, val name: String, val messages: List<ChatEntry>, val status: String,
     val incoming: Boolean, val unread: Int, val muted: Boolean, val left: Boolean,
-    val draft: String, val photo: String?, val requestSent: Boolean
+    val draft: String, val photo: String?, val requestSent: Boolean, val serverPreview: String? = null
 ) {
     fun restore() = ChatRoom(id, name, messages.map {
         if (it.state == "전송 중") it.copy(state = "전송 실패", failOnce = false) else it
     }, status, incoming).also {
         it.unread = unread; it.muted = muted; it.left = left; it.draft = draft
         it.photo = photo; it.requestSent = requestSent
+        it.serverPreview = serverPreview
     }
 }
 
@@ -45,7 +46,7 @@ internal data class SocialSnapshot(
 }
 
 internal fun SocialState.snapshot() = SocialSnapshot(currentSerial(), feed.toList(), chats.map {
-    ChatSnapshot(it.id, it.name, it.messages.toList(), it.status, it.incoming, it.unread, it.muted, it.left, it.draft, it.photo, it.requestSent)
+    ChatSnapshot(it.id, it.name, it.messages.toList(), it.status, it.incoming, it.unread, it.muted, it.left, it.draft, it.photo, it.requestSent, it.serverPreview)
 }, blocked.toSet(), following.toSet(), accounts.followers.toSet(), accounts.incoming.toMap(), accounts.outgoing.toMap(),
     accounts.reports.toList(), accounts.notices.toList(), accounts.push, accounts.preferences.toMap(),
     composerText.value, composerPhoto.value, composerWorkout.value, composerVisibility.value, composerEditing.value, composerPhotos.value)
