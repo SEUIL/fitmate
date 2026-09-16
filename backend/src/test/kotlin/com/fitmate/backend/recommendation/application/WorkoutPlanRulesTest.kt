@@ -77,6 +77,24 @@ class WorkoutPlanRulesTest {
         assertTrue(rules.result(context(), rules.fallback(context()), "RULE_BASED").notices.any { it.contains("인바디 미사용") })
     }
 
+    @Test fun `recent running and heart rate never change deterministic health fallback`() {
+        val base = context()
+        val withRunning = base.copy(recentRunning = listOf(RecentRunningRecommendationContext(
+            goalType = "DISTANCE_TARGET", goalAchieved = false, distanceMeters = 4000,
+            activeDurationSeconds = 1800, averagePaceSecondsPerKm = 450, rpe = 9, conditionScore = 1,
+            samsungSummary = SamsungRecommendationContext(
+                activeDurationSeconds = 1700, meanHeartRate = java.math.BigDecimal("180"), peakHeartRate = java.math.BigDecimal("210"),
+                heartRateCoveragePercent = 95, heartRateLongGapCount = 0, paceSources = listOf("SAMSUNG_HEALTH"),
+                analysisVersion = "external-timeseries-v1", limitations = emptyList(),
+            ),
+        )))
+
+        assertEquals(rules.fallback(base), rules.fallback(withRunning))
+        val result = rules.result(withRunning, rules.fallback(withRunning), "RULE_BASED")
+        assertTrue(result.notices.any { it.contains("중량은 추천하지") })
+        assertFalse(result.notices.any { it.contains("최근 러닝") })
+    }
+
     private fun splitCatalog() = listOf(BodyPart.CHEST, BodyPart.SHOULDERS, BodyPart.TRICEPS, BodyPart.BACK, BodyPart.BICEPS, BodyPart.BACK,
         BodyPart.QUADRICEPS, BodyPart.HAMSTRINGS, BodyPart.GLUTES, BodyPart.CORE).mapIndexed { i, part ->
         PlanCatalogExercise(UUID(1, i.toLong()), "분할 합성 $i", part, EquipmentType.MACHINE)

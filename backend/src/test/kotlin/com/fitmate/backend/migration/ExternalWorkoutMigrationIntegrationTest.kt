@@ -55,6 +55,49 @@ class ExternalWorkoutMigrationIntegrationTest {
         }
     }
 
+    @Test
+    fun `V27 database upgrades to V28 without changing existing external summaries`() {
+        withDatabase { url, user, password ->
+            flyway(url, user, password, "27").migrate()
+            DriverManager.getConnection(url, user, password).use { connection ->
+                connection.createStatement().use { statement ->
+                    statement.execute("SET FOREIGN_KEY_CHECKS = 0")
+                    statement.execute("""
+                        INSERT INTO health_external_workout_summaries (
+                            workout_session_id, user_id, provider, source_record_id, exercise_type,
+                            started_at, ended_at, active_duration_seconds, payload_hash, version, saved_at, updated_at
+                        ) VALUES (
+                            UUID_TO_BIN('10000000-0000-0000-0000-000000000001'),
+                            UUID_TO_BIN('10000000-0000-0000-0000-000000000002'),
+                            'SAMSUNG_HEALTH_DATA_SDK', 'preserved-source', 'RUNNING',
+                            '2026-01-01 00:00:00.000', '2026-01-01 00:01:00.000', 60,
+                            REPEAT('a', 64), 3, '2026-01-01 00:02:00.000', '2026-01-01 00:02:00.000'
+                        )
+                    """.trimIndent())
+                    statement.execute("SET FOREIGN_KEY_CHECKS = 1")
+                }
+            }
+
+            val v28 = flyway(url, user, password, "28")
+            assertEquals(1, v28.migrate().migrationsExecuted)
+            assertEquals(1, objectExists(url, user, password, "TABLES", "table_name", "health_external_workout_samples"))
+            assertEquals(1, objectExists(url, user, password, "COLUMNS", "column_name", "timeseries_hash", "table_name", "health_external_workout_summaries"))
+            DriverManager.getConnection(url, user, password).use { connection ->
+                connection.createStatement().use { statement ->
+                    statement.executeQuery("SELECT source_record_id, version, timeseries_hash, timeseries_version, timeseries_sample_count FROM health_external_workout_summaries").use { result ->
+                        org.junit.jupiter.api.Assertions.assertTrue(result.next())
+                        assertEquals("preserved-source", result.getString("source_record_id"))
+                        assertEquals(3, result.getLong("version"))
+                        assertEquals("", result.getString("timeseries_hash"))
+                        assertEquals(1, result.getInt("timeseries_version"))
+                        assertEquals(0, result.getInt("timeseries_sample_count"))
+                    }
+                }
+            }
+            assertEquals(0, v28.migrate().migrationsExecuted)
+        }
+    }
+
     private fun withDatabase(block: (String, String, String) -> Unit) {
         val source = requireNotNull(System.getenv("FITMATE_TEST_DB_URL"))
         val database = "fitmate_external_${UUID.randomUUID().toString().replace("-", "").take(12)}"

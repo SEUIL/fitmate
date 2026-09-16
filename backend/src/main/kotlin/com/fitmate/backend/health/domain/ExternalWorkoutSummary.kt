@@ -50,6 +50,12 @@ class ExternalWorkoutSummary(
     var maxHeartRate: BigDecimal? = null,
     @Column(name = "payload_hash", nullable = false, length = 64)
     var payloadHash: String = "",
+    @Column(name = "timeseries_hash", nullable = false, length = 64)
+    var timeSeriesHash: String = "",
+    @Column(name = "timeseries_version", nullable = false)
+    var timeSeriesVersion: Int = 1,
+    @Column(name = "timeseries_sample_count", nullable = false)
+    var timeSeriesSampleCount: Int = 0,
     @Version
     @Column(nullable = false)
     var version: Long = 0,

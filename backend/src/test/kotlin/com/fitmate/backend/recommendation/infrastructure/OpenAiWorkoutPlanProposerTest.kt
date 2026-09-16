@@ -46,6 +46,40 @@ class OpenAiWorkoutPlanProposerTest {
         }
         assertEquals(0, count.get())
     }
+    @Test fun `recent running and consented Samsung context use only minimal derived fields`() {
+        val base = context()
+        val running = RecentRunningRecommendationContext(
+            goalType = "DISTANCE_TARGET", goalAchieved = true, distanceMeters = 5000,
+            activeDurationSeconds = 1800, averagePaceSecondsPerKm = 360, rpe = 6, conditionScore = 4,
+            samsungSummary = SamsungRecommendationContext(
+                activeDurationSeconds = 1780, meanHeartRate = java.math.BigDecimal("142"), peakHeartRate = java.math.BigDecimal("171"),
+                heartRateCoveragePercent = 91, heartRateLongGapCount = 1,
+                paceSources = listOf("SAMSUNG_HEALTH", "SMARTPHONE_GPS"), analysisVersion = "external-timeseries-v1",
+                limitations = listOf("PACE_PARTIAL_SAMPLES"),
+            ),
+        )
+        val proposer = OpenAiWorkoutPlanProposer(RestClient.builder(), WorkoutRecommendationAiProperties(), rules)
+        val withoutConsent = proposer.providerInput(base.copy(
+            conditions = base.conditions.copy(externalAiConsent = false), recentRunning = listOf(running),
+        ))
+        assertFalse(withoutConsent.containsKey("recentRunningSummary"))
+
+        val sent = mapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(
+            proposer.providerInput(base.copy(recentRunning = listOf(running))),
+        )["recentRunningSummary"][0]
+        assertEquals(
+            setOf("goalType", "goalAchieved", "distanceMeters", "activeDurationSeconds", "averagePaceSecondsPerKm", "rpe", "conditionScore", "samsungSummary"),
+            sent.fieldNames().asSequence().toSet(),
+        )
+        assertEquals(
+            setOf("activeDurationSeconds", "meanHeartRate", "peakHeartRate", "heartRateCoveragePercent", "heartRateLongGapCount", "paceSources", "analysisVersion", "limitations"),
+            sent["samsungSummary"].fieldNames().asSequence().toSet(),
+        )
+        val serialized = sent.toString()
+        listOf("samples", "routePoints", "sourceRecordId", "measuredAt", "startedAt", "completedAt", "userId", "memo", "uuid").forEach {
+            assertFalse(serialized.contains("\"$it\"", ignoreCase = true), "forbidden field $it")
+        }
+    }
     @Test fun `malformed extra fields null integer and truncated output rejected`() {
         val valid = mapper.writeValueAsString(rules.fallback(context()))
         for (body in listOf("not-json", "{\"days\":null}", valid.replace("\"sets\":2", "\"sets\":null"), valid.replace("\"sets\":2", "\"sets\":2.5"), valid.dropLast(1) + ",\"weight\":100}")) {

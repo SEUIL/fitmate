@@ -39,12 +39,14 @@ class ExternalWorkoutApiIntegrationTest {
 
         assertTrue(command(path, HttpMethod.GET, owner, null).body!!["data"].isNull)
         assertEquals(HttpStatus.NOT_FOUND, command(path, HttpMethod.GET, stranger, null).statusCode)
+        assertEquals(HttpStatus.NOT_FOUND, command(path, HttpMethod.PUT, stranger, payload(session, 123.456)).statusCode)
 
         val payload = payload(session, calories = 123.456)
         val first = command(path, HttpMethod.PUT, owner, payload)
         assertEquals(HttpStatus.OK, first.statusCode, first.body.toString())
         assertEquals(123.46, first.body!!["data"]["caloriesKcal"].asDouble())
         assertEquals(0, first.body!!["data"]["version"].asInt())
+        assertEquals(0, first.body!!["data"]["timeSeriesSampleCount"].asInt())
 
         val retry = command(path, HttpMethod.PUT, owner, payload)
         assertEquals(HttpStatus.OK, retry.statusCode)
@@ -103,6 +105,126 @@ class ExternalWorkoutApiIntegrationTest {
         } finally {
             executor.shutdownNow()
         }
+    }
+
+    @Test
+    fun `owner replaces time series idempotently and unlink removes it`() {
+        val owner = signup()
+        val stranger = signup()
+        val session = completedWorkout(owner)
+        val sessionId = session["id"].asText()
+        val path = "/api/v1/workout-sessions/$sessionId/external-workout"
+        val startedAt = Instant.parse(session["startedAt"].asText())
+        val endedAt = Instant.parse(session["endedAt"].asText())
+        val firstPayload = payload(session, 100.0, "series-UID") + ("samples" to listOf(
+            mapOf("measuredAt" to startedAt.toString(), "heartRate" to 100, "speedMetersPerSecond" to null),
+        ))
+        val first = command(path, HttpMethod.PUT, owner, firstPayload)
+        assertEquals(HttpStatus.OK, first.statusCode, first.body.toString())
+        assertEquals(1, first.body!!["data"]["timeSeriesSampleCount"].asInt())
+        val retry = command(path, HttpMethod.PUT, owner, firstPayload)
+        assertEquals(HttpStatus.OK, retry.statusCode)
+        assertEquals(0, retry.body!!["data"]["version"].asInt())
+        assertEquals(HttpStatus.NOT_FOUND, command("$path/analysis", HttpMethod.GET, stranger, null).statusCode)
+        val analysis = command("$path/analysis", HttpMethod.GET, owner, null)
+        assertEquals(HttpStatus.OK, analysis.statusCode, analysis.body.toString())
+        assertEquals("external-timeseries-v1", analysis.body!!["data"]["analysisVersion"].asText())
+        assertEquals(1, analysis.body!!["data"]["heartRate"]["validSampleCount"].asInt())
+        assertEquals(0, analysis.body!!["data"]["pace"]["samsungSampleCount"].asInt())
+
+        val replacement = firstPayload + ("samples" to listOf(
+            mapOf("measuredAt" to startedAt.toString(), "heartRate" to 120, "speedMetersPerSecond" to null),
+        )) + ("sourceModifiedAt" to endedAt.plusSeconds(1).toString()) + ("expectedVersion" to 0)
+        val updated = command(path, HttpMethod.PUT, owner, replacement)
+        assertEquals(HttpStatus.OK, updated.statusCode, updated.body.toString())
+        assertEquals(1, updated.body!!["data"]["timeSeriesSampleCount"].asInt())
+        assertEquals(HttpStatus.NO_CONTENT, command(path, HttpMethod.DELETE, owner, null).statusCode)
+        assertTrue(command(path, HttpMethod.GET, owner, null).body!!["data"].isNull)
+    }
+
+    @Test
+    fun `running report requery combines private route Samsung summary and deterministic analysis`() {
+        val owner = signup()
+        val stranger = signup()
+        val startedAt = Instant.parse("2026-01-01T00:00:00Z")
+        val completedAt = startedAt.plusSeconds(180)
+        val route = listOf(130L, 140L, 150L).mapIndexed { index, offset ->
+            mapOf(
+                "latitude" to (37.0 + index * 0.0001),
+                "longitude" to (127.0 + index * 0.0001),
+                "recordedAt" to startedAt.plusSeconds(offset).toString(),
+            )
+        }
+        val run = command("/api/v1/running-records", HttpMethod.POST, owner, mapOf(
+            "runType" to "DISTANCE_TARGET", "targetDistanceMeters" to 500,
+            "activeDurationSeconds" to 180, "distanceMeters" to 500,
+            "startedAt" to startedAt.toString(), "completedAt" to completedAt.toString(),
+            "routeVisibility" to "PRIVATE", "routePoints" to route, "rpe" to 6, "conditionScore" to 4,
+        )).body!!["data"]
+        val sessionId = run["id"].asText()
+        val externalPath = "/api/v1/workout-sessions/$sessionId/external-workout"
+        val heartRates = listOf(100, 130, 170, 165, 140, 120)
+        val samples = heartRates.mapIndexed { index, heartRate ->
+            mapOf(
+                "measuredAt" to startedAt.plusSeconds(index * 30L).toString(),
+                "heartRate" to heartRate,
+                "speedMetersPerSecond" to if (index < 2) 3.0 else null,
+            )
+        }
+        val linked = command(externalPath, HttpMethod.PUT, owner, mapOf(
+            "provider" to "SAMSUNG_HEALTH_DATA_SDK", "sourceRecordId" to "running-report-source",
+            "exerciseType" to "RUNNING", "startedAt" to startedAt.toString(), "endedAt" to completedAt.toString(),
+            "activeDurationSeconds" to 180, "meanHeartRate" to 138, "minHeartRate" to 100, "maxHeartRate" to 170,
+            "samples" to samples,
+        ))
+        assertEquals(HttpStatus.OK, linked.statusCode)
+        assertEquals(6, linked.body!!["data"]["timeSeriesSampleCount"].asInt())
+
+        val first = command("/api/v1/running-records/$sessionId", HttpMethod.GET, owner, null)
+        val second = command("/api/v1/running-records/$sessionId", HttpMethod.GET, owner, null)
+        assertEquals(HttpStatus.OK, first.statusCode)
+        assertEquals(first.body!!["data"], second.body!!["data"])
+        assertEquals(3, first.body!!["data"]["routePoints"].size())
+        assertEquals(HttpStatus.NOT_FOUND, command("/api/v1/running-records/$sessionId", HttpMethod.GET, stranger, null).statusCode)
+        assertEquals(HttpStatus.NOT_FOUND, command("$externalPath/analysis", HttpMethod.GET, stranger, null).statusCode)
+
+        val analysis = command("$externalPath/analysis", HttpMethod.GET, owner, null)
+        assertEquals(HttpStatus.OK, analysis.statusCode)
+        val report = analysis.body!!["data"]
+        assertTrue(report["available"].asBoolean())
+        assertEquals(170, report["heartRate"]["peakBpm"].asInt())
+        assertTrue(report["heartRate"]["biggestRise"].isObject)
+        assertTrue(report["heartRate"]["biggestFall"].isObject)
+        assertTrue(report["heartRate"]["peakSustained"].isObject)
+        assertTrue(report["pace"]["samsungSourceUsed"].asBoolean())
+        assertTrue(report["pace"]["smartphoneGpsSourceUsed"].asBoolean())
+        assertTrue(report["limitations"].map(JsonNode::asText).contains("PACE_PARTIAL_SAMPLES"))
+        assertTrue(!report.toString().contains("latitude") && !report.toString().contains("measuredAt"))
+
+        assertEquals(HttpStatus.NO_CONTENT, command(externalPath, HttpMethod.DELETE, owner, null).statusCode)
+        val disconnected = command("$externalPath/analysis", HttpMethod.GET, owner, null).body!!["data"]
+        assertEquals(false, disconnected["available"].asBoolean())
+        assertTrue(disconnected["limitations"].map(JsonNode::asText).contains("TIME_SERIES_NOT_CONNECTED"))
+        assertEquals(3, command("/api/v1/running-records/$sessionId", HttpMethod.GET, owner, null).body!!["data"]["routePoints"].size())
+    }
+
+    @Test
+    fun `basic running report remains available without route or Samsung data`() {
+        val owner = signup()
+        val completedAt = Instant.parse("2026-01-02T00:01:00Z")
+        val run = command("/api/v1/running-records", HttpMethod.POST, owner, mapOf(
+            "runType" to "FREE", "activeDurationSeconds" to 60, "distanceMeters" to 0,
+            "startedAt" to completedAt.minusSeconds(60).toString(), "completedAt" to completedAt.toString(),
+            "rpe" to 5, "conditionScore" to 3,
+        )).body!!["data"]
+        val sessionId = run["id"].asText()
+
+        val stored = command("/api/v1/running-records/$sessionId", HttpMethod.GET, owner, null).body!!["data"]
+        assertEquals(0, stored["distanceMeters"].asInt())
+        assertEquals(0, stored["routePoints"].size())
+        val analysis = command("/api/v1/workout-sessions/$sessionId/external-workout/analysis", HttpMethod.GET, owner, null).body!!["data"]
+        assertEquals(false, analysis["available"].asBoolean())
+        assertTrue(analysis["limitations"].map(JsonNode::asText).contains("TIME_SERIES_NOT_CONNECTED"))
     }
 
     private fun completedWorkout(token: String): JsonNode {

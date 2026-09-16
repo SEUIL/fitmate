@@ -11,6 +11,8 @@ internal data class StoredExternalWorkout(
     val version: Long,
     val savedAt: Instant,
     val updatedAt: Instant,
+    val timeSeriesVersion: Int = 0,
+    val timeSeriesSampleCount: Int = 0,
 )
 
 internal fun externalWorkoutContentMatches(expected: ExternalWorkoutSummary, actual: StoredExternalWorkout): Boolean =
@@ -33,6 +35,8 @@ internal fun JsonObject.toStoredExternalWorkout() = StoredExternalWorkout(
         minHeartRate = nullableDecimal("minHeartRate"),
         maxHeartRate = nullableDecimal("maxHeartRate"),
     ).normalized(),
+    timeSeriesVersion = get("timeSeriesVersion")?.takeUnless { it.isJsonNull }?.asInt ?: 0,
+    timeSeriesSampleCount = get("timeSeriesSampleCount")?.takeUnless { it.isJsonNull }?.asInt ?: 0,
     version = get("version").asLong,
     savedAt = Instant.parse(requiredText("savedAt")),
     updatedAt = Instant.parse(requiredText("updatedAt")),

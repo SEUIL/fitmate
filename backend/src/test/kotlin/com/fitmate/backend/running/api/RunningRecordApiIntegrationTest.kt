@@ -68,8 +68,8 @@ class RunningRecordApiIntegrationTest {
                 "conditionScore" to 4,
                 "memo" to "  한강 러닝  ",
                 "routePoints" to listOf(
-                    mapOf("latitude" to 37.525, "longitude" to 127.028, "recordedAt" to "2026-09-07T11:28:00Z"),
-                    mapOf("latitude" to 37.526, "longitude" to 127.030, "recordedAt" to "2026-09-07T11:58:00Z"),
+                    mapOf("latitude" to 0.0, "longitude" to 0.0, "recordedAt" to "2026-09-07T11:28:00Z"),
+                    mapOf("latitude" to 0.001, "longitude" to 0.002, "recordedAt" to "2026-09-07T11:58:00Z"),
                 ),
                 "laps" to listOf(370, 365, 360, 355, 350).mapIndexed { index, seconds ->
                     mapOf("lapNo" to index + 1, "distanceMeters" to 1_000, "durationSeconds" to seconds)
@@ -139,6 +139,76 @@ class RunningRecordApiIntegrationTest {
         )
         assertEquals(HttpStatus.BAD_REQUEST, invalid.statusCode)
         assertEquals("VALIDATION_ERROR", invalid.body!!["error"]["code"].asText())
+    }
+
+    @Test
+    fun `route stays private rejects duplicate timestamps and is removed with its owned record`() {
+        val owner = signup()
+        val stranger = signup()
+        val base = mapOf(
+            "runType" to "FREE",
+            "startedAt" to "2026-09-07T11:00:00Z",
+            "completedAt" to "2026-09-07T11:02:00Z",
+            "activeDurationSeconds" to 60,
+            "distanceMeters" to 0,
+            "routePoints" to listOf(
+                mapOf("latitude" to 0.0, "longitude" to 0.0, "recordedAt" to "2026-09-07T11:00:00Z"),
+                mapOf("latitude" to 0.001, "longitude" to 0.001, "recordedAt" to "2026-09-07T11:01:00Z"),
+            ),
+        )
+        assertEquals(HttpStatus.BAD_REQUEST, command(
+            "/api/v1/running-records", HttpMethod.POST, owner, base + ("routeVisibility" to "PUBLIC"),
+        ).statusCode)
+        val duplicateTime = base + ("routeVisibility" to "PRIVATE") + ("routePoints" to listOf(
+            mapOf("latitude" to 0.0, "longitude" to 0.0, "recordedAt" to "2026-09-07T11:00:00Z"),
+            mapOf("latitude" to 0.001, "longitude" to 0.001, "recordedAt" to "2026-09-07T11:00:00Z"),
+        ))
+        assertEquals(HttpStatus.BAD_REQUEST, command("/api/v1/running-records", HttpMethod.POST, owner, duplicateTime).statusCode)
+
+        val created = command("/api/v1/running-records", HttpMethod.POST, owner, base + ("routeVisibility" to "PRIVATE"))
+        assertEquals(HttpStatus.CREATED, created.statusCode, created.body.toString())
+        val id = created.body!!["data"]["id"].asText()
+        assertEquals(HttpStatus.NOT_FOUND, command("/api/v1/running-records/$id", HttpMethod.DELETE, stranger, null).statusCode)
+        assertEquals(HttpStatus.NO_CONTENT, command("/api/v1/running-records/$id", HttpMethod.DELETE, owner, null).statusCode)
+        assertEquals(HttpStatus.NOT_FOUND, command("/api/v1/running-records/$id", HttpMethod.GET, owner, null).statusCode)
+        assertTrue(command("/api/v1/running-records?cursor=0&size=20", HttpMethod.GET, owner, null).body!!["data"]["items"].isEmpty)
+    }
+
+    @Test
+    fun `deleting a running record removes its external time series before source reuse`() {
+        val owner = signup()
+        val run = mapOf(
+            "clientRecordId" to UUID.randomUUID().toString(),
+            "runType" to "FREE",
+            "startedAt" to "2026-09-09T11:00:00Z",
+            "completedAt" to "2026-09-09T11:02:00Z",
+            "activeDurationSeconds" to 120,
+            "distanceMeters" to 0,
+        )
+        val first = command("/api/v1/running-records", HttpMethod.POST, owner, run)
+        assertEquals(HttpStatus.CREATED, first.statusCode, first.body.toString())
+        val firstId = first.body!!["data"]["id"].asText()
+        val externalPath = "/api/v1/workout-sessions/$firstId/external-workout"
+        val series = mapOf(
+            "provider" to "SAMSUNG_HEALTH_DATA_SDK",
+            "sourceRecordId" to "deleted-running-series-source",
+            "exerciseType" to "RUNNING",
+            "startedAt" to run["startedAt"],
+            "endedAt" to run["completedAt"],
+            "activeDurationSeconds" to 120,
+            "samples" to listOf(
+                mapOf("measuredAt" to run["startedAt"], "heartRate" to 100),
+                mapOf("measuredAt" to run["completedAt"], "speedMetersPerSecond" to 3.0),
+            ),
+        )
+        assertEquals(HttpStatus.OK, command(externalPath, HttpMethod.PUT, owner, series).statusCode)
+        assertEquals(HttpStatus.NO_CONTENT, command("/api/v1/running-records/$firstId", HttpMethod.DELETE, owner, null).statusCode)
+        assertEquals(HttpStatus.NOT_FOUND, command(externalPath, HttpMethod.GET, owner, null).statusCode)
+
+        val second = command("/api/v1/running-records", HttpMethod.POST, owner, run + ("clientRecordId" to UUID.randomUUID().toString()))
+        assertEquals(HttpStatus.CREATED, second.statusCode, second.body.toString())
+        val secondPath = "/api/v1/workout-sessions/${second.body!!["data"]["id"].asText()}/external-workout"
+        assertEquals(HttpStatus.OK, command(secondPath, HttpMethod.PUT, owner, series).statusCode)
     }
 
     private fun signup(): String {

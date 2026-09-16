@@ -24,7 +24,21 @@ data class SamsungWorkoutUiModel(
     val altitudeLossMeters: Float?,
     val meanCadence: Float?,
     val vo2Max: Float?,
-    val logSampleCount: Int
+    val logSampleCount: Int,
+    /** Retained in memory only; it is sent only after the user confirms this source record. */
+    val timeSeries: List<SamsungWorkoutTimeSample> = emptyList(),
+    val timeSeriesQuality: SamsungTimeSeriesQuality = SamsungTimeSeriesQuality(),
+)
+
+data class SamsungWorkoutTimeSample(
+    val measuredAt: Instant,
+    val heartRate: Float?,
+    val speedMetersPerSecond: Float?,
+)
+
+data class SamsungTimeSeriesQuality(
+    val heartRateConflictTimestampCount: Int = 0,
+    val speedConflictTimestampCount: Int = 0,
 )
 
 object SamsungWorkoutMetrics {

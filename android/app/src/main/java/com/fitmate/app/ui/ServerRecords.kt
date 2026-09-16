@@ -14,6 +14,7 @@ import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 @Composable internal fun ServerRecordList(
     api: FitMateApiClient,
@@ -95,6 +96,9 @@ import kotlinx.coroutines.withContext
     var session by remember(id) { mutableStateOf<JsonObject?>(null) }
     var error by remember(id) { mutableStateOf<String?>(null) }
     var attempt by remember(id) { mutableIntStateOf(0) }
+    var deleting by remember(id) { mutableStateOf(false) }
+    var deleted by remember(id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(api, id, running, attempt) {
         error = null; detail = null
         try {
@@ -111,20 +115,29 @@ import kotlinx.coroutines.withContext
     Text(if (running) "러닝 리포트" else "헬스 리포트", style = MaterialTheme.typography.titleLarge)
     if (detail == null && error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
     error?.let { Text(it, color = MaterialTheme.colorScheme.error); TextButton({ attempt++ }) { Text("다시 시도") } }
+    if (deleted) Text("러닝 기록과 비공개 경로를 삭제했습니다.", color = MaterialTheme.colorScheme.primary)
     detail?.let { row ->
         Text(recordDate(row.recordTime(if (running) "completedAt" else "endedAt")), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("운동 완료", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         if (running) {
-            WorkoutCard {
-                WorkoutMetrics("거리" to "${row.recordInt("distanceMeters")} m", "운동 시간" to "${row.recordInt("activeDurationSeconds")}초")
-                WorkoutMetric("평균 페이스", runPace(row.recordInt("activeDurationSeconds") ?: 0, row.recordInt("distanceMeters") ?: 0))
-            }
-            WorkoutCard {
-            Text("RPE ${row.recordInt("rpe") ?: "—"} · 컨디션 ${row.recordInt("conditionScore") ?: "—"}/5")
-            if (row.text("memo").isNotBlank()) Text(row.text("memo"))
-            row.get("goalAchieved")?.takeUnless { it.isJsonNull }?.let { Text(if (it.asBoolean) "목표 달성" else "목표 미달성") }
-            row.rows("laps").forEach { Text("${it.recordInt("lapNo")}랩 · ${it.recordInt("distanceMeters")}m · ${it.recordInt("durationSeconds")}초") }
-            }
+            RunningRecordReport(row)
+            OutlinedButton({
+                if (!deleting) {
+                    deleting = true
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) { ServerRecordApi(api).deleteRun(id) }
+                            detail = null
+                            deleted = true
+                        } catch (failure: Exception) {
+                            if (failure is CancellationException) throw failure
+                            error = failure.message ?: "러닝 기록을 삭제하지 못했어요."
+                        } finally {
+                            deleting = false
+                        }
+                    }
+                }
+            }, enabled = !deleting) { Text(if (deleting) "삭제 중…" else "러닝 기록 삭제") }
         } else {
             WorkoutInsightEntry(api, id)
             WorkoutHeading("오늘의 운동 기록", "FitMate에 기록한 운동 정보입니다.")
@@ -174,6 +187,9 @@ import kotlinx.coroutines.withContext
                 sessionExerciseNames = sessionExerciseNames,
                 sessionStartedAt = startedAt,
                 sessionEndedAt = endedAt,
+                sessionActiveDurationSeconds = row.recordInt(
+                    if (running) "activeDurationSeconds" else "durationSeconds",
+                )?.toLong(),
                 samsungState = samsungHealthState,
                 loadWorkouts = loadSamsungWorkouts,
                 requestPermission = requestSamsungExercisePermission,

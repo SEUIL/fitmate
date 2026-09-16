@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Local backend verification only. Release builds keep Android's cleartext default. -->
-    <application android:usesCleartextTraffic="true" />
+    <application android:usesCleartextTraffic="true">
+        <activity
+            android:name=".samsunghealth.debug.Fit3DataProbeActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="Fit3 데이터 검증"
+            android:theme="@style/Theme.Fitmate">
+            <intent-filter>
+                <action android:name="com.fitmate.app.action.FIT3_DATA_PROBE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
 </manifest>

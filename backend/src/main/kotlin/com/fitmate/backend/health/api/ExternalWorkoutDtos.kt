@@ -6,6 +6,7 @@ import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import jakarta.validation.Valid
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
@@ -24,7 +25,14 @@ data class PutExternalWorkoutRequest(
     @field:DecimalMin("0.0") @field:DecimalMax("300.0") val meanHeartRate: BigDecimal? = null,
     @field:DecimalMin("0.0") @field:DecimalMax("300.0") val minHeartRate: BigDecimal? = null,
     @field:DecimalMin("0.0") @field:DecimalMax("300.0") val maxHeartRate: BigDecimal? = null,
+    @field:Size(max = 10000) val samples: List<@Valid ExternalWorkoutSampleRequest> = emptyList(),
     @field:Min(0) val expectedVersion: Long? = null,
+)
+
+data class ExternalWorkoutSampleRequest(
+    val measuredAt: Instant,
+    @field:DecimalMin(value = "0.0", inclusive = false) @field:DecimalMax("300.0") val heartRate: BigDecimal? = null,
+    @field:DecimalMin("0.0") @field:DecimalMax("15.0") val speedMetersPerSecond: BigDecimal? = null,
 )
 
 data class ExternalWorkoutResponse(
@@ -42,6 +50,8 @@ data class ExternalWorkoutResponse(
     val meanHeartRate: BigDecimal?,
     val minHeartRate: BigDecimal?,
     val maxHeartRate: BigDecimal?,
+    val timeSeriesVersion: Int,
+    val timeSeriesSampleCount: Int,
     val version: Long,
     val savedAt: Instant,
     val updatedAt: Instant,
@@ -50,5 +60,5 @@ data class ExternalWorkoutResponse(
 internal fun ExternalWorkoutSummary.toResponse(sessionId: UUID = requireNotNull(workoutSessionId)) = ExternalWorkoutResponse(
     sessionId, provider, sourceRecordId, sourceAppId, sourceModifiedAt,
     exerciseType, startedAt, endedAt, activeDurationSeconds, distanceMeters, caloriesKcal,
-    meanHeartRate, minHeartRate, maxHeartRate, version, savedAt, updatedAt,
+    meanHeartRate, minHeartRate, maxHeartRate, timeSeriesVersion, timeSeriesSampleCount, version, savedAt, updatedAt,
 )

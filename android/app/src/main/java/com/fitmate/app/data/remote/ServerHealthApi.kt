@@ -1,6 +1,7 @@
 package com.fitmate.app.data.remote
 
 import com.fitmate.app.samsunghealth.ExternalWorkoutSummary
+import com.fitmate.app.samsunghealth.SamsungWorkoutTimeSample
 import com.google.gson.JsonNull
 
 internal class ServerHealthApi(private val api: FitMateApiClient) {
@@ -9,7 +10,12 @@ internal class ServerHealthApi(private val api: FitMateApiClient) {
         return if (data is JsonNull || data.isJsonNull) null else data.asJsonObject.toStoredExternalWorkout()
     }
 
-    fun put(sessionId: String, summary: ExternalWorkoutSummary, expectedVersion: Long?): StoredExternalWorkout {
+    fun put(
+        sessionId: String,
+        summary: ExternalWorkoutSummary,
+        samples: List<SamsungWorkoutTimeSample>,
+        expectedVersion: Long?,
+    ): StoredExternalWorkout {
         val normalized = summary.normalized()
         val body = linkedMapOf<String, Any?>(
             "provider" to normalized.provider,
@@ -25,8 +31,18 @@ internal class ServerHealthApi(private val api: FitMateApiClient) {
             "meanHeartRate" to normalized.meanHeartRate,
             "minHeartRate" to normalized.minHeartRate,
             "maxHeartRate" to normalized.maxHeartRate,
+            "samples" to samples.map { sample -> linkedMapOf(
+                "measuredAt" to sample.measuredAt.toString(),
+                "heartRate" to sample.heartRate,
+                "speedMetersPerSecond" to sample.speedMetersPerSecond,
+            ) },
             "expectedVersion" to expectedVersion,
         )
         return api.request("PUT", "workout-sessions/$sessionId/external-workout", body).asJsonObject.toStoredExternalWorkout()
     }
+
+    fun delete(sessionId: String) = api.request("DELETE", "workout-sessions/$sessionId/external-workout")
+
+    fun analysis(sessionId: String) =
+        api.request("GET", "workout-sessions/$sessionId/external-workout/analysis").asJsonObject
 }

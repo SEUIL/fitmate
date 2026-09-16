@@ -5,6 +5,7 @@ import android.util.AtomicFile
 import com.fitmate.app.data.model.UserProfile
 import com.fitmate.app.data.model.WorkoutSet
 import com.fitmate.app.data.model.WorkoutSummary
+import com.fitmate.app.running.RunRoutePoint
 import com.google.gson.Gson
 import java.io.File
 
@@ -49,7 +50,9 @@ internal data class RunningSnapshot(
     val samsung: Boolean, val signal: String, val demo: Boolean, val stationary: Boolean,
     val seconds: Int, val meters: Int, val target: Int, val laps: List<RunLap>,
     val rpe: String, val condition: String, val memo: String, val history: List<RunResult>, val pendingUpload: String? = null,
-    val completedAt: Long? = null, val startedAt: Long? = null
+    val completedAt: Long? = null, val startedAt: Long? = null,
+    val elapsedSeconds: Int = seconds, val routePoints: List<RunRoutePoint> = emptyList(),
+    val savedRecordId: String? = null,
 ) {
     fun restore() = RunningState().also {
         it.phase = phase; it.goal = goal; it.targetDistance = distance; it.targetMinutes = minutes
@@ -61,11 +64,20 @@ internal data class RunningSnapshot(
         it.pendingUpload = pendingUpload
         it.completedAt = completedAt
         it.startedAt = startedAt
+        it.elapsedSeconds = elapsedSeconds.coerceAtLeast(seconds)
+        it.routePoints = if (route) routePoints else emptyList()
+        it.savedRecordId = savedRecordId
     }
 }
-internal fun RunningState.snapshot() = RunningSnapshot(phase, goal, targetDistance, targetMinutes,
-    targetPace, intervalMinutes, autoPause, recordRoute, visibility, samsung, signal, demo, stationary,
-    seconds, meters, target, laps, rpe, condition, memo, history.toList(), pendingUpload, completedAt, startedAt)
+internal fun RunningState.snapshot() = RunningSnapshot(
+    phase = phase, goal = goal, distance = targetDistance, minutes = targetMinutes, pace = targetPace,
+    interval = intervalMinutes, auto = autoPause, route = recordRoute, visibility = visibility,
+    samsung = samsung, signal = signal, demo = demo, stationary = stationary, seconds = seconds,
+    meters = meters, target = target, laps = laps, rpe = rpe, condition = condition, memo = memo,
+    history = history.toList(), pendingUpload = pendingUpload, completedAt = completedAt, startedAt = startedAt,
+    elapsedSeconds = elapsedSeconds, routePoints = if (recordRoute) routePoints else emptyList(),
+    savedRecordId = savedRecordId,
+)
 
 /** App-private, excluded from cloud/device backup by noBackupFilesDir. */
 internal class FrontendLocalStore(context: Context, userId: String? = null) {

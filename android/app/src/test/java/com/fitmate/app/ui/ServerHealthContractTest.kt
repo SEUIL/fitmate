@@ -6,6 +6,7 @@ import com.fitmate.app.data.remote.toStoredExternalWorkout
 import com.fitmate.app.samsunghealth.ExternalWorkoutSummary
 import com.google.gson.JsonParser
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigDecimal
@@ -36,6 +37,7 @@ class ServerHealthContractTest {
         ).asJsonObject.toStoredExternalWorkout().let { value -> value.copy(summary = value.summary.copy(sourceModifiedAt = now)) }
         assertTrue(externalWorkoutContentMatches(summary(BigDecimal("1")), parsed))
         assertTrue(parsed.summary.distanceMeters == null && parsed.summary.minHeartRate == null && parsed.summary.maxHeartRate == null)
+        assertEquals(0, parsed.timeSeriesSampleCount)
     }
 
     private fun summary(calories: BigDecimal?) = ExternalWorkoutSummary(
