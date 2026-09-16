@@ -58,7 +58,22 @@ internal class ServerSocialApi(private val api: FitMateApiClient) {
     fun blocks(): List<JsonObject> = api.items("users/me/blocks")
 
     fun startConversation(userId: String, content: String) = api.request("POST", "dm/conversations", mapOf("recipientUserId" to userId, "content" to content)).asJsonObject
-    fun conversations(): List<JsonObject> = api.items("dm/conversations")
+    fun conversations(): List<JsonObject> {
+        val names = mutableMapOf<String, String>()
+        return api.items("dm/conversations").map { row ->
+            val userId = row.get("otherUserId").asString
+            val name = names.getOrPut(userId) {
+                try {
+                    profile(userId).get("nickname")?.takeUnless { it.isJsonNull }?.asString
+                        ?.takeIf { it.isNotBlank() } ?: "알 수 없는 사용자"
+                } catch (failure: ApiFailure) {
+                    if (failure.status == 403 || failure.status == 404) "알 수 없는 사용자"
+                    else throw failure
+                }
+            }
+            row.apply { addProperty("otherUserNickname", name) }
+        }
+    }
     fun messageRequests(): List<JsonObject> = api.items("dm/requests")
     fun messages(conversationId: String): List<JsonObject> = api.items("dm/conversations/$conversationId/messages")
     fun sendMessage(conversationId: String, content: String, mediaId: String? = null) = api.request("POST", "dm/conversations/$conversationId/messages", buildMap {

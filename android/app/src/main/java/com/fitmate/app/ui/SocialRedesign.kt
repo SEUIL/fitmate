@@ -98,6 +98,11 @@ import androidx.compose.ui.unit.sp
     }
 }
 
+internal fun conversationPreview(room: ChatRoom, request: Boolean): String =
+    room.messages.lastOrNull()?.let { if (it.photo != null) "사진" else it.text }
+        ?: room.serverPreview
+        ?: if (request) "메시지 요청을 확인해 주세요." else "첫 메시지를 보내보세요."
+
 @Composable internal fun SocialRoomCard(room: ChatRoom, request: Boolean, open: () -> Unit) {
     Card(onClick = open, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -107,7 +112,7 @@ import androidx.compose.ui.unit.sp
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(room.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (request) Text(if (room.incoming) "받은 요청" else "보낸 요청", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                Text(room.messages.lastOrNull()?.let { if (it.photo != null) "사진" else it.text } ?: if (request) "메시지 요청을 확인해 주세요." else "첫 메시지를 보내보세요.",
+                Text(conversationPreview(room, request),
                     maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 if (room.muted) Text("알림 끔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

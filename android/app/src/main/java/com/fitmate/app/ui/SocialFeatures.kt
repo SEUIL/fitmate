@@ -61,6 +61,7 @@ internal data class ChatEntry(
 )
 internal class ChatRoom(val id: Long, val name: String, initial: List<ChatEntry>, initialStatus: String = "대화 가능", val incoming: Boolean = true) {
     var messages by mutableStateOf(initial)
+    var serverPreview by mutableStateOf<String?>(null)
     var status by mutableStateOf(initialStatus)
     var unread by mutableStateOf(initial.count { !it.mine })
     var muted by mutableStateOf(false)
@@ -178,9 +179,16 @@ internal class SocialState(posts: List<CommunityPost>, conversations: List<DmCon
             val id = row.text("conversationId").hashCode().toLong()
             serverConversationIds[id] = row.text("conversationId")
             serverConversationOtherUsers[id] = row.text("otherUserId")
-            chats += ChatRoom(id, "메이트 ${row.text("otherUserId").take(8)}", emptyList(),
+            chats += ChatRoom(id, row.text("otherUserNickname").ifBlank { "알 수 없는 사용자" }, emptyList(),
                 if (row.text("status") == "ACTIVE") "대화 가능" else if (row.text("status") == "REJECTED") "거절" else "요청 대기",
-                incoming = row.text("requesterUserId") == row.text("otherUserId"))
+                incoming = row.text("requesterUserId") == row.text("otherUserId")).also { room ->
+                    val lastMessage = row.get("lastMessage")?.takeIf { it.isJsonObject }?.asJsonObject
+                    room.serverPreview = when {
+                        lastMessage != null -> if (lastMessage.text("mediaUrl").isNotBlank()) "사진" else lastMessage.text("content")
+                        !row.has("lastMessage") && row.text("lastMessageAt").isNotBlank() -> "메시지를 확인해 보세요."
+                        else -> null
+                    }
+                }
         }
     }
     fun serverConversationId(localId: Long): String? = serverConversationIds[localId]
