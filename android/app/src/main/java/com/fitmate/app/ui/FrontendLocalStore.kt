@@ -41,7 +41,8 @@ internal data class FrontendSnapshot(
     val running: RunningSnapshot? = null,
     val social: SocialSnapshot? = null,
     val body: List<BodySnapshot>? = null,
-    val mates: MateSnapshot? = null
+    val mates: MateSnapshot? = null,
+    val sportRecord: SportDraft? = null
 )
 
 internal data class RunningSnapshot(

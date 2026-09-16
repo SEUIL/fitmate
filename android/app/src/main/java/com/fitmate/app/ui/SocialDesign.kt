@@ -282,7 +282,7 @@ internal fun profileDisplayCounts(serverBacked: Boolean, serverCounts: List<Stri
                 val serverProfile = server.profile(selfUserId)
                 val records = ServerRecordApi(recordApi)
                 listOf(
-                    (records.completedCount("workout-sessions?status=COMPLETED") + records.completedCount("running-records")).toString(),
+                    records.completedCount("workout-sessions?status=COMPLETED").toString(),
                     (serverProfile.get("followerCount")?.asLong ?: 0L).toString(),
                     (serverProfile.get("followingCount")?.asLong ?: 0L).toString(),
                 )
