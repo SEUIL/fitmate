@@ -117,17 +117,32 @@ class SamsungHealthManager(context: Context) {
         }
     }
 
-    private fun com.samsung.android.sdk.health.data.data.HealthDataPoint.toWorkout(session: ExerciseSession, device: SamsungDeviceUiModel?, sessionCount: Int) = SamsungWorkoutUiModel(
-        uid = uid, sourceAppId = dataSource?.appId, sourceModifiedAt = updateTime, device = device,
-        exerciseType = session.exerciseType?.toString() ?: "기록 없음", customTitle = session.customTitle,
-        startTime = session.startTime, endTime = session.endTime,
-        activeDurationSeconds = session.duration.seconds, sessionCount = sessionCount, distanceMeters = session.distance,
-        calories = session.calories.takeIf { it != 0f }, meanHeartRate = session.meanHeartRate,
-        minHeartRate = session.minHeartRate, maxHeartRate = session.maxHeartRate,
-        meanSpeedMetersPerSecond = session.meanSpeed, maxSpeedMetersPerSecond = session.maxSpeed,
-        altitudeGainMeters = session.altitudeGain, altitudeLossMeters = session.altitudeLoss,
-        meanCadence = session.meanCadence, vo2Max = session.vo2Max, logSampleCount = session.log?.size ?: 0
-    )
+    private fun com.samsung.android.sdk.health.data.data.HealthDataPoint.toWorkout(
+        session: ExerciseSession,
+        device: SamsungDeviceUiModel?,
+        sessionCount: Int,
+    ): SamsungWorkoutUiModel {
+        val timeSeries = sanitizeSamsungTimeSeriesWithQuality(
+            session.log.orEmpty().map { value ->
+                SamsungWorkoutTimeSample(value.timestamp, value.heartRate, value.speed)
+            },
+            session.startTime,
+            session.endTime,
+        )
+        return SamsungWorkoutUiModel(
+            uid = uid, sourceAppId = dataSource?.appId, sourceModifiedAt = updateTime, device = device,
+            exerciseType = session.exerciseType?.toString() ?: "기록 없음", customTitle = session.customTitle,
+            startTime = session.startTime, endTime = session.endTime,
+            activeDurationSeconds = session.duration.seconds, sessionCount = sessionCount, distanceMeters = session.distance,
+            calories = session.calories.takeIf { it != 0f }, meanHeartRate = session.meanHeartRate,
+            minHeartRate = session.minHeartRate, maxHeartRate = session.maxHeartRate,
+            meanSpeedMetersPerSecond = session.meanSpeed, maxSpeedMetersPerSecond = session.maxSpeed,
+            altitudeGainMeters = session.altitudeGain, altitudeLossMeters = session.altitudeLoss,
+            meanCadence = session.meanCadence, vo2Max = session.vo2Max, logSampleCount = session.log?.size ?: 0,
+            timeSeries = timeSeries.samples,
+            timeSeriesQuality = timeSeries.quality,
+        )
+    }
 
     private fun com.samsung.android.sdk.health.data.device.Device.toUiModel(): SamsungDeviceUiModel = SamsungDeviceUiModel(
         maskedId = SamsungDeviceFormatter.maskId(id), type = deviceType.toString(), manufacturer = manufacturer,

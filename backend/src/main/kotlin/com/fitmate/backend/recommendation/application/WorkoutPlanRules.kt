@@ -18,6 +18,30 @@ data class WorkoutPlanContext(
     val measuredDate: LocalDate? = null,
     val bodyFatPercentage: java.math.BigDecimal? = null,
     val skeletalMuscleMassKg: java.math.BigDecimal? = null,
+    /** Minimal, server-derived history. It never contains routes, raw samples, IDs, times, or memo text. */
+    val recentRunning: List<RecentRunningRecommendationContext> = emptyList(),
+)
+
+data class RecentRunningRecommendationContext(
+    val goalType: String,
+    val goalAchieved: Boolean?,
+    val distanceMeters: Int,
+    val activeDurationSeconds: Int,
+    val averagePaceSecondsPerKm: Int?,
+    val rpe: Int?,
+    val conditionScore: Int?,
+    val samsungSummary: SamsungRecommendationContext? = null,
+)
+
+data class SamsungRecommendationContext(
+    val activeDurationSeconds: Long,
+    val meanHeartRate: java.math.BigDecimal?,
+    val peakHeartRate: java.math.BigDecimal?,
+    val heartRateCoveragePercent: Int?,
+    val heartRateLongGapCount: Int?,
+    val paceSources: List<String>,
+    val analysisVersion: String?,
+    val limitations: List<String>,
 )
 
 @Component
@@ -141,6 +165,9 @@ class WorkoutPlanRules {
                 else if (source == "AI") add("선택한 ${context.measuredDate} 인바디의 체지방률·골격근량만 참고합니다. 측정 이후 상태는 다를 수 있으며 질환·적정 중량·교정 운동을 판단하지 않습니다.")
                 else add("선택 인바디 측정일: ${context.measuredDate}. 기본 추천은 체성분 수치로 운동을 바꾸지 않고 프로필·횟수·시간·기구 조건을 사용합니다.")
                 add("현재 추천은 반복 횟수로 기록하는 운동을 지원합니다. 시간 유지형 플랭크는 제외됩니다.")
+                if (source == "AI" && context.recentRunning.isNotEmpty()) {
+                    add("최근 러닝은 목표·달성 여부·거리·활동 시간·평균 페이스·RPE·컨디션과 동의한 Samsung 요약만 참고했습니다. 심박수만으로 중량이나 강도를 정하지 않습니다.")
+                }
                 if (context.conditions.preferredExerciseIds.any { it !in used }) add("일부 선호 운동은 시간·균형 조건으로 포함되지 않았습니다.")
             }, days = days,
         )

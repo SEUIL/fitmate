@@ -32,11 +32,7 @@ internal fun samsungDuration(seconds: Long): String = when {
     else -> "${seconds / 60}분 ${seconds % 60}초"
 }
 
-internal fun samsungExerciseName(code: String) = when (code) {
-    "BENCH_PRESS" -> "벤치프레스"
-    "RUNNING" -> "러닝"
-    else -> code
-}
+internal fun samsungExerciseName(code: String) = WorkoutMatchEngine.displayName(code)
 
 internal fun samsungConnectionLabel(state: SamsungHealthUiState): String = when {
     state.status == SamsungHealthStatus.LOADING -> "확인 중"
@@ -128,7 +124,7 @@ internal fun samsungTime(time: Instant): String = time.atZone(ZoneId.systemDefau
             Icon(Icons.Outlined.Watch, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
             Text("기기에서 먼저 시작해 주세요", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Text("워치·밴드에서 운동 시작을 누른 뒤 FitMate 운동을 시작해 주세요.", fontSize = 14.sp)
-            Text(if (running) "현재 러닝 연결 지원: 단일 러닝 기록" else "현재 헬스 연결 지원: 단일 벤치프레스 기록", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (running) "현재 러닝 연결 지원: 단일 러닝 기록" else "현재 헬스 연결 지원: FitMate와 직접 대응하는 단일 운동 기록", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("실시간 측정이 아니라 종료·동기화 후 기록을 불러와요.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else Text("기록 연결 없이도 기본 리포트를 볼 수 있어요.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

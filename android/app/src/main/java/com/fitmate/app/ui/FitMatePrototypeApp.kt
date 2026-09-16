@@ -526,10 +526,16 @@ fun FitMatePrototypeApp(
                     back = { route = PrototypeRoute.HEALTH_ROUTINE }, start = start)
                 else WorkoutPrepScreen(Modifier.padding(padding), selectedWorkoutRoutine, startWorkout = start)
             }
-            PrototypeRoute.RUNNING -> RunningFlow(Modifier.padding(padding), runningState, locationConsent, { locationConsent = it }, apiClient) { saved ->
+            PrototypeRoute.RUNNING -> RunningFlow(
+                Modifier.padding(padding), runningState, locationConsent, { locationConsent = it }, apiClient,
+                home = { saved ->
                 if (saved) mateState.completeWorkout() else mateState.activeWorkoutId = null
                 route = PrototypeRoute.HOME
-            }
+                },
+                samsungHealthState = samsungHealthState,
+                loadSamsungWorkouts = onLoadSamsungWorkouts,
+                requestSamsungExercisePermission = onRequestSamsungExercisePermission,
+            )
             PrototypeRoute.MATE_LIST, PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE -> ServerMateFlow(
                 Modifier.padding(padding), apiClient, mateServerState, profile, serverAccount.text("id")
             ) { matePosts = it }
