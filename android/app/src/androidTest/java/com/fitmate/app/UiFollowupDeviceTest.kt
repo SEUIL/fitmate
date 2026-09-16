@@ -69,7 +69,7 @@ class UiFollowupDeviceTest {
         val calls = mutableListOf<String>()
         val state = SocialState(emptyList(), emptyList())
         landscape(dark, large = true) {
-            SocialHome(Modifier, UserProfile("테스트", "", emptySet()), state, 8, 3,
+            SocialHome(Modifier, UserProfile("테스트", "", emptySet()), state, null,
                 start = { calls += "start" }, mates = { calls += "mates" }, community = {},
                 dm = { calls += "dm" }, inbody = { calls += "inbody" },
                 notifications = { calls += "notices" }, history = { calls += "history" })

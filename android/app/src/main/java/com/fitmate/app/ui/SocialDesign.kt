@@ -199,7 +199,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
     }
 }
 
-@Composable internal fun SocialHome(modifier: Modifier, profile: UserProfile, social: SocialState, workoutCount: Int, runCount: Int, start: () -> Unit, mates: () -> Unit, community: () -> Unit, dm: () -> Unit, inbody: () -> Unit, resuming: Boolean = false, notifications: () -> Unit = {}, server: ServerSocialApi? = null, history: () -> Unit = {}, resumeDescription: String? = null) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
+@Composable internal fun SocialHome(modifier: Modifier, profile: UserProfile, social: SocialState, recordApi: FitMateApiClient?, start: () -> Unit, mates: () -> Unit, community: () -> Unit, dm: () -> Unit, inbody: () -> Unit, resuming: Boolean = false, notifications: () -> Unit = {}, server: ServerSocialApi? = null, history: () -> Unit = {}, resumeDescription: String? = null) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         FitMateWordmark(Modifier.weight(1f))
         IconButton(notifications) {
@@ -217,20 +217,7 @@ internal val FeedBackground: Color @Composable get() = MaterialTheme.colorScheme
         Text(if (resuming) resumeDescription ?: "진행 중인 운동으로 돌아가요" else "헬스부터 러닝까지, 나의 페이스로", color = FitMateColors.TextSecondary)
         WorkoutAction(if (resuming) "운동 이어하기" else "운동 시작", onClick = start)
     }
-    WorkoutCard {
-        Text("기기에 저장된 운동", style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            listOf(Triple("헬스", workoutCount, Icons.Outlined.FitnessCenter), Triple("러닝", runCount, Icons.AutoMirrored.Outlined.DirectionsRun)).forEach { (label, count, icon) ->
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(icon, null, Modifier.size(28.dp))
-                    Column {
-                        Text(label, color = FitMateColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
-                        Text("${count}회", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
+    HomeWorkoutCounts(recordApi)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         listOf(Triple("메이트", Icons.Outlined.Groups, mates), Triple("운동 기록", Icons.AutoMirrored.Outlined.Notes, history), Triple("인바디", Icons.Outlined.AccessibilityNew, inbody)).forEach { (label, icon, action) ->
             val interaction = remember { MutableInteractionSource() }

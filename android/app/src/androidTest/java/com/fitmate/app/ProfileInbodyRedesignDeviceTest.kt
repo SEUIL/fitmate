@@ -214,6 +214,46 @@ class ProfileInbodyRedesignDeviceTest {
         compose.waitUntil(8_000) { state.phase == "목록" && fixture.saves.isNotEmpty() }
     }
 
+    @Test fun profileEditRequestIsConsumedAcrossTabReentry(): Unit = Fixture().use { fixture ->
+        val profile = UserProfile("테스트 닉네임", "테스트 지역", setOf(Sport.FITNESS), goals = setOf("운동 습관 만들기"))
+        val social = SocialState(emptyList(), emptyList())
+        var showProfile by mutableStateOf(true)
+        var editRequest by mutableStateOf(1)
+        var saves = 0
+        content(false) {
+            if (showProfile) ProfileScreen(Modifier, profile, social, emptyList(), emptyList(), fixture.api,
+                onReload = {}, onSave = { saves++ }, onSavePhoto = { profile }, onOpenInbody = {},
+                onSamsungTest = {}, onAccount = {}, onHistory = {}, onNotifications = {}, onReports = {},
+                onOpenAdminDemo = {}, editRequest = editRequest, onOpenSettings = {}, selfUserId = "self",
+                onEditRequestConsumed = { editRequest = 0 })
+            else Text("홈 테스트 화면")
+        }
+        fun reenterProfile() {
+            compose.runOnIdle { showProfile = false }
+            compose.onNodeWithText("홈 테스트 화면").assertExists()
+            compose.runOnIdle { showProfile = true }
+            compose.onNodeWithText("프로필 편집").assertExists()
+            compose.onNodeWithText("프로필 수정").assertDoesNotExist()
+        }
+        compose.onNodeWithText("프로필 수정").assertExists()
+        compose.runOnIdle { assertEquals(0, editRequest) }
+        // Leaving the editor via a root tab must not replay the old request.
+        reenterProfile()
+        repeat(2) { reenterProfile() }
+        // A new explicit edit request must still open the editor.
+        compose.runOnIdle { editRequest++ }
+        compose.onNodeWithText("프로필 수정").assertExists()
+        click("취소")
+        reenterProfile()
+        compose.runOnIdle { editRequest++ }
+        compose.onNodeWithText("프로필 수정").assertExists()
+        click("저장")
+        compose.runOnIdle { assertEquals(1, saves) }
+        reenterProfile()
+        click("프로필 편집")
+        compose.onNodeWithText("프로필 수정").assertExists()
+    }
+
     @Test fun profileConflictKeepsInputsAndCanReloadLatest() = Fixture().use { fixture ->
         var profile by mutableStateOf(UserProfile("기존 닉네임", "테스트 지역", setOf(Sport.FITNESS), goals = setOf("운동 습관 만들기")))
         var reloads = 0

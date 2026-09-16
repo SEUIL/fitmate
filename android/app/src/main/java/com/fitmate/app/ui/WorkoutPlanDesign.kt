@@ -53,8 +53,8 @@ import kotlinx.coroutines.withContext
 @Composable internal fun PlanAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(onClick, Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = enabled,
         shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) { Text(text) }
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary)) { Text(text) }
 }
 
 @Composable internal fun PlanSummary(content: @Composable ColumnScope.() -> Unit) {
@@ -124,7 +124,7 @@ internal fun nextRoutineItems(routine: JsonObject): List<JsonObject>? {
         error?.let { ErrorText(it); TextButton({ reload++ }) { Text("다시 불러오기") } }
         routine?.let { value ->
             PlanBadge("${value.text("splitCount")}일 분할")
-            PlanHeading(if (items == null) "오늘의 운동 확인" else "오늘은 ${day}일차.", value.text("name"))
+            PlanHeading(if (items == null) "오늘의 운동 확인" else "준비되셨나요?", "${value.text("name")} · ${day}일차")
             if (items.isNullOrEmpty()) {
                 Text("오늘 진행할 운동을 확인할 수 없습니다. 다시 불러와 주세요.")
                 TextButton({ reload++ }) { Text("다시 불러오기") }
@@ -133,7 +133,9 @@ internal fun nextRoutineItems(routine: JsonObject): List<JsonObject>? {
                     Text("전체 ${value.rows("items").size}종목 중 오늘의 ${items.size}종목", fontWeight = FontWeight.SemiBold)
                     Text("${items.sumOf { it.text("targetSets").toIntOrNull() ?: 1 }}세트 · 완료하면 다음 일차로 이어져요.", style = MaterialTheme.typography.bodySmall)
                 }
-                items.forEachIndexed { index, item -> PlanExerciseRow(index, item.text("exerciseName"), routineTargetLabel(item)) }
+                PlanSummary {
+                    items.forEachIndexed { index, item -> PlanExerciseRow(index, item.text("exerciseName"), routineTargetLabel(item)) }
+                }
                 PlanSummary {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {

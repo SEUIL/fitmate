@@ -33,7 +33,7 @@ import com.fitmate.app.ui.theme.LocalAppearancePreference
 }
 
 // Applied only to the reviewed routes. The shared theme and Samsung Health retain their styles.
-@Composable internal fun WorkoutDesignTheme(enabled: Boolean = true, content: @Composable () -> Unit) {
+@Composable internal fun WorkoutDesignTheme(enabled: Boolean = true, journey: Boolean = false, content: @Composable () -> Unit) {
     if (!enabled) { content(); return }
     val dark = when (LocalAppearancePreference.current.mode) {
         AppearanceMode.SYSTEM -> isSystemInDarkTheme()
@@ -57,10 +57,30 @@ import com.fitmate.app.ui.theme.LocalAppearancePreference
         outlineVariant = if (dark) Color(0xFF414B56) else Color(0xFFD7DEE6),
         error = if (dark) Color(0xFFFFB4AB) else Color(0xFFB3261E),
     )
-    MaterialTheme(colorScheme = colors, typography = MaterialTheme.typography.copy(
+    val journeyColors = if (!journey) colors else colors.copy(
+        primary = if (dark) Color(0xFF8AD8C5) else Color(0xFF008675),
+        onPrimary = if (dark) Color(0xFF123C33) else Color.White,
+        primaryContainer = if (dark) Color(0xFF264C42) else Color(0xFFE9F6F0),
+        onPrimaryContainer = if (dark) Color(0xFFB5EDDB) else Color(0xFF267C63),
+        secondaryContainer = if (dark) Color(0xFF264C42) else Color(0xFFE9F6F0),
+        onSecondaryContainer = if (dark) Color(0xFFB5EDDB) else Color(0xFF267C63),
+        background = if (dark) colors.background else Color(0xFFF7F9F7),
+        onSurface = if (dark) colors.onSurface else Color(0xFF182B2A),
+        outlineVariant = if (dark) colors.outlineVariant else Color(0xFFE0E9E3),
+        surfaceContainerLow = if (dark) colors.surfaceContainerLow else Color(0xFFF7F9F7),
+    )
+    val type = MaterialTheme.typography.copy(
         titleLarge = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 28.sp),
         bodySmall = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp, lineHeight = 20.sp),
         labelLarge = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp, lineHeight = 22.sp),
+    )
+    MaterialTheme(colorScheme = journeyColors, typography = if (!journey) type else type.copy(
+        headlineLarge = type.headlineLarge.copy(fontSize = 28.sp, lineHeight = 34.sp),
+        headlineSmall = type.headlineSmall.copy(fontSize = 22.sp, lineHeight = 28.sp),
+        titleMedium = type.titleMedium.copy(fontSize = 16.sp, lineHeight = 22.sp),
+        bodyLarge = type.bodyLarge.copy(fontSize = 14.sp, lineHeight = 20.sp),
+        bodySmall = type.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp),
+        labelLarge = type.labelLarge.copy(fontSize = 14.sp, lineHeight = 20.sp),
     ), content = content)
 }
 
@@ -121,8 +141,8 @@ import com.fitmate.app.ui.theme.LocalAppearancePreference
 @Composable internal fun WorkoutAction(label: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(onClick, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = enabled,
         shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) {
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary)) {
         Text(label, fontWeight = FontWeight.Bold)
     }
 }
