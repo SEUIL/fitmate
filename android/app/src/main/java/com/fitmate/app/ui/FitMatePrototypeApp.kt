@@ -125,6 +125,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class PrototypeRoute(val title: String) {
+    SPORT_RECORD("운동 기록하기"),
     NOTICES("공지사항"),
     APPEALS("제재 안내 · 이의신청"),
     PERSON("프로필"),
@@ -236,6 +237,17 @@ fun FitMatePrototypeApp(
     var cancelError by remember { mutableStateOf<String?>(null) }
     var inbodyOrigin by remember { mutableStateOf(PrototypeRoute.HOME) }
     val runningState = remember { initial.running?.restore() ?: RunningState() }
+    val bootCount = remember { android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1) }
+    val sportState = remember {
+        val restored = initial.sportRecord?.restore(android.os.SystemClock.elapsedRealtime(), bootCount)
+        SportRecordState(restored).also { it.restoreNotice = initial.sportRecord?.anchor != null && restored?.anchor == null }
+    }
+    LaunchedEffect(sportState) {
+        while (true) {
+            delay(10_000)
+            sportState.draft?.takeIf { it.anchor != null }?.let { sportState.draft = it.checkpoint(android.os.SystemClock.elapsedRealtime()) }
+        }
+    }
     val inbodyState = remember { InbodyState() }
     val mateState = remember { MateFeatureState().also { initial.mates?.restore(it) } }
     val socialState = remember { SocialState(repository.communityPosts(), repository.dmConversations()).also { it.accounts.photo = initial.photo; initial.social?.restore(it) } }
@@ -258,7 +270,7 @@ fun FitMatePrototypeApp(
         FrontendSnapshot(profile = if (registered) profile else null, signedIn = signedIn,
             workout = workoutSession?.snapshot(), history = workoutHistory, routines = savedRoutines,
             photo = socialState.accounts.photo, healthConsent = healthConsent, locationConsent = locationConsent, running = runningState.snapshot(),
-            social = socialState.snapshot(), body = if (inbodyState.loaded) inbodyState.records.map { it.snapshot() } else initial.body, mates = mateState.snapshot(matePosts))
+            social = socialState.snapshot(), body = if (inbodyState.loaded) inbodyState.records.map { it.snapshot() } else initial.body, mates = mateState.snapshot(matePosts), sportRecord = sportState.draft)
     }
     LaunchedEffect(localStore) {
         snapshotFlow { currentSnapshot() }.conflate().collect { snapshot ->
@@ -329,22 +341,22 @@ fun FitMatePrototypeApp(
         }
     }
     WorkoutDesignTheme(journey = route in setOf(PrototypeRoute.SOLO, PrototypeRoute.HEALTH_ROUTINE,
-        PrototypeRoute.WORKOUT_PREP, PrototypeRoute.WORKOUT, PrototypeRoute.REPORT, PrototypeRoute.RUNNING),
+        PrototypeRoute.WORKOUT_PREP, PrototypeRoute.WORKOUT, PrototypeRoute.REPORT, PrototypeRoute.RUNNING, PrototypeRoute.SPORT_RECORD),
         enabled = route in setOf(PrototypeRoute.HOME, PrototypeRoute.HEALTH_ROUTINE, PrototypeRoute.WORKOUT,
-        PrototypeRoute.SOLO, PrototypeRoute.WORKOUT_PREP, PrototypeRoute.RUNNING, PrototypeRoute.REPORT, PrototypeRoute.HISTORY,
+        PrototypeRoute.SOLO, PrototypeRoute.WORKOUT_PREP, PrototypeRoute.RUNNING, PrototypeRoute.SPORT_RECORD, PrototypeRoute.REPORT, PrototypeRoute.HISTORY,
         PrototypeRoute.MATE_LIST, PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE,
         PrototypeRoute.COMMUNITY, PrototypeRoute.DM, PrototypeRoute.DM_DETAIL, PrototypeRoute.PROFILE, PrototypeRoute.INBODY,
         PrototypeRoute.SETTINGS, PrototypeRoute.APPEARANCE, PrototypeRoute.ACCOUNT, PrototypeRoute.NOTIFICATIONS, PrototypeRoute.FOLLOW_REQUESTS)) {
     Scaffold(
         topBar = {
-            if (route == PrototypeRoute.SOLO || route == PrototypeRoute.RUNNING ||
+            if (route == PrototypeRoute.SOLO || route == PrototypeRoute.RUNNING || route == PrototypeRoute.SPORT_RECORD ||
                 (route == PrototypeRoute.HEALTH_ROUTINE && localRoutineMode) ||
                 (route == PrototypeRoute.WORKOUT_PREP && selectedServerRoutine == null)) {
-                WorkoutFlowBackBar(if (route == PrototypeRoute.SOLO) "" else if (route == PrototypeRoute.RUNNING) "운동 · 러닝" else "운동 · 헬스",
+                WorkoutFlowBackBar(if (route == PrototypeRoute.SOLO) "" else if (route == PrototypeRoute.SPORT_RECORD) "운동 기록" else if (route == PrototypeRoute.RUNNING) "운동 · 러닝" else "운동 · 헬스",
                     modifier = Modifier.statusBarsPadding(), back = {
                         if (route == PrototypeRoute.RUNNING && runningState.phase != "설정") runningState.exitDialog = true
                         else route = when (route) {
-                            PrototypeRoute.SOLO -> PrototypeRoute.HOME
+                            PrototypeRoute.SOLO, PrototypeRoute.SPORT_RECORD -> PrototypeRoute.HOME
                             PrototypeRoute.WORKOUT_PREP -> PrototypeRoute.HEALTH_ROUTINE
                             else -> PrototypeRoute.SOLO
                         }
@@ -481,12 +493,25 @@ fun FitMatePrototypeApp(
             PrototypeRoute.HOME -> SocialHome(Modifier.padding(padding), profile, socialState, apiClient,
                 notifications = { route = PrototypeRoute.NOTIFICATIONS },
                 resumeDescription = workoutSession?.let { "${it.exerciseName} · 기록 ${it.recordedSets.size}세트" }
+                    ?: sportState.draft?.let { "${sportLabel(it.sport)} · ${it.phase} 이어하기" }
                     ?: if (runningState.phase != "설정") "진행 중인 러닝으로 돌아가요" else null,
-                resuming = workoutSession != null || runningState.phase != "설정",
-                start = { if (workoutSession != null) route = PrototypeRoute.WORKOUT else if (runningState.phase != "설정") route = PrototypeRoute.RUNNING else { mateState.activeWorkoutId = null; route = PrototypeRoute.SOLO } },
+                resuming = workoutSession != null || runningState.phase != "설정" || sportState.draft != null,
+                start = { if (workoutSession != null) route = PrototypeRoute.WORKOUT else if (sportState.draft != null) route = PrototypeRoute.SPORT_RECORD else if (runningState.phase != "설정") route = PrototypeRoute.RUNNING else { mateState.activeWorkoutId = null; route = PrototypeRoute.SOLO } },
                 mates = { route = PrototypeRoute.MATE_LIST }, history = { route = PrototypeRoute.HISTORY }, community = { route = PrototypeRoute.COMMUNITY },
                 dm = { route = PrototypeRoute.DM }, inbody = { inbodyOrigin = PrototypeRoute.HOME; route = PrototypeRoute.INBODY }, server = serverSocial)
-            PrototypeRoute.SOLO -> SoloScreen(Modifier.padding(padding), { mateState.activeWorkoutId = null; route = PrototypeRoute.HEALTH_ROUTINE }, { mateState.activeWorkoutId = null; route = PrototypeRoute.RUNNING })
+            PrototypeRoute.SPORT_RECORD -> SportRecordFlow(Modifier.padding(padding), apiClient, sportState, bootCount,
+                persist = { localStore.save(currentSnapshot()).also { storageError = !it } },
+                home = { route = PrototypeRoute.HOME }, history = { route = PrototypeRoute.HISTORY })
+            PrototypeRoute.SOLO -> SportSelectionScreen(Modifier.padding(padding), apiClient) { code ->
+                when {
+                    workoutSession != null -> route = PrototypeRoute.WORKOUT
+                    sportState.draft != null -> route = PrototypeRoute.SPORT_RECORD
+                    runningState.phase != "설정" -> route = PrototypeRoute.RUNNING
+                    code == "HEALTH" -> { mateState.activeWorkoutId = null; route = PrototypeRoute.HEALTH_ROUTINE }
+                    code == "RUNNING" -> { mateState.activeWorkoutId = null; route = PrototypeRoute.RUNNING }
+                    else -> { mateState.activeWorkoutId = null; sportState.prepare(code); route = PrototypeRoute.SPORT_RECORD }
+                }
+            }
             PrototypeRoute.HEALTH_ROUTINE -> if (!localRoutineMode) ServerRoutineLibrary(Modifier.padding(padding), apiClient, Sport.FITNESS in profile.interests,
                 select = { routine ->
                     selectedServerRoutine = routine

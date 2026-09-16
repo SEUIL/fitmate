@@ -2,6 +2,8 @@ package com.fitmate.app.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +25,7 @@ import kotlinx.coroutines.launch
     requestSamsungExercisePermission: () -> Unit = {},
 ) {
     val records = remember(api) { ServerRecordApi(api) }
-    var sport by remember { mutableStateOf("헬스") }
+    var sport by remember { mutableStateOf("전체") }
     var rows by remember { mutableStateOf(emptyList<JsonObject>()) }
     var cursor by remember { mutableStateOf("0") }
     var next by remember { mutableStateOf<String?>(null) }
@@ -31,13 +33,15 @@ import kotlinx.coroutines.launch
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<String?>(null) }
+    var selectedSport by remember { mutableStateOf("HEALTH") }
     LaunchedEffect(sport, cursor, refresh) {
         loading = true; error = null
         try {
             val result = withContext(Dispatchers.IO) {
-                records.page(if (sport == "러닝") "running-records" else "workout-sessions?status=COMPLETED", cursor)
+                val code = if (sport == "헬스") "HEALTH" else com.fitmate.app.data.model.Sport.entries.firstOrNull { it.label == sport }?.name
+                records.page("workout-sessions?status=COMPLETED" + (code?.let { "&sportCode=$it" } ?: ""), cursor)
             }
-            val items = result.rows("items").filter { sport == "러닝" || it.text("sportCode") == "HEALTH" }
+            val items = result.rows("items")
             rows = (if (cursor == "0") items else rows + items).distinctBy { it.text("id") }
             next = result.text("nextCursor").takeIf { result.get("hasNext")?.asBoolean == true && it.isNotBlank() }
         } catch (failure: Exception) {
@@ -48,10 +52,10 @@ import kotlinx.coroutines.launch
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         TextButton({ cursor = "0"; refresh++ }, enabled = !loading) { Text("새로고침") }
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("헬스", "러닝").forEach { label -> FilterChip(sport == label, {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        (listOf("전체", "헬스", "러닝") + additionalSports.map { it.label }).forEach { label -> FilterChip(sport == label, {
             if (sport != label) { sport = label; rows = emptyList(); cursor = "0"; next = null; selected = null }
-        }, label = { Text(label) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+        }, label = { Text(label) }, modifier = Modifier.heightIn(min = 48.dp),
             shape = RoundedCornerShape(12.dp), enabled = !loading) }
     }
     Text("서버에 저장된 내 운동 기록", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -62,24 +66,26 @@ import kotlinx.coroutines.launch
         Text("운동을 마치고 저장하면 여기에 모여요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     rows.forEach { row ->
-        OutlinedCard(onClick = { selected = row.text("id") }, modifier = Modifier.fillMaxWidth(),
+        val code = row.text("sportCode")
+        OutlinedCard(onClick = { selectedSport = code; selected = row.text("id") }, modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(recordDate(row.recordTime(if (sport == "러닝") "completedAt" else "endedAt")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (sport == "러닝") {
-                    WorkoutSportLabel(true, "${"%.2f".format((row.recordInt("distanceMeters") ?: 0) / 1000.0)} km",
-                        "${row.recordInt("activeDurationSeconds") ?: 0}초 · ${row.recordInt("averagePaceSecondsPerKm")?.let { "%d:%02d /km".format(it / 60, it % 60) } ?: "페이스 없음"}")
-                } else {
+                Text(recordDate(row.recordTime("endedAt")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (code == "HEALTH") {
                     WorkoutSportLabel(false, row.text("routineName").ifBlank { "헬스 운동" },
                         "운동 ${row.recordInt("exerciseCount")}종 · ${row.recordInt("completedSetCount")}세트")
+                } else {
+                    Text(sportLabel(code), style = MaterialTheme.typography.titleLarge)
+                    Text("완료한 운동 · 상세 기록 보기", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
     }
     if (next != null && error == null) WorkoutSecondaryAction("더 보기", enabled = !loading) { cursor = requireNotNull(next) }
     selected?.let { id -> SocialSheet({ selected = null }) {
-        ServerRecordDetail(api, id, sport == "러닝", samsungHealthState, loadSamsungWorkouts, requestSamsungExercisePermission)
+        if (additionalSports.any { it.name == selectedSport }) SportRecordDetail(api, id)
+        else ServerRecordDetail(api, id, selectedSport == "RUNNING", samsungHealthState, loadSamsungWorkouts, requestSamsungExercisePermission)
     } }
 }
 
