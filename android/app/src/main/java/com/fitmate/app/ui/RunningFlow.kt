@@ -21,12 +21,14 @@ import androidx.core.content.ContextCompat
 import com.fitmate.app.BuildConfig
 import com.fitmate.app.running.RunTrackingService
 import com.fitmate.app.running.RunTrackingStore
+import com.fitmate.app.running.RunRoutePoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import com.fitmate.app.data.remote.FitMateApiClient
+import com.fitmate.app.samsunghealth.SamsungHealthUiState
 
 internal data class RunLap(val number: Int, val meters: Int, val seconds: Int)
 internal data class RunResult(val meters: Int, val seconds: Int, val laps: List<RunLap>, val goal: String, val target: Int, val rpe: Int, val condition: Int, val memo: String, val completedAt: Long? = null, val serverId: String? = null)
@@ -46,6 +48,7 @@ internal class RunningState {
     var paused by mutableStateOf(false)
     var stationary by mutableStateOf(false)
     var seconds by mutableStateOf(0)
+    var elapsedSeconds by mutableStateOf(0)
     var meters by mutableStateOf(0)
     var target by mutableStateOf(5000)
     var exitDialog by mutableStateOf(false)
@@ -58,12 +61,15 @@ internal class RunningState {
     var pendingUpload by mutableStateOf<String?>(null)
     var startedAt by mutableStateOf<Long?>(null)
     var completedAt by mutableStateOf<Long?>(null)
+    var savedRecordId by mutableStateOf<String?>(null)
+    var routePoints by mutableStateOf(emptyList<RunRoutePoint>())
     val history = mutableStateListOf<RunResult>()
 
     fun tick(secondsToAdd: Int, metersToAdd: Int) {
         val beforeMeters = meters
         val beforeSeconds = seconds
         seconds += secondsToAdd
+        elapsedSeconds += secondsToAdd
         meters += metersToAdd
         if (metersToAdd > 0) {
             for (km in (beforeMeters / 1000 + 1)..(meters / 1000)) {
@@ -72,11 +78,18 @@ internal class RunningState {
             }
         }
     }
-    fun updateFromDeviceTracking(trackedSeconds: Int, trackedMeters: Int) {
+    fun updateFromDeviceTracking(
+        trackedSeconds: Int,
+        trackedMeters: Int,
+        trackedElapsedSeconds: Int = trackedSeconds,
+        trackedRoutePoints: List<RunRoutePoint> = routePoints,
+    ) {
         val beforeMeters = meters
         val beforeSeconds = seconds
         seconds = trackedSeconds
+        elapsedSeconds = trackedElapsedSeconds.coerceAtLeast(trackedSeconds)
         meters = trackedMeters
+        routePoints = trackedRoutePoints
         val metersAdded = trackedMeters - beforeMeters
         val secondsAdded = (trackedSeconds - beforeSeconds).coerceAtLeast(0)
         if (metersAdded > 0) {
@@ -87,8 +100,8 @@ internal class RunningState {
         }
     }
     fun reset() {
-        phase = "설정"; paused = false; stationary = false; seconds = 0; meters = 0; laps = emptyList()
-        error = null; memo = ""; rpe = "5"; condition = "3"; exitDialog = false; deviceTracking = false; pendingUpload = null; startedAt = null; completedAt = null
+        phase = "설정"; paused = false; stationary = false; seconds = 0; elapsedSeconds = 0; meters = 0; laps = emptyList()
+        error = null; memo = ""; rpe = "5"; condition = "3"; exitDialog = false; deviceTracking = false; pendingUpload = null; startedAt = null; completedAt = null; savedRecordId = null; routePoints = emptyList()
     }
 }
 
@@ -104,31 +117,61 @@ internal fun runPace(seconds: Int, meters: Int): String {
     locationConsent: Boolean,
     setLocationConsent: (Boolean) -> Unit,
     api: FitMateApiClient,
-    home: (Boolean) -> Unit
+    home: (Boolean) -> Unit,
+    samsungHealthState: SamsungHealthUiState = SamsungHealthUiState(),
+    loadSamsungWorkouts: (java.time.Instant, java.time.Instant, (SamsungHealthUiState) -> Unit) -> Unit = { _, _, _ -> },
+    requestSamsungExercisePermission: () -> Unit = {},
 ) = with(state) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
+    var stopping by remember { mutableStateOf(false) }
     var debugExpanded by remember { mutableStateOf(false) }
     val tracking by RunTrackingStore.updates.collectAsState()
     var consentDialog by remember { mutableStateOf(false) }
     fun startDeviceTracking() {
-        if (startedAt == null) startedAt = System.currentTimeMillis()
+        val started = startedAt ?: System.currentTimeMillis().also { startedAt = it }
+        visibility = "나만 보기"
         deviceTracking = true; paused = false; stationary = false; signal = "위치 확인 중"; phase = "진행"
-        RunTrackingService.start(context)
+        RunTrackingService.start(context, started, recordRoute)
     }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true) startDeviceTracking()
         else error = "정확한 거리와 페이스 기록을 위해 위치 권한을 허용해 주세요."
     }
+    LaunchedEffect(Unit) { RunTrackingService.restore(context) }
     LaunchedEffect(tracking) {
         if (tracking.active) {
             deviceTracking = true; phase = "진행"; paused = tracking.paused
-            updateFromDeviceTracking(tracking.elapsedSeconds, tracking.meters)
+            startedAt = tracking.startedAtEpochMillis ?: startedAt
+            updateFromDeviceTracking(
+                tracking.activeDurationSeconds,
+                tracking.meters,
+                tracking.elapsedSeconds,
+                tracking.routePoints,
+            )
             signal = tracking.message ?: "정상"; stationary = tracking.currentSpeedMps?.let { it < 0.5f } ?: false
+        } else if (tracking.finished) {
+            stopping = false
+            deviceTracking = false
+            paused = true
+            startedAt = tracking.startedAtEpochMillis ?: startedAt
+            completedAt = tracking.completedAtEpochMillis ?: completedAt
+            updateFromDeviceTracking(
+                tracking.activeDurationSeconds,
+                tracking.meters,
+                tracking.elapsedSeconds,
+                tracking.routePoints,
+            )
+            phase = "리포트"
+            signal = tracking.message ?: "정상"
         } else if (deviceTracking && tracking.message != null) error = tracking.message
     }
-    BackHandler(phase != "설정") { if (!saving) exitDialog = true }
+    BackHandler(phase != "설정") {
+        if (!saving) {
+            if (savedRecordId != null) { reset(); home(true) } else exitDialog = true
+        }
+    }
     val autoPaused = autoPause && stationary && !deviceTracking
     LaunchedEffect(phase, paused, autoPaused, demo, signal, deviceTracking) {
         while (phase == "진행" && !paused && !autoPaused && !deviceTracking) {
@@ -136,10 +179,10 @@ internal fun runPace(seconds: Int, meters: Int): String {
             tick(1, if (demo && signal == "정상") 3 else 0)
         }
     }
-    if (exitDialog) ConfirmAction("러닝을 나갈까요?", "저장하지 않은 이번 기록은 사라집니다.", { exitDialog = false }) { RunTrackingService.stop(context); reset(); home(false) }
+    if (exitDialog) ConfirmAction("러닝을 나갈까요?", "저장하지 않은 이번 기록은 사라집니다.", { exitDialog = false }) { RunTrackingService.discard(context); reset(); home(false) }
     if (consentDialog) ConfirmAction(
         "위치정보 이용 동의",
-        "러닝 중 거리·페이스·랩을 계산하기 위해 위치정보를 사용합니다. 지도 경로나 좌표는 저장하지 않습니다. 운동을 종료하면 GPS 기록도 중지됩니다.",
+        "러닝 중 거리·페이스·랩을 계산합니다. 경로 기록을 켠 경우에만 좌표를 내 기록으로 저장하며, 공개 범위는 항상 나만 보기입니다.",
         { consentDialog = false }
     ) { consentDialog = false; setLocationConsent(true); permissionLauncher.launch(buildList {
         add(Manifest.permission.ACCESS_FINE_LOCATION); add(Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -174,8 +217,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     ToggleLine("자동 일시정지", autoPause) { autoPause = it }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     ToggleLine("경로 기록", recordRoute) { recordRoute = it }
-                    Text("거리·시간·랩만 기록하며 지도 경로와 GPS 좌표는 저장하지 않아요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (recordRoute) WorkoutChoices(listOf("나만 보기", "요약만 공유"), visibility, columns = 2) { visibility = it }
+                    Text(if (recordRoute) "좌표는 러닝 중에만 저장하며 공개 범위는 나만 보기입니다." else "경로를 끄면 좌표를 저장하거나 전송하지 않아요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
                 SamsungPreparationOption(samsung, running = true) { samsung = it }
@@ -194,7 +236,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     else {
                         target = if (goal in listOf("거리", "페이스")) (distance!! * 1000).toInt() else targetMinutes.toInt() * 60
                         error = null; paused = false
-                        if (demo) { startedAt = System.currentTimeMillis(); deviceTracking = false; phase = "진행" }
+                        if (demo) { startedAt = System.currentTimeMillis(); elapsedSeconds = 0; routePoints = emptyList(); deviceTracking = false; phase = "진행" }
                         else if (locationConsent) permissionLauncher.launch(buildList {
                             add(Manifest.permission.ACCESS_FINE_LOCATION); add(Manifest.permission.ACCESS_COARSE_LOCATION)
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
@@ -210,7 +252,8 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("이동 거리", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${"%.2f".format(meters / 1000.0)} km", style = if (LocalDensity.current.fontScale > 1.3f) MaterialTheme.typography.titleLarge else MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
-                    Text("운동 시간 · %02d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60), style = MaterialTheme.typography.titleLarge)
+                    Text("활동 시간 · %02d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60), style = MaterialTheme.typography.titleLarge)
+                    if (deviceTracking) Text("경과 시간 ${elapsedSeconds / 60}분 ${elapsedSeconds % 60}초", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 WorkoutCard {
                     WorkoutMetrics("현재 페이스" to if ((demo || deviceTracking) && signal == "정상" && !paused && !autoPaused) runPace(60, (tracking.currentSpeedMps?.times(60f) ?: 0f).toInt()).takeIf { deviceTracking } ?: "5:33 /km" else "—",
@@ -231,6 +274,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     Text("GPS · $signal", fontWeight = FontWeight.SemiBold)
                     if (signal != "정상") Text("GPS ${signal} · 시간 기록은 유지됩니다.", color = MaterialTheme.colorScheme.error)
                     if (deviceTracking) Text(tracking.accuracyMeters?.let { "GPS 정확도 약 ${it.toInt()}m" } ?: "GPS 위치를 찾는 중")
+                    if (recordRoute) Text("저장할 경로 좌표 ${routePoints.size}개 · 나만 보기")
                     if (samsung) Text("심박수 — · Samsung Health 수신 대기")
                 }
                 PlanDisclosure("1 km 자동 랩 · 구간 기록") {
@@ -246,6 +290,20 @@ internal fun runPace(seconds: Int, meters: Int): String {
                 OutlinedButton({ exitDialog = true }) { Text("기록 취소") }
             }
             else -> {
+                val serverRecordId = savedRecordId
+                if (serverRecordId != null) {
+                    Text("서버에 저장된 통합 러닝 리포트입니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ServerRecordDetail(
+                        api = api,
+                        id = serverRecordId,
+                        running = true,
+                        samsungHealthState = samsungHealthState,
+                        loadSamsungWorkouts = loadSamsungWorkouts,
+                        requestSamsungExercisePermission = requestSamsungExercisePermission,
+                        samsungSelected = samsung,
+                    )
+                    WorkoutAction("리포트 확인 완료") { reset(); home(true) }
+                } else {
                 WorkoutCard {
                     val achieved = when (goal) {
                         "거리" -> meters >= target
@@ -258,7 +316,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     WorkoutMetrics("평균 페이스" to runPace(seconds, meters), "최고 랩 페이스" to (laps.minByOrNull { it.seconds }?.let { runPace(it.seconds, it.meters) } ?: "—"))
                     Text("칼로리·심박수·케이던스·고도: 수신 데이터 없음")
-                    if (recordRoute) Text("경로: 수신 데이터 없음 · 공개 범위 $visibility")
+                    if (recordRoute) Text("경로: 좌표 ${routePoints.size}개 · 공개 범위 나만 보기")
                     if (meters == 0) Text("거리 기록이 없어요. 시간과 메모만 저장할 수 있습니다.")
                 }
                 WorkoutCard {
@@ -281,7 +339,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                 }
                 if (pendingUpload != null) Text("저장 요청한 기록을 확인 중입니다. 다시 시도해도 같은 기록으로 저장됩니다.", style = MaterialTheme.typography.bodySmall)
                 ErrorText(error)
-                WorkoutAction(if (saving) "서버에 저장 중…" else "기록 저장하고 홈으로", enabled = !saving) {
+                WorkoutAction(if (saving) "서버에 저장 중…" else "저장하고 통합 리포트 보기", enabled = !saving) {
                     if (!saving) {
                         saving = true; error = null
                         scope.launch {
@@ -290,16 +348,21 @@ internal fun runPace(seconds: Int, meters: Int): String {
                                 val body = pendingUpload?.let { com.google.gson.JsonParser.parseString(it).asJsonObject }
                                     ?: com.google.gson.Gson().toJsonTree(runningPayload(state, finishedAt) + ("clientRecordId" to java.util.UUID.randomUUID().toString())).asJsonObject.also { pendingUpload = it.toString() }
                                 val saved = withContext(Dispatchers.IO) { ServerRecordApi(api).saveRun(body) }
+                                val recordId = saved.text("id")
+                                history.removeAll { it.serverId == recordId }
                                 history.add(0, RunResult(saved.recordInt("distanceMeters") ?: 0, saved.recordInt("activeDurationSeconds") ?: 0,
                                     saved.rows("laps").map { RunLap(requireNotNull(it.recordInt("lapNo")), requireNotNull(it.recordInt("distanceMeters")), requireNotNull(it.recordInt("durationSeconds"))) },
-                                    goal, target, saved.recordInt("rpe") ?: 5, saved.recordInt("conditionScore") ?: 3, saved.text("memo"), saved.recordTime("completedAt"), saved.text("id")))
-                                reset(); home(true)
+                                    goal, target, saved.recordInt("rpe") ?: 5, saved.recordInt("conditionScore") ?: 3, saved.text("memo"), saved.recordTime("completedAt"), recordId))
+                                savedRecordId = recordId
+                                pendingUpload = null
+                                RunTrackingService.clearFinished(context)
                             } catch (failure: Exception) {
                                 if (failure is CancellationException) throw failure
                                 error = "${failure.message ?: "저장하지 못했어요."} 입력한 기록은 유지됩니다."
                             } finally { saving = false }
                         }
                     }
+                }
                 }
             }
         }
@@ -312,7 +375,16 @@ internal fun runPace(seconds: Int, meters: Int): String {
                 }
             }
             Box(Modifier.weight(1f)) {
-                WorkoutSecondaryAction("종료") { RunTrackingService.stop(context); deviceTracking = false; completedAt = System.currentTimeMillis(); phase = "리포트" }
+                WorkoutSecondaryAction(if (stopping) "종료 중…" else "종료", enabled = !stopping) {
+                    if (deviceTracking) {
+                        stopping = true
+                        RunTrackingService.stop(context)
+                    } else if (completedAt == null) {
+                        completedAt = System.currentTimeMillis()
+                        paused = true
+                        phase = "리포트"
+                    }
+                }
             }
         }
     }

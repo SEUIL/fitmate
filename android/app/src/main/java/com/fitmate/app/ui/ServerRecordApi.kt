@@ -30,17 +30,20 @@ internal class ServerRecordApi(private val api: FitMateApiClient) {
     fun report(id: String) = api.request("GET", "workout-sessions/$id/report").asJsonObject
     fun session(id: String) = api.request("GET", "workout-sessions/$id").asJsonObject
     fun saveRun(body: JsonObject) = api.request("POST", "running-records", body).asJsonObject
+    fun deleteRun(id: String) = api.request("DELETE", "running-records/$id")
 }
 
 internal fun runningPayload(state: RunningState, completedAt: Long): Map<String, Any> = with(state) {
     require(seconds > 0) { "1초 이상 운동한 후 저장해 주세요." }
+    val started = requireNotNull(startedAt) { "러닝 시작 시각이 없습니다. 새 기록을 시작해 주세요." }
+    require(completedAt >= started + seconds * 1_000L) { "완료 시각은 활동 시간보다 이전일 수 없습니다." }
     val result = mutableMapOf<String, Any>(
         "runType" to when (goal) {
             "거리" -> "DISTANCE_TARGET"; "시간" -> "TIME_TARGET"; "페이스" -> "PACE_TARGET"
             "인터벌" -> "INTERVAL"; else -> "FREE"
         },
         "activeDurationSeconds" to seconds, "distanceMeters" to meters,
-        "startedAt" to Instant.ofEpochMilli(requireNotNull(startedAt) { "러닝 시작 시각이 없습니다. 새 기록을 시작해 주세요." }).toString(),
+        "startedAt" to Instant.ofEpochMilli(started).toString(),
         "completedAt" to Instant.ofEpochMilli(completedAt).toString(),
         "routeVisibility" to "PRIVATE", "autoPauseEnabled" to autoPause,
         "rpe" to rpe.toInt(), "conditionScore" to condition.toInt(), "memo" to memo,
@@ -50,6 +53,14 @@ internal fun runningPayload(state: RunningState, completedAt: Long): Map<String,
     if (goal in listOf("시간", "인터벌")) result["targetDurationSeconds"] = target
     if (goal == "페이스") result["targetPaceSecondsPerKm"] = targetPace.toInt()
     if (goal == "인터벌") result["intervalSeconds"] = intervalMinutes.toInt() * 60
+    if (recordRoute && routePoints.isNotEmpty()) result["routePoints"] = routePoints.map { point ->
+        buildMap<String, Any> {
+            put("latitude", point.latitude)
+            put("longitude", point.longitude)
+            put("recordedAt", Instant.ofEpochMilli(point.recordedAtEpochMillis).toString())
+            point.altitudeMeters?.let { put("altitudeMeters", it) }
+        }
+    }
     result
 }
 

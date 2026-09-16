@@ -6,12 +6,14 @@ import com.fitmate.backend.common.error.ApiErrorCode
 import com.fitmate.backend.common.error.ApiException
 import com.fitmate.backend.common.persistence.UuidBinaryConverter
 import com.fitmate.backend.fitness.domain.SportCode
+import com.fitmate.backend.health.repository.ExternalWorkoutSummaryRepository
 import com.fitmate.backend.running.api.CreateRunningRecordRequest
 import com.fitmate.backend.running.api.RunningLapResponse
 import com.fitmate.backend.running.api.RunningRecordResponse
 import com.fitmate.backend.running.api.RunningRecordSummaryResponse
 import com.fitmate.backend.running.api.RunningRoutePoint
 import com.fitmate.backend.running.domain.RunType
+import com.fitmate.backend.running.domain.RouteVisibility
 import com.fitmate.backend.running.domain.RunningLap
 import com.fitmate.backend.running.domain.RunningRecord
 import com.fitmate.backend.running.repository.RunningLapRepository
@@ -33,6 +35,7 @@ class RunningRecordService(
     private val sessions: WorkoutSessionRepository,
     private val records: RunningRecordRepository,
     private val laps: RunningLapRepository,
+    private val externalSummaries: ExternalWorkoutSummaryRepository,
     private val objectMapper: ObjectMapper,
     private val entityManager: jakarta.persistence.EntityManager,
 ) {
@@ -48,7 +51,7 @@ class RunningRecordService(
             invalid("활동 시간은 시작부터 완료까지의 시간보다 길 수 없습니다.")
         }
         validateLaps(request)
-        validateRoute(request.routePoints, startedAt, request.completedAt)
+        validateRoute(request.routePoints, request.routeVisibility, startedAt, request.completedAt)
 
         val averagePace = pace(request.activeDurationSeconds, request.distanceMeters)
         val lapPaces = request.laps.map { pace(it.durationSeconds, it.distanceMeters)!! }
@@ -116,6 +119,17 @@ class RunningRecordService(
         return toResponse(record, laps.findAllByWorkoutSessionIdOrderByLapNoAsc(apiId(record.workoutSessionId)))
     }
 
+    @Transactional
+    fun delete(userId: UUID, recordId: UUID) {
+        val record = owned(userId, recordId)
+        val session = requireNotNull(record.workoutSession)
+        val storedSessionId = requireNotNull(record.workoutSessionId)
+        externalSummaries.deleteByWorkoutSessionIdAndUserId(storedSessionId, userId)
+        laps.deleteAll(laps.findAllByWorkoutSessionIdOrderByLapNoAsc(apiId(record.workoutSessionId)))
+        records.delete(record)
+        sessions.delete(session)
+    }
+
     @Transactional(readOnly = true)
     fun list(userId: UUID, cursor: Int, size: Int): CursorPageResponse<RunningRecordSummaryResponse> {
         if (cursor < 0 || size !in 1..100) invalid("cursor는 0 이상, size는 1부터 100까지 가능합니다.")
@@ -151,12 +165,15 @@ class RunningRecordService(
         }
     }
 
-    private fun validateRoute(points: List<RunningRoutePoint>, startedAt: Instant, completedAt: Instant) {
+    private fun validateRoute(points: List<RunningRoutePoint>, visibility: RouteVisibility, startedAt: Instant, completedAt: Instant) {
+        if (points.isNotEmpty() && visibility != RouteVisibility.PRIVATE) {
+            invalid("경로 기록은 나만 보기로만 저장할 수 있습니다.")
+        }
         if (points.any { it.recordedAt.isBefore(startedAt) || it.recordedAt.isAfter(completedAt) }) {
             invalid("경로 좌표 시각은 러닝 시작과 완료 시각 사이여야 합니다.")
         }
-        if (points.zipWithNext().any { (before, after) -> after.recordedAt.isBefore(before.recordedAt) }) {
-            invalid("경로 좌표는 측정 시각 순서대로 입력해야 합니다.")
+        if (points.zipWithNext().any { (before, after) -> !after.recordedAt.isAfter(before.recordedAt) }) {
+            invalid("경로 좌표 시각은 중복 없이 오름차순이어야 합니다.")
         }
     }
 

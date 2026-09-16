@@ -7,7 +7,9 @@ import com.fitmate.backend.common.persistence.UuidBinaryConverter
 import com.fitmate.backend.health.api.ExternalWorkoutResponse
 import com.fitmate.backend.health.api.PutExternalWorkoutRequest
 import com.fitmate.backend.health.api.toResponse
+import com.fitmate.backend.health.domain.ExternalWorkoutSample
 import com.fitmate.backend.health.domain.ExternalWorkoutSummary
+import com.fitmate.backend.health.repository.ExternalWorkoutSampleRepository
 import com.fitmate.backend.health.repository.ExternalWorkoutSummaryRepository
 import com.fitmate.backend.workout.domain.WorkoutSessionStatus
 import com.fitmate.backend.workout.repository.WorkoutSessionRepository
@@ -28,6 +30,7 @@ import java.util.UUID
 class ExternalWorkoutService(
     private val sessions: WorkoutSessionRepository,
     private val summaries: ExternalWorkoutSummaryRepository,
+    private val samples: ExternalWorkoutSampleRepository,
 ) {
     @Transactional(readOnly = true)
     fun get(userId: UUID, sessionId: UUID): ExternalWorkoutResponse? {
@@ -57,7 +60,11 @@ class ExternalWorkoutService(
         if (request.expectedVersion != null) conflict("새 연결에는 expectedVersion을 보내지 않습니다.")
 
         val entity = ExternalWorkoutSummary(workoutSessionId = storedSessionId, userId = userId).also { apply(it, normalized) }
-        return try { summaries.saveAndFlush(entity).asResponse() }
+        return try {
+            summaries.saveAndFlush(entity)
+            replaceSamples(storedSessionId, normalized)
+            entity.asResponse()
+        }
         catch (_: DataIntegrityViolationException) { conflict("이 원본 운동은 이미 연결되어 있습니다.") }
         catch (_: CannotAcquireLockException) { conflict("동시에 같은 원본 운동을 연결할 수 없습니다.") }
     }
@@ -70,13 +77,24 @@ class ExternalWorkoutService(
         if (entity.sourceRecordId != request.sourceRecordId || entity.sourceAppId != request.sourceAppId || entity.provider != request.provider) {
             conflict("이미 연결된 원본을 다른 원본으로 교체할 수 없습니다.")
         }
-        if (entity.payloadHash == request.payloadHash) return entity.asResponse()
+        val existingSeriesHash = entity.timeSeriesHash.ifBlank { sha256("") }
+        if (entity.payloadHash == request.payloadHash && existingSeriesHash == request.timeSeriesHash) return entity.asResponse()
         if (expectedVersion == null || expectedVersion != entity.version) conflict("저장된 요약 버전이 변경되었습니다.")
         if (entity.sourceModifiedAt != null && request.sourceModifiedAt != null && request.sourceModifiedAt.isBefore(entity.sourceModifiedAt)) {
             conflict("기기에 저장된 최신 원본보다 오래된 내용입니다.")
         }
+        val seriesChanged = existingSeriesHash != request.timeSeriesHash
         apply(entity, request)
-        return summaries.saveAndFlush(entity).asResponse()
+        summaries.saveAndFlush(entity)
+        if (seriesChanged) replaceSamples(requireNotNull(entity.workoutSessionId), request)
+        return entity.asResponse()
+    }
+
+    @Transactional
+    fun delete(userId: UUID, sessionId: UUID) {
+        val storedSessionId = dbId(sessionId)
+        sessions.findByIdAndUserIdForUpdate(storedSessionId, userId) ?: notFound()
+        summaries.findOwnedForUpdate(storedSessionId, userId)?.let(summaries::delete)
     }
 
     private fun validate(r: PutExternalWorkoutRequest) {
@@ -91,10 +109,18 @@ class ExternalWorkoutService(
         if (r.minHeartRate != null && r.maxHeartRate != null && r.minHeartRate > r.maxHeartRate) badRequest("최저 심박수가 최고 심박수보다 큽니다.")
         if (r.meanHeartRate != null && r.minHeartRate != null && r.meanHeartRate < r.minHeartRate) badRequest("평균 심박수가 최저 심박수보다 작습니다.")
         if (r.meanHeartRate != null && r.maxHeartRate != null && r.meanHeartRate > r.maxHeartRate) badRequest("평균 심박수가 최고 심박수보다 큽니다.")
+        if (r.samples.size > MAX_SAMPLES) badRequest("시계열 샘플 수가 너무 많습니다.")
+        if (r.samples.any { it.heartRate == null && it.speedMetersPerSecond == null }) badRequest("시계열 샘플에는 심박수 또는 속도가 필요합니다.")
+        if (r.samples.any { it.heartRate != null && (it.heartRate <= BigDecimal.ZERO || it.heartRate > BigDecimal("300")) }) badRequest("시계열 심박수 범위가 올바르지 않습니다.")
+        if (r.samples.any { it.speedMetersPerSecond != null && (it.speedMetersPerSecond < BigDecimal.ZERO || it.speedMetersPerSecond > BigDecimal("15")) }) badRequest("시계열 속도 범위가 올바르지 않습니다.")
+        if (r.samples.any { it.measuredAt.isBefore(r.startedAt) || it.measuredAt.isAfter(r.endedAt) }) badRequest("시계열 시각은 원본 운동 구간 안이어야 합니다.")
+        if (r.samples.zipWithNext().any { (before, after) -> !after.measuredAt.isAfter(before.measuredAt) }) {
+            badRequest("시계열 시각은 중복 없이 오름차순이어야 합니다.")
+        }
     }
 
     private fun allowed(sport: SportCode, type: String): Boolean = when (sport) {
-        SportCode.HEALTH -> type == "BENCH_PRESS"
+        SportCode.HEALTH -> type in HEALTH_EXERCISE_TYPES
         SportCode.RUNNING -> type == "RUNNING"
         else -> false
     }
@@ -108,13 +134,23 @@ class ExternalWorkoutService(
 
     private fun normalize(r: PutExternalWorkoutRequest): NormalizedWorkout {
         fun decimal(value: BigDecimal?) = value?.setScale(2, RoundingMode.HALF_UP)
+        val series = r.samples.map {
+            NormalizedSample(
+                it.measuredAt.truncatedTo(ChronoUnit.MILLIS),
+                it.heartRate?.setScale(2, RoundingMode.HALF_UP),
+                it.speedMetersPerSecond?.setScale(3, RoundingMode.HALF_UP),
+            )
+        }
+        if (series.zipWithNext().any { (before, after) -> !after.measuredAt.isAfter(before.measuredAt) }) {
+            badRequest("밀리초 기준으로 중복되거나 역순인 시계열 시각은 저장할 수 없습니다.")
+        }
         val value = NormalizedWorkout(
             r.provider, r.sourceRecordId, r.sourceAppId, r.sourceModifiedAt?.truncatedTo(ChronoUnit.MILLIS),
             r.exerciseType, r.startedAt.truncatedTo(ChronoUnit.MILLIS), r.endedAt.truncatedTo(ChronoUnit.MILLIS),
             r.activeDurationSeconds, decimal(r.distanceMeters), decimal(r.caloriesKcal), decimal(r.meanHeartRate),
-            decimal(r.minHeartRate), decimal(r.maxHeartRate), "",
+            decimal(r.minHeartRate), decimal(r.maxHeartRate), "", series, "",
         )
-        return value.copy(payloadHash = sha256(value.canonical()))
+        return value.copy(payloadHash = sha256(value.canonical()), timeSeriesHash = sha256(value.seriesCanonical()))
     }
 
     private fun apply(entity: ExternalWorkoutSummary, r: NormalizedWorkout) {
@@ -124,6 +160,21 @@ class ExternalWorkoutService(
         entity.distanceMeters = r.distanceMeters; entity.caloriesKcal = r.caloriesKcal
         entity.meanHeartRate = r.meanHeartRate; entity.minHeartRate = r.minHeartRate; entity.maxHeartRate = r.maxHeartRate
         entity.payloadHash = r.payloadHash
+        entity.timeSeriesHash = r.timeSeriesHash
+        entity.timeSeriesVersion = TIME_SERIES_VERSION
+        entity.timeSeriesSampleCount = r.samples.size
+    }
+
+    private fun replaceSamples(sessionId: UUID, request: NormalizedWorkout) {
+        val apiSessionId = apiId(sessionId)
+        samples.deleteAllByWorkoutSessionId(apiSessionId)
+        samples.flush()
+        samples.saveAll(request.samples.map { sample ->
+            ExternalWorkoutSample(
+                id = dbId(UUID.randomUUID()), workoutSessionId = apiSessionId,
+                measuredAt = sample.measuredAt, heartRate = sample.heartRate, speedMetersPerSecond = sample.speedMetersPerSecond,
+            )
+        })
     }
 
     private fun sha256(value: String) = MessageDigest.getInstance("SHA-256")
@@ -135,6 +186,29 @@ class ExternalWorkoutService(
     private fun dbId(value: UUID): UUID = UuidBinaryConverter.toMysqlOrderedUuid(value)
     private fun apiId(value: UUID?): UUID = UuidBinaryConverter.fromMysqlOrderedUuid(requireNotNull(value))
     private fun ExternalWorkoutSummary.asResponse() = toResponse(apiId(workoutSessionId))
+
+    companion object {
+        private val HEALTH_EXERCISE_TYPES = setOf(
+            "BENCH_PRESS",
+            "SQUATS",
+            "LUNGES",
+            "LEG_PRESSES",
+            "LEG_EXTENSIONS",
+            "LEG_CURLS",
+            "LAT_PULLDOWNS",
+            "DEADLIFTS",
+            "SHOULDER_PRESSES",
+            "LATERAL_RAISES",
+            "PUSH_UPS",
+            "PULL_UPS",
+            "CRUNCH",
+            "PLANK",
+            "ARM_CURLS",
+            "ARM_EXTENSIONS",
+        )
+        private const val MAX_SAMPLES = 10_000
+        private const val TIME_SERIES_VERSION = 1
+    }
 }
 
 private data class NormalizedWorkout(
@@ -142,10 +216,18 @@ private data class NormalizedWorkout(
     val exerciseType: String, val startedAt: Instant, val endedAt: Instant, val activeDurationSeconds: Long,
     val distanceMeters: BigDecimal?, val caloriesKcal: BigDecimal?, val meanHeartRate: BigDecimal?,
     val minHeartRate: BigDecimal?, val maxHeartRate: BigDecimal?, val payloadHash: String,
+    val samples: List<NormalizedSample>, val timeSeriesHash: String,
 ) {
     fun canonical() = listOf(provider, sourceRecordId, sourceAppId ?: "<null>", sourceModifiedAt?.toString() ?: "<null>",
         exerciseType, startedAt.toString(), endedAt.toString(), activeDurationSeconds.toString(),
         distanceMeters?.toPlainString() ?: "<null>", caloriesKcal?.toPlainString() ?: "<null>",
         meanHeartRate?.toPlainString() ?: "<null>", minHeartRate?.toPlainString() ?: "<null>",
         maxHeartRate?.toPlainString() ?: "<null>").joinToString("\u001f")
+
+    fun seriesCanonical() = samples.joinToString("\u001e") {
+        listOf(it.measuredAt.toString(), it.heartRate?.toPlainString() ?: "<null>", it.speedMetersPerSecond?.toPlainString() ?: "<null>")
+            .joinToString("\u001f")
+    }
 }
+
+private data class NormalizedSample(val measuredAt: Instant, val heartRate: BigDecimal?, val speedMetersPerSecond: BigDecimal?)

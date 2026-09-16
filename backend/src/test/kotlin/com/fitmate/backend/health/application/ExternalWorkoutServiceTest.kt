@@ -5,8 +5,10 @@ import com.fitmate.backend.common.error.ApiException
 import com.fitmate.backend.common.persistence.UuidBinaryConverter
 import com.fitmate.backend.fitness.domain.SportCode
 import com.fitmate.backend.health.api.PutExternalWorkoutRequest
+import com.fitmate.backend.health.api.ExternalWorkoutSampleRequest
 import com.fitmate.backend.health.domain.ExternalWorkoutSummary
 import com.fitmate.backend.health.repository.ExternalWorkoutSummaryRepository
+import com.fitmate.backend.health.repository.ExternalWorkoutSampleRepository
 import com.fitmate.backend.workout.domain.WorkoutSession
 import com.fitmate.backend.workout.domain.WorkoutSessionStatus
 import com.fitmate.backend.workout.repository.WorkoutSessionRepository
@@ -25,7 +27,8 @@ import java.util.UUID
 class ExternalWorkoutServiceTest {
     private val sessionRepository = mock(WorkoutSessionRepository::class.java)
     private val summaryRepository = mock(ExternalWorkoutSummaryRepository::class.java)
-    private val service = ExternalWorkoutService(sessionRepository, summaryRepository)
+    private val sampleRepository = mock(ExternalWorkoutSampleRepository::class.java)
+    private val service = ExternalWorkoutService(sessionRepository, summaryRepository, sampleRepository)
     private val userId = UUID.randomUUID()
     private val sessionId = UUID.randomUUID()
     private val storedSessionId = UuidBinaryConverter.toMysqlOrderedUuid(sessionId)
@@ -47,6 +50,19 @@ class ExternalWorkoutServiceTest {
         assertNull(result.distanceMeters)
         assertEquals(0, result.version)
         verify(summaryRepository).saveAndFlush(any(ExternalWorkoutSummary::class.java))
+    }
+
+    @Test
+    fun `accepts a directly mapped health exercise type`() {
+        completedSession()
+        `when`(summaryRepository.findOwnedForUpdate(storedSessionId, userId)).thenReturn(null)
+        `when`(summaryRepository.findByUserIdAndProviderAndSourceAppIdAndSourceRecordId(userId, ExternalWorkoutSummary.PROVIDER, null, "UID-A"))
+            .thenReturn(null)
+        `when`(summaryRepository.saveAndFlush(any(ExternalWorkoutSummary::class.java))).thenAnswer { it.arguments[0] }
+
+        val result = service.put(userId, sessionId, request().copy(exerciseType = "SQUATS"))
+
+        assertEquals("SQUATS", result.exerciseType)
     }
 
     @Test
@@ -91,6 +107,55 @@ class ExternalWorkoutServiceTest {
             ))
         }
         assertEquals(ApiErrorCode.EXTERNAL_WORKOUT_CONFLICT, failure.errorCode)
+    }
+
+    @Test
+    fun `time series is saved once and changed source replaces its samples`() {
+        completedSession()
+        `when`(summaryRepository.findOwnedForUpdate(storedSessionId, userId)).thenReturn(null)
+        `when`(summaryRepository.findByUserIdAndProviderAndSourceAppIdAndSourceRecordId(userId, ExternalWorkoutSummary.PROVIDER, null, "UID-A"))
+            .thenReturn(null)
+        `when`(summaryRepository.saveAndFlush(any(ExternalWorkoutSummary::class.java))).thenAnswer { it.arguments[0] }
+        val initial = request().copy(samples = listOf(ExternalWorkoutSampleRequest(startedAt, BigDecimal("100"), null)))
+        val saved = service.put(userId, sessionId, initial)
+        assertEquals(1, saved.timeSeriesSampleCount)
+        verify(sampleRepository).deleteAllByWorkoutSessionId(sessionId)
+
+        val entity = ExternalWorkoutSummary(
+            workoutSessionId = storedSessionId, userId = userId, sourceRecordId = "UID-A", sourceModifiedAt = startedAt,
+            exerciseType = "BENCH_PRESS", startedAt = startedAt, endedAt = endedAt, activeDurationSeconds = 1_700,
+            payloadHash = "different", timeSeriesHash = "different", version = 0,
+        )
+        `when`(summaryRepository.findOwnedForUpdate(storedSessionId, userId)).thenReturn(entity)
+        val replacement = initial.copy(sourceModifiedAt = startedAt.plusSeconds(1), expectedVersion = 0,
+            samples = listOf(ExternalWorkoutSampleRequest(endedAt, null, BigDecimal("3.0"))))
+        service.put(userId, sessionId, replacement)
+        verify(sampleRepository, org.mockito.Mockito.times(2)).deleteAllByWorkoutSessionId(sessionId)
+    }
+
+    @Test
+    fun `unlink deletes owned parent and database cascade removes samples`() {
+        completedSession()
+        val entity = ExternalWorkoutSummary(workoutSessionId = storedSessionId, userId = userId)
+        `when`(summaryRepository.findOwnedForUpdate(storedSessionId, userId)).thenReturn(entity)
+
+        service.delete(userId, sessionId)
+
+        verify(summaryRepository).delete(entity)
+    }
+
+    @Test
+    fun `rejects duplicate out of range and out of workout samples`() {
+        completedSession()
+        val duplicate = request().copy(samples = listOf(
+            ExternalWorkoutSampleRequest(startedAt, BigDecimal("100"), null),
+            ExternalWorkoutSampleRequest(startedAt, null, BigDecimal("3")),
+        ))
+        assertEquals(ApiErrorCode.VALIDATION_ERROR, assertThrows(ApiException::class.java) { service.put(userId, sessionId, duplicate) }.errorCode)
+        val outside = request().copy(samples = listOf(ExternalWorkoutSampleRequest(endedAt.plusSeconds(1), BigDecimal("100"), null)))
+        assertEquals(ApiErrorCode.VALIDATION_ERROR, assertThrows(ApiException::class.java) { service.put(userId, sessionId, outside) }.errorCode)
+        val invalid = request().copy(samples = listOf(ExternalWorkoutSampleRequest(startedAt, BigDecimal("301"), null)))
+        assertEquals(ApiErrorCode.VALIDATION_ERROR, assertThrows(ApiException::class.java) { service.put(userId, sessionId, invalid) }.errorCode)
     }
 
     private fun captureCreatedHash(): String {

@@ -10,6 +10,7 @@ import java.util.UUID
 
 interface ExternalWorkoutSummaryRepository : JpaRepository<ExternalWorkoutSummary, UUID> {
     fun findByWorkoutSessionIdAndUserId(workoutSessionId: UUID, userId: UUID): ExternalWorkoutSummary?
+    fun deleteByWorkoutSessionIdAndUserId(workoutSessionId: UUID, userId: UUID): Long
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from ExternalWorkoutSummary e where e.workoutSessionId = :sessionId and e.userId = :userId")

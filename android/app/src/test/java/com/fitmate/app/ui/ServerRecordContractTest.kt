@@ -3,6 +3,7 @@ package com.fitmate.app.ui
 import org.junit.Assert.*
 import org.junit.Test
 import com.google.gson.Gson
+import com.fitmate.app.running.RunRoutePoint
 
 class ServerRecordContractTest {
     @Test fun `all five run goals send required targets and private route`() {
@@ -41,12 +42,46 @@ class ServerRecordContractTest {
         val state = RunningState().apply {
             phase = "리포트"; seconds = 600; meters = 1000
             pendingUpload = "{\"clientRecordId\":\"frozen-request\"}"
+            savedRecordId = "server-record"
             history.add(RunResult(1000, 600, emptyList(), "자유", 0, 5, 3, "", 1_000_000L, "server-record"))
         }
         val gson = Gson()
         val restored = gson.fromJson(gson.toJson(state.snapshot()), RunningSnapshot::class.java).restore()
         assertEquals(state.pendingUpload, restored.pendingUpload)
         assertEquals("server-record", restored.history.single().serverId)
+        assertEquals("server-record", restored.savedRecordId)
         assertEquals("리포트", restored.phase)
+    }
+
+    @Test fun `route points are sent only when private route recording is enabled`() {
+        val state = RunningState().apply {
+            goal = "자유"; seconds = 60; elapsedSeconds = 90; startedAt = 400_000L
+            routePoints = listOf(RunRoutePoint(0.0, 0.0, 401_000L, 5.0))
+        }
+
+        assertFalse(runningPayload(state, 500_000L).containsKey("routePoints"))
+        state.recordRoute = true
+        val payload = runningPayload(state, 500_000L)
+        assertEquals("PRIVATE", payload["routeVisibility"])
+        assertEquals(1, (payload["routePoints"] as List<*>).size)
+    }
+
+    @Test fun `payload rejects a completed time before active duration ends`() {
+        val state = RunningState().apply { goal = "자유"; seconds = 60; startedAt = 400_000L }
+
+        assertThrows(IllegalArgumentException::class.java) { runningPayload(state, 450_000L) }
+    }
+
+    @Test fun `running snapshot restores elapsed duration and private route points`() {
+        val state = RunningState().apply {
+            phase = "진행"; seconds = 60; elapsedSeconds = 120; recordRoute = true
+            routePoints = listOf(RunRoutePoint(0.0, 0.0, 401_000L))
+        }
+
+        val restored = Gson().fromJson(Gson().toJson(state.snapshot()), RunningSnapshot::class.java).restore()
+
+        assertEquals(120, restored.elapsedSeconds)
+        assertEquals(1, restored.routePoints.size)
+        assertTrue(restored.paused)
     }
 }
