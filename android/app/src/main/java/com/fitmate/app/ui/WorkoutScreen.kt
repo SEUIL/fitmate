@@ -2,6 +2,8 @@ package com.fitmate.app.ui
 
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,9 +45,16 @@ import kotlinx.coroutines.launch
     var completing by remember { mutableStateOf(false) }
     var completionError by remember { mutableStateOf<String?>(null) }
     var showWorkoutOverview by remember(session) { mutableStateOf(false) }
+    var showFinish by remember(session) { mutableStateOf(false) }
+    var showRest by remember(session) { mutableStateOf(false) }
+    var lastRecordedIndex by remember(session) { mutableIntStateOf(-1) }
+    BackHandler(enabled = showFinish || showRest || completing) {
+        if (!completing) { showFinish = false; showRest = false }
+    }
     BackHandler(enabled = showWorkoutOverview) { showWorkoutOverview = false }
     var recordConfirmation by remember(session) { mutableStateOf<String?>(null) }
     var showSetDetails by remember(session) { mutableStateOf(false) }
+    var showExerciseGuide by remember(session, exerciseName) { mutableStateOf(false) }
     val currentVolume = recordedSets.sumOf { it.weightKg * it.repetitions }
     val elapsedTime = if (elapsedSeconds >= 3600) "%02d:%02d:%02d".format(elapsedSeconds / 3600, elapsedSeconds / 60 % 60, elapsedSeconds % 60)
         else "%02d:%02d".format(elapsedSeconds / 60, elapsedSeconds % 60)
@@ -81,20 +90,38 @@ import kotlinx.coroutines.launch
         TopAppBar(title = { Text(if (showWorkoutOverview) "전체 운동" else "운동 진행", fontWeight = FontWeight.Bold) },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             windowInsets = WindowInsets(0, 0, 0, 0),
-            navigationIcon = { IconButton({ if (showWorkoutOverview) showWorkoutOverview = false else onBack() }) {
+            navigationIcon = { IconButton({
+                when {
+                    showFinish -> showFinish = false
+                    showRest -> showRest = false
+                    showWorkoutOverview -> showWorkoutOverview = false
+                    else -> onBack()
+                }
+            }, enabled = !completing) {
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, "뒤로가기")
             } },
-            actions = { TextButton(::complete, enabled = !completing) { Text(if (completing) "저장 중…" else "운동 종료") } })
+            actions = { TextButton({ showFinish = true; showWorkoutOverview = false }, enabled = !completing) { Text(if (completing) "저장 중…" else "운동 종료") } })
     }
     @Composable fun recordAction() {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
-            recordConfirmation?.let { Text(it, Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.primary) }
+            if (showFinish) {
+                WorkoutAction(if (completing) "기록 저장 중…" else "기록 저장하고 종료", !completing, ::complete)
+                TextButton({ showFinish = false }, Modifier.fillMaxWidth(), enabled = !completing) { Text("운동 계속하기") }
+                return
+            }
+            if (showRest) {
+                WorkoutAction(if (remainingRestSeconds > 0) "휴식 건너뛰기" else "다음 세트 시작") { showRest = false; isRestTimerRunning = false; remainingRestSeconds = 0 }
+                return
+            }
+            AnimatedVisibility(recordConfirmation != null) { Text(recordConfirmation.orEmpty(), Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.primary) }
             WorkoutAction(if (editingSetIndex >= 0) "세트 수정" else "이 세트 기록", enabled = !completing) {
                 val wasEditing = editingSetIndex in recordedSets.indices
                 val index = if (wasEditing) editingSetIndex else recordedSets.size
                 if (recordSet()) {
                     focus.clearFocus()
                     recordConfirmation = "✓ ${index + 1}세트 ${if (wasEditing) "수정" else "기록"} 완료"
+                    showRest = true
+                    lastRecordedIndex = index
                 } else recordConfirmation = null
             }
         }
@@ -105,29 +132,56 @@ import kotlinx.coroutines.launch
             if (!showWorkoutOverview && !scrollActions) Surface(color = MaterialTheme.colorScheme.background) { recordAction() }
         }
     ) { padding ->
-        Screen(Modifier.padding(padding)) {
+        WorkoutJourneyPage(Modifier.padding(padding).animateContentSize()) {
             if (scrollActions) topActions()
-            if (showWorkoutOverview) {
+            if (showFinish) {
+                Text("저장 전 확인", color = MaterialTheme.colorScheme.primary)
+                WorkoutHeading("여기까지 기록할까요?", "완료한 세트만 저장해요.")
+                WorkoutCard {
+                    WorkoutMetrics("완료한 세트" to "${recordedSets.size}세트", "운동 시간" to elapsedTime)
+                    HorizontalDivider()
+                    WorkoutMetric("기록한 총 볼륨", "${"%.0f".format(currentVolume)} kg")
+                }
+                if (scrollActions) recordAction()
+            } else if (showRest) {
+                WorkoutRestContent(remainingRestSeconds, exerciseName,
+                    recordedSets.count { it.exerciseName == exerciseName },
+                    add = { remainingRestSeconds += 15; isRestTimerRunning = true },
+                    edit = {
+                        val index = lastRecordedIndex
+                        recordedSets.getOrNull(index)?.let { set ->
+                            weightText = (if (unit == "lb") set.weightKg * 2.2046226218 else set.weightKg).toString()
+                            repetitionText = set.repetitions.toString(); rpeText = set.rpe?.toString().orEmpty(); memo = set.memo
+                            editingSetIndex = index
+                        }
+                        showRest = false; isRestTimerRunning = false
+                    })
+                if (scrollActions) recordAction()
+            } else if (showWorkoutOverview) {
                 WorkoutOverviewContent(session, history, availableExercises, serverWorkout, saveRoutine) { showWorkoutOverview = false }
             } else {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("운동 ${if (sessionExercises.isEmpty()) 0 else selectedExerciseIndex + 1} / ${sessionExercises.size}", Modifier.weight(1f))
                     Text(elapsedTime, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    TextButton({ isTimerRunning = !isTimerRunning }) { Text(if (isTimerRunning) "일시정지" else "계속하기") }
                 }
-                LinearProgressIndicator(progress = { if (sessionExercises.isEmpty()) 0f else ((selectedExerciseIndex + 1).toFloat() / sessionExercises.size).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primaryContainer,
+                LinearProgressIndicator(progress = { if (targetSetCount <= 0) 0f else (recordedSets.size.toFloat() / targetSetCount).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.outlineVariant)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(exerciseName.ifBlank { "운동을 추가해 주세요" }, Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                    Text(exerciseName.ifBlank { "운동을 추가해 주세요" }, Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     TextButton({ showWorkoutOverview = true }) { Text("전체 운동 보기") }
                 }
+                val currentExercise = availableExercises.firstOrNull { it.name == exerciseName }
+                if (exerciseName.isNotBlank()) {
+                    ExerciseAnimation(currentExercise?.id, exerciseName, playing = isTimerRunning && !isRestTimerRunning && !showExerciseGuide, compact = true)
+                }
                 val previous = history.asReversed().firstNotNullOfOrNull { summary -> summary.sets.lastOrNull { it.exerciseName == exerciseName } }
-                Text(previous?.let { "이전 기록 · ${it.weightKg} kg × ${it.repetitions}회" } ?: "이전 동일 운동 기록 없음", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 syncError?.takeIf { it != error }?.let { ErrorText(it) }
                 WorkoutCard {
                     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(if (editingSetIndex >= 0) "${editingSetIndex + 1}세트 수정 중" else "${recordedSets.count { it.exerciseName == exerciseName } + 1}세트 기록",
-                            modifier = Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            modifier = Modifier.padding(vertical = 6.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("kg", "lb").forEach { choice ->
                                 FilterChip(unit == choice, { changeUnit(choice); recordConfirmation = null }, label = { Text(choice) })
@@ -139,16 +193,22 @@ import kotlinx.coroutines.launch
                         @Composable fun fields(modifier: Modifier) {
                             WorkoutNumberField(weightText, { weightText = it; recordConfirmation = null }, "중량 ($unit)", modifier, KeyboardType.Decimal)
                             WorkoutNumberField(repetitionText, { repetitionText = it; recordConfirmation = null }, "횟수", modifier, KeyboardType.Number)
-                            WorkoutNumberField(rpeText, { rpeText = it; recordConfirmation = null }, "RPE", modifier, KeyboardType.Number)
                         }
                         if (stacked) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { fields(Modifier.fillMaxWidth()) }
                         else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { fields(Modifier.weight(1f)) }
                     }
-                    if (showSetDetails || memo.isNotEmpty()) OutlinedTextField(memo, { memo = it }, Modifier.fillMaxWidth(), label = { Text("세트 메모 (선택)") })
-                    TextButton({ showSetDetails = !showSetDetails }) { Text(if (showSetDetails) "메모 닫기" else "+ 메모 추가") }
+                    TextButton({ showSetDetails = !showSetDetails }) { Text(if (showSetDetails) "추가 입력 닫기" else "체감 강도 · 메모") }
+                    if (showSetDetails || memo.isNotEmpty()) {
+                        WorkoutNumberField(rpeText, { rpeText = it }, "RPE", Modifier.fillMaxWidth(), KeyboardType.Number)
+                        OutlinedTextField(memo, { memo = it }, Modifier.fillMaxWidth(), label = { Text("세트 메모 (선택)") })
+                    }
                     ErrorText(error)
                 }
                 if (scrollActions) recordAction()
+                PlanDisclosure("운동 소개 · 이전 기록") {
+                    Text(previous?.let { "이전 기록 · ${it.weightKg} kg × ${it.repetitions}회" } ?: "이전 동일 운동 기록 없음", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton({ showExerciseGuide = true }) { Text("운동 소개 보기") }
+                }
                 if (recordedSets.isNotEmpty()) WorkoutCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -194,6 +254,11 @@ import kotlinx.coroutines.launch
                 }
             }
         }
+    }
+    if (showExerciseGuide) SocialSheet({ showExerciseGuide = false }) {
+        val currentExercise = availableExercises.firstOrNull { it.name == exerciseName }
+        ExerciseIntroduction(currentExercise?.id, exerciseName, currentExercise?.bodyPart, currentExercise?.equipmentType)
+        TextButton({ showExerciseGuide = false }, Modifier.fillMaxWidth()) { Text("운동 계속하기") }
     }
     if (completing) AlertDialog(onDismissRequest = {}, title = { Text("운동 기록을 저장하고 있어요") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
     completionError?.let { message -> AlertDialog(onDismissRequest = { completionError = null },

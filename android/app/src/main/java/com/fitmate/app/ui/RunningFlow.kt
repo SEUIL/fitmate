@@ -189,7 +189,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
     }.toTypedArray()) }
     Column(modifier.fillMaxSize()) {
-    Screen(Modifier.weight(1f)) {
+    WorkoutJourneyPage(Modifier.weight(1f)) {
         PlanHeading(if (phase == "설정") "러닝 준비" else "러닝 $phase",
             when { phase == "리포트" -> "저장 전 · 오늘의 기록을 확인하세요."; deviceTracking -> "실제 GPS 기록 중 · 알림에서 기록 상태를 확인할 수 있어요."; demo -> "예시 GPS 데이터"; else -> "이번 러닝의 목표를 선택하세요." })
         when (phase) {
@@ -213,8 +213,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                         WorkoutChoices(listOf("1분", "2분", "3분", "5분"), "${intervalMinutes}분", columns = 2) { intervalMinutes = it.removeSuffix("분") }
                     }
                 }
-                WorkoutCard {
-                    Text("기록 설정", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                PlanDisclosure("기록 설정 · 자동 일시정지 · 공개 범위") {
                     ToggleLine("자동 일시정지", autoPause) { autoPause = it }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     ToggleLine("경로 기록", recordRoute) { recordRoute = it }
@@ -251,10 +250,9 @@ internal fun runPace(seconds: Int, meters: Int): String {
                 Text(if (paused) "일시정지" else if (autoPaused) "정지 감지 · 자동 일시정지" else "달리는 중", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("활동 시간", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("%02d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60), style = if (LocalDensity.current.fontScale > 1.3f) MaterialTheme.typography.titleLarge else MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
                     Text("이동 거리", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${"%.2f".format(meters / 1000.0)} km", style = if (LocalDensity.current.fontScale > 1.3f) MaterialTheme.typography.titleLarge else MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
+                    Text("활동 시간 · %02d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60), style = MaterialTheme.typography.titleLarge)
                     if (deviceTracking) Text("경과 시간 ${elapsedSeconds / 60}분 ${elapsedSeconds % 60}초", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 WorkoutCard {
@@ -279,8 +277,7 @@ internal fun runPace(seconds: Int, meters: Int): String {
                     if (recordRoute) Text("저장할 경로 좌표 ${routePoints.size}개 · 나만 보기")
                     if (samsung) Text("심박수 — · Samsung Health 수신 대기")
                 }
-                WorkoutCard {
-                    Text("1 km 자동 랩", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                PlanDisclosure("1 km 자동 랩 · 구간 기록") {
                     if (laps.isEmpty()) Text("1 km를 달리면 첫 랩이 기록됩니다.")
                     laps.forEach { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant); Text("${it.number}랩 · 1.00 km · ${runPace(it.seconds, it.meters)}") }
                 }

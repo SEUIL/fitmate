@@ -13,11 +13,14 @@ internal class ServerRecordApi(private val api: FitMateApiClient) {
     fun completedCount(path: String): Int {
         var cursor = "0"
         var count = 0
+        val visited = mutableSetOf<String>()
         repeat(10_000) {
+            check(visited.add(cursor)) { "운동 기록 페이지가 반복되었습니다." }
             val result = page(path, cursor, size = 100)
             count += result.rows("items").size
             val next = result.text("nextCursor")
-            if (result.get("hasNext")?.asBoolean != true || next.isBlank() || next == cursor) return count
+            if (result.get("hasNext")?.asBoolean != true) return count
+            check(next.isNotBlank() && next !in visited) { "다음 운동 기록 페이지를 확인하지 못했습니다." }
             cursor = next
         }
         error("운동 기록 페이지를 모두 불러오지 못했습니다.")

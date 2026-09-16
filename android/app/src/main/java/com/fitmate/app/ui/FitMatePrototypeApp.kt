@@ -328,7 +328,9 @@ fun FitMatePrototypeApp(
             else -> PrototypeRoute.HOME
         }
     }
-    WorkoutDesignTheme(enabled = route in setOf(PrototypeRoute.HOME, PrototypeRoute.HEALTH_ROUTINE, PrototypeRoute.WORKOUT,
+    WorkoutDesignTheme(journey = route in setOf(PrototypeRoute.SOLO, PrototypeRoute.HEALTH_ROUTINE,
+        PrototypeRoute.WORKOUT_PREP, PrototypeRoute.WORKOUT, PrototypeRoute.REPORT, PrototypeRoute.RUNNING),
+        enabled = route in setOf(PrototypeRoute.HOME, PrototypeRoute.HEALTH_ROUTINE, PrototypeRoute.WORKOUT,
         PrototypeRoute.SOLO, PrototypeRoute.WORKOUT_PREP, PrototypeRoute.RUNNING, PrototypeRoute.REPORT, PrototypeRoute.HISTORY,
         PrototypeRoute.MATE_LIST, PrototypeRoute.MATE_DETAIL, PrototypeRoute.MATE_WRITE,
         PrototypeRoute.COMMUNITY, PrototypeRoute.DM, PrototypeRoute.DM_DETAIL, PrototypeRoute.PROFILE, PrototypeRoute.INBODY,
@@ -476,7 +478,7 @@ fun FitMatePrototypeApp(
                 profile = updatedProfile
                 route = PrototypeRoute.HOME
             }
-            PrototypeRoute.HOME -> SocialHome(Modifier.padding(padding), profile, socialState, workoutHistory.size, runningState.history.size,
+            PrototypeRoute.HOME -> SocialHome(Modifier.padding(padding), profile, socialState, apiClient,
                 notifications = { route = PrototypeRoute.NOTIFICATIONS },
                 resumeDescription = workoutSession?.let { "${it.exerciseName} · 기록 ${it.recordedSets.size}세트" }
                     ?: if (runningState.phase != "설정") "진행 중인 러닝으로 돌아가요" else null,
@@ -562,6 +564,7 @@ fun FitMatePrototypeApp(
                 route = PrototypeRoute.REPORT
             }
             PrototypeRoute.REPORT -> if (latestServerSessionId != null) Screen(Modifier.padding(padding)) {
+                WorkoutSavedHeader(latestWorkoutSummary)
                 ServerRecordDetail(
                     apiClient, requireNotNull(latestServerSessionId), false, samsungHealthState,
                     onLoadSamsungWorkouts, onRequestSamsungExercisePermission,
@@ -613,6 +616,7 @@ fun FitMatePrototypeApp(
                 onReports = { route = PrototypeRoute.REPORTS },
                 onOpenAdminDemo = { route = PrototypeRoute.ADMIN },
                 editRequest = profileEditRequest,
+                onEditRequestConsumed = { profileEditRequest = 0 },
                 onOpenSettings = { route = PrototypeRoute.SETTINGS },
                 selfUserId = serverAccount.text("id"),
             )
@@ -1166,18 +1170,10 @@ private fun FitMatePrototypePreview() {
 ) { Text(initial, style = MaterialTheme.typography.labelMedium, color = foreground, fontWeight = FontWeight.Bold) }
 @Composable private fun Shortcut(label: String, action: () -> Unit) = OutlinedButton(action) { Text(label) }
 
-@Composable private fun SoloScreen(modifier: Modifier, start: () -> Unit, running: () -> Unit) = Screen(modifier) {
-    PlanHeading("오늘의 운동", "오늘은 어떤 운동을 해볼까요?")
-    WorkoutCard {
-        WorkoutSportLabel(false, "헬스", "세트별 중량과 반복 횟수를 기록해요.")
-        Text("루틴 선택 → 운동 준비", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        WorkoutAction("헬스 시작") { start() }
-    }
-    WorkoutCard {
-        WorkoutSportLabel(true, "러닝", "거리·시간·페이스 목표를 설정해요.")
-        Text("목표 설정 → 러닝 시작", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        WorkoutSecondaryAction("러닝 설정", onClick = running)
-    }
+@Composable private fun SoloScreen(modifier: Modifier, start: () -> Unit, running: () -> Unit) = WorkoutJourneyPage(modifier) {
+    PlanHeading("오늘의 운동", "어떤 운동을 할까요?")
+    WorkoutSportChoice(false, "헬스", "내 페이스로, 한 세트씩.", "루틴 선택", start)
+    WorkoutSportChoice(true, "러닝", "거리와 시간을 나만의 목표로.", "목표 설정", running)
 }
 
 @Composable private fun HealthRoutineScreen(
@@ -1558,8 +1554,7 @@ private fun applyWorkoutComposition(session: WorkoutSession, response: com.googl
     val totalRepetitions = summary.sets.sumOf { it.repetitions }
     val remainingGoalSets = (summary.targetSetCount - summary.sets.size).coerceAtLeast(0)
     val isGoalAchieved = summary.targetSetCount > 0 && remainingGoalSets == 0
-    Text("오늘 · 헬스 · 개인 기록", color = FitMateColors.TextSecondary)
-    WorkoutHeading("오늘의 운동 기록", "기기에 저장한 개인 운동 리포트")
+    WorkoutSavedHeader(summary)
     WorkoutCard {
         Text("오늘도 완료했어요! ✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         WorkoutMetrics("운동 시간" to "${summary.durationMinutes}분", "완료 세트" to "${summary.sets.size}세트",
@@ -1648,6 +1643,7 @@ private fun applyWorkoutComposition(session: WorkoutSession, response: com.googl
     editRequest: Int,
     onOpenSettings: () -> Unit,
     selfUserId: String,
+    onEditRequestConsumed: () -> Unit = {},
 ) = Screen(modifier, background = MaterialTheme.colorScheme.background) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1668,7 +1664,12 @@ private fun applyWorkoutComposition(session: WorkoutSession, response: com.googl
     var goals by remember(profile) { mutableStateOf(profile.goals) }
     var availableTime by remember(profile) { mutableStateOf(profile.availableTime) }
     var isPrivate by remember(profile) { mutableStateOf(profile.isPrivate) }
-    LaunchedEffect(editRequest) { if (editRequest > 0) isEditing = true }
+    LaunchedEffect(editRequest) {
+        if (editRequest > 0) {
+            isEditing = true
+            onEditRequestConsumed()
+        }
+    }
 
     if (isEditing) {
         SocialScreenTitle("프로필 수정", "내 운동 정보와 공개 범위를 관리하세요.")
