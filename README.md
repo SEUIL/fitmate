@@ -12,6 +12,43 @@
 | **인바디 기록** | 인바디 결과지 이미지를 AI로 판독하고, 사용자가 결과를 확인한 뒤 체성분 기록으로 저장합니다. |
 | **운동 메이트와 커뮤니티** | 모집글을 올리고 문의 채팅으로 일정을 조율합니다. 모집자는 참가 요청을 수락하거나 거절할 수 있습니다. 커뮤니티 게시물, 댓글, 팔로우, DM도 지원합니다. |
 
+## 실제 화면
+
+최종 발표 자료에 포함된 실제 앱 화면을 발췌했습니다.
+
+<table>
+  <tr>
+    <th>홈</th>
+    <th>헬스 세트 기록</th>
+    <th>러닝</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/readme/home.png" alt="FitMate 홈 화면" width="220"></td>
+    <td><img src="docs/assets/readme/workout.png" alt="헬스 세트의 중량, 횟수와 RPE 입력 화면" width="220"></td>
+    <td><img src="docs/assets/readme/running.png" alt="러닝 시간, 거리와 페이스 표시 화면" width="220"></td>
+  </tr>
+  <tr>
+    <td>운동 시작과 운동 기록 진입</td>
+    <td>합성 계정·실서버 연결 시연</td>
+    <td>예시 GPS 데이터로 시연</td>
+  </tr>
+  <tr>
+    <th>인바디 결과 검수</th>
+    <th>메이트 모집 상세</th>
+    <th>커뮤니티</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/readme/inbody-review.png" alt="인바디 판독 결과의 수치를 검수하는 화면" width="220"></td>
+    <td><img src="docs/assets/readme/mate.png" alt="운동 메이트 모임 조건과 참가 상태 화면" width="220"></td>
+    <td><img src="docs/assets/readme/community.png" alt="커뮤니티 게시글 목록 화면" width="220"></td>
+  </tr>
+  <tr>
+    <td>MOCK 판독 결과로 구현 화면 시연</td>
+    <td>합성 계정·실서버 연결 시연</td>
+    <td>합성 UI 데이터로 시연</td>
+  </tr>
+</table>
+
 ## 구현에서 다룬 문제
 
 - **웨어러블 데이터와 앱 세션 연결** · Galaxy Fit3 → Samsung Health → Android 앱 → 백엔드 순서로 데이터를 가져옵니다. 운동 시간대가 겹치는 기록을 기준으로 연결하고, Samsung Health를 사용하지 않는 세션도 직접 기록만으로 완료할 수 있습니다.
